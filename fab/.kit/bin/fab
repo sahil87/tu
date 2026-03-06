@@ -1,0 +1,31 @@
+#!/usr/bin/env sh
+set -eu
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+KIT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# --version: handled by dispatcher (not delegated to backend)
+if [ "${1:-}" = "--version" ]; then
+  version="unknown"
+  [ -f "$KIT_DIR/VERSION" ] && version=$(cat "$KIT_DIR/VERSION")
+  backend="none"
+  if [ -x "$SCRIPT_DIR/fab-rust" ]; then
+    backend="rust"
+  elif [ -x "$SCRIPT_DIR/fab-go" ]; then
+    backend="go"
+  fi
+  echo "fab $version ($backend backend)"
+  exit 0
+fi
+
+# Backend priority: rust > go
+if [ -x "$SCRIPT_DIR/fab-rust" ]; then
+  exec "$SCRIPT_DIR/fab-rust" "$@"
+fi
+if [ -x "$SCRIPT_DIR/fab-go" ]; then
+  exec "$SCRIPT_DIR/fab-go" "$@"
+fi
+
+echo "Error: no fab backend found (expected fab-go or fab-rust in $SCRIPT_DIR)" >&2
+echo "Fix: run fab-sync.sh or download a platform-specific kit archive" >&2
+exit 1
