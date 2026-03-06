@@ -19,6 +19,7 @@ export interface WatchOptions {
 interface WatchSession {
   startTime: number;
   startCost: number;
+  startTokens: number;
   previousCosts: Map<string, number>;
   pollHistory: Array<{ time: number; cost: number }>;
   totalTokens: number;
@@ -45,6 +46,7 @@ function renderSkeleton(termWidth: number): void {
     const skeletonSession: PanelSession = {
       startTime: Date.now(),
       startCost: 0,
+      startTokens: 0,
       pollHistory: [],
       totalTokens: 0,
     };
@@ -88,6 +90,7 @@ export async function runWatch(opts: WatchOptions): Promise<never> {
   const session: WatchSession = {
     startTime: 0,
     startCost: 0,
+    startTokens: 0,
     previousCosts: new Map(),
     pollHistory: [],
     totalTokens: 0,
@@ -205,6 +208,7 @@ export async function runWatch(opts: WatchOptions): Promise<never> {
       if (session.pollHistory.length === 0) {
         session.startTime = now;
         session.startCost = cost;
+        if (getTotalTokens) session.startTokens = getTotalTokens();
       }
 
       session.pollHistory.push({ time: now, cost });
@@ -214,6 +218,7 @@ export async function runWatch(opts: WatchOptions): Promise<never> {
       const panelSession: PanelSession = {
         startTime: session.startTime || Date.now(),
         startCost: session.startCost,
+        startTokens: session.startTokens,
         pollHistory: session.pollHistory,
         totalTokens: getTotalTokens ? getTotalTokens() : session.totalTokens,
       };

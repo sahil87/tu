@@ -12,6 +12,7 @@ function makeSession(overrides: Partial<PanelSession> = {}): PanelSession {
   return {
     startTime: now - 300_000, // 5 minutes ago
     startCost: 10,
+    startTokens: 0,
     pollHistory: [
       { time: now - 300_000, cost: 10 },
       { time: now - 200_000, cost: 15 },

@@ -30,6 +30,7 @@ export interface PanelSession {
   startCost: number;
   pollHistory: Array<{ time: number; cost: number }>;
   totalTokens: number;
+  startTokens: number;
 }
 
 function fmtDollar(n: number): string {
@@ -76,8 +77,9 @@ export function buildStatsGrid(session: PanelSession, todayCost: number): string
 
   // Right column values
   let tokMinVal: string;
-  if (hasTwoPolls && session.totalTokens > 0 && elapsedMin > 0) {
-    tokMinVal = `~${Math.round(session.totalTokens / elapsedMin).toLocaleString("en-US")}`;
+  const sessionTokens = session.totalTokens - session.startTokens;
+  if (hasTwoPolls && sessionTokens > 0 && elapsedMin > 0) {
+    tokMinVal = `~${Math.round(sessionTokens / elapsedMin).toLocaleString("en-US")}`;
   } else {
     tokMinVal = PLACEHOLDER;
   }
