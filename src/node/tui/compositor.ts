@@ -321,7 +321,7 @@ export class Compositor {
     // Cursor home, write output
     process.stdout.write("\x1b[H");
     for (const line of allLines) {
-      process.stdout.write(line + "\n");
+      process.stdout.write(line + "\x1b[K\n");
     }
     // Clear stale trailing lines
     process.stdout.write("\x1b[J");
