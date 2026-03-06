@@ -1,9 +1,7 @@
-// Side panel: sparkline + session stats (including session cost delta and burn rate)
-// Composed and returned as string[] for side-by-side merge
+// Stats grid: 2x3 grid of session stats rendered above the table
+// Replaces the old side panel (sparkline + vertical stats list)
 
-import { renderSparkline } from "./sparkline.js";
 import { dim, boldWhite, yellow } from "./colors.js";
-import type { UsageEntry } from "../core/types.js";
 
 const ROLLING_WINDOW = 5;
 
@@ -34,70 +32,116 @@ export interface PanelSession {
   totalTokens: number;
 }
 
-const PANEL_MIN_WIDTH = 20;
-
 function fmtDollar(n: number): string {
   return `$${Math.abs(n).toFixed(2)}`;
 }
 
-export function buildPanel(
-  session: PanelSession,
-  history: UsageEntry[],
-  panelWidth: number,
-  todayCost: number,
-): string[] {
-  if (panelWidth < PANEL_MIN_WIDTH) return [];
+const PLACEHOLDER = "--";
 
-  const lines: string[] = [];
+// Column layout constants
+const LEFT_LABEL_W = 9;      // "Elapsed  " or "Session  "
+const MAX_LEFT_VALUE_W = 8;  // max width of left-column values (e.g., "+$12.34")
+const GAP = 5;               // gap between left value and right label
+const RIGHT_LABEL_W = 10;    // "Tok/min   " or "Proj. day "
+const GRID_WIDTH = 1 + LEFT_LABEL_W + MAX_LEFT_VALUE_W + GAP + RIGHT_LABEL_W + 12; // 1 leading space + columns + max right value
 
-  // Sparkline
-  if (history.length >= 2) {
-    const sparkData = history.map((e) => ({ label: e.label, cost: e.totalCost }));
-    const sparkLines = renderSparkline(sparkData, panelWidth);
-    lines.push(...sparkLines);
-    lines.push(""); // blank separator
-  }
-
-  // Session stats
+/**
+ * Build a 2x3 stats grid + dim separator line.
+ *
+ * Left column (session):  Elapsed, Session delta
+ * Right column (cost):    Tok/min, Rate, Proj. day
+ * Row 3 left is blank.
+ *
+ * Unavailable stats show "--" to keep the grid fixed at 3 rows.
+ */
+export function buildStatsGrid(session: PanelSession, todayCost: number): string[] {
   const now = Date.now();
   const elapsed = now - session.startTime;
   const elapsedMin = elapsed / 60000;
+  const hasTwoPolls = session.pollHistory.length > 1;
 
-  lines.push(dim(" Session"));
-  lines.push(dim(" " + "\u2500".repeat(Math.min(panelWidth - 2, 19))));
+  // Left column values
+  const elapsedVal = formatElapsed(elapsed);
 
-  const stats: Array<[string, string]> = [];
-
-  // Session cost delta (only after 2+ polls)
-  if (session.pollHistory.length > 1) {
+  let sessionVal: string;
+  if (hasTwoPolls) {
     const currentCost = session.pollHistory[session.pollHistory.length - 1].cost;
     const delta = currentCost - session.startCost;
     const sign = delta >= 0 ? "+" : "-";
-    stats.push(["Session", `${sign}${fmtDollar(delta)}`]);
+    sessionVal = `${sign}${fmtDollar(delta)}`;
+  } else {
+    // Skeleton / first poll: show $0.00 per spec
+    sessionVal = `$${(0).toFixed(2)}`;
   }
 
-  stats.push(["Elapsed", formatElapsed(elapsed)]);
-
-  if (session.pollHistory.length > 1 && session.totalTokens > 0 && elapsedMin > 0) {
-    const tokPerMin = Math.round(session.totalTokens / elapsedMin);
-    stats.push(["Tokens/min", `~${tokPerMin.toLocaleString("en-US")}`]);
+  // Right column values
+  let tokMinVal: string;
+  if (hasTwoPolls && session.totalTokens > 0 && elapsedMin > 0) {
+    tokMinVal = `~${Math.round(session.totalTokens / elapsedMin).toLocaleString("en-US")}`;
+  } else {
+    tokMinVal = PLACEHOLDER;
   }
 
   const rate = computeBurnRate(session.pollHistory);
-  if (rate !== null && rate > 0) {
-    stats.push(["Rate", yellow(`~$${rate.toFixed(2)}/hr`)]);
+  let rateVal: string;
+  let projVal: string;
 
-    // Projected daily cost: burn rate * remaining hours in day + today's cost so far
+  if (rate !== null && rate > 0) {
+    rateVal = `~$${rate.toFixed(2)}/hr`;
     const nowDate = new Date(now);
     const hoursRemaining = 24 - nowDate.getHours() - nowDate.getMinutes() / 60;
     const projected = todayCost + rate * hoursRemaining;
-    stats.push(["Proj. day", `~$${projected.toFixed(2)}`]);
+    projVal = `~$${projected.toFixed(2)}`;
+  } else {
+    rateVal = PLACEHOLDER;
+    projVal = PLACEHOLDER;
   }
 
-  const labelWidth = Math.max(...stats.map(([label]) => label.length));
-  for (const [label, value] of stats) {
-    lines.push(dim(` ${label.padEnd(labelWidth)}`) + "  " + boldWhite(value));
-  }
+  // Build grid rows
+  const lines: string[] = [];
+
+  // Row 1: Elapsed | Tok/min
+  lines.push(
+    formatGridRow("Elapsed", elapsedVal, "Tok/min", tokMinVal, false),
+  );
+
+  // Row 2: Session | Rate
+  lines.push(
+    formatGridRow("Session", sessionVal, "Rate", rateVal, true),
+  );
+
+  // Row 3: (blank) | Proj. day
+  lines.push(
+    formatGridRow("", "", "Proj. day", projVal, false),
+  );
+
+  // Dim separator
+  lines.push(dim("\u2500".repeat(GRID_WIDTH)));
 
   return lines;
+}
+
+function formatGridRow(
+  leftLabel: string,
+  leftValue: string,
+  rightLabel: string,
+  rightValue: string,
+  rateHighlight: boolean,
+): string {
+  const left = leftLabel
+    ? dim(` ${leftLabel.padEnd(LEFT_LABEL_W)}`) + boldWhite(leftValue)
+    : " ".repeat(1 + LEFT_LABEL_W + PLACEHOLDER.length);
+
+  const leftVisible = leftLabel
+    ? 1 + LEFT_LABEL_W + leftValue.length
+    : 1 + LEFT_LABEL_W + PLACEHOLDER.length;
+
+  const rightPad = Math.max(1, 1 + LEFT_LABEL_W + MAX_LEFT_VALUE_W + GAP - leftVisible);
+  const coloredValue = rateHighlight && rightValue !== PLACEHOLDER
+    ? yellow(rightValue)
+    : boldWhite(rightValue);
+
+  const right = dim(`${rightLabel.padEnd(RIGHT_LABEL_W)}`) + coloredValue;
+
+  return left + " ".repeat(rightPad) + right;
 }

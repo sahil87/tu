@@ -19,6 +19,7 @@ The formatting layer (`src/node/tui/formatter.ts`) renders token usage data into
 - Available color functions: `bold`, `dim`, `green`, `red`, `cyan`, `yellow`, `boldWhite`, `boldCyan`, `brightGreen`, `dimGreen`
 - `stripAnsi()` MUST be available for measuring visible string length
 - Total row MUST only render when more than one tool has visible data (`totalTokens > 0`) — applies to all snapshot layouts: `renderTotal`, `renderCompactSnapshot`
+- Watch mode uses the same `render*` functions as non-watch mode — no side-by-side merge or layout transformation is applied by the formatter
 
 ## Design Decisions
 
@@ -26,6 +27,7 @@ The formatting layer (`src/node/tui/formatter.ts`) renders token usage data into
 - **Fractional bar precision**: Using 8 Unicode block widths per character cell gives smooth visual resolution without requiring half-line tricks.
 - **Delta via callback**: Watch mode passes `prevCosts` map from the previous poll cycle. Keys use `"{toolName}:{label}"` for history entries and plain `"{toolName}"` for snapshots. This keeps the formatter stateless.
 - **Progressive column layout**: Tables measure column widths (D=12 for dates, N=14 for numbers) and compute remaining space for bars, enabling graceful degradation on narrow terminals.
+- **Unified rendering**: Watch mode and non-watch mode produce identical table output. The compositor stacks the stats grid above the table output without modifying it.
 
 ## Changelog
 
@@ -34,3 +36,4 @@ The formatting layer (`src/node/tui/formatter.ts`) renders token usage data into
 | 2026-03-06 | Generated from code analysis |
 | 2026-03-06 | Updated file paths from `src/` to `src/node/tui/` for formatter and colors |
 | 2026-03-06 | Added requirement: Total row guarded by visible tool count > 1 in renderTotal and renderCompactSnapshot |
+| 2026-03-06 | Added: watch mode uses same render functions without side-by-side merge (redesign removed mergeSideBySide) |

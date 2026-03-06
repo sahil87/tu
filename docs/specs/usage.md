@@ -183,37 +183,34 @@ Full-screen TUI using alternate screen buffer with compositor-based rendering.
 
 ### Architecture
 
-- **Compositor**: manages independent panel buffers (table, spark, status) with dirty-flag rendering at 16ms ticks
-- **TablePanel**: data table output from dispatch functions
-- **SparkPanel**: side panel with braille sparkline chart + session stats
+- **Compositor**: manages independent panel buffers (stats, table, status) with dirty-flag rendering at 16ms ticks
+- **StatsPanel**: 2x3 stats grid rendered above the table
+- **TablePanel**: data table output from dispatch functions (same render functions as non-watch mode)
 - **StatusPanel**: footer with countdown timer and controls
-- **RainLayer**: matrix rain animation (80ms tick, cursor-positioned overlay, independent of compositor tick)
+- **RainLayer**: matrix rain animation (107ms tick, cursor-positioned overlay, independent of compositor tick)
 
 ### Layout
 
-- Wide terminals (>= 113 cols): table + side panel with sparkline and session stats
-- Narrow terminals (< 60 cols): compact mode (date/name + cost only, no token breakdown)
+- Full mode (>= 60 cols): stats grid + dim separator + full table + rain
+- Compact mode (< 60 cols): compact table only, no stats grid, no rain
 - Rain fills available space below content, or right margin columns if no vertical space remains
+- Loading skeleton renders on alt-screen entry before first fetch (stats grid with zeros/dashes, table header, centered "Loading...")
 
 ### Interaction
 
 - `q` or Ctrl+C: exit (restores normal screen, prints last rendered output to stdout)
 - Enter/Space: immediate refresh (cancels countdown)
 - Polls on interval (default 10s), shows "Refreshing..." during fetch
-- History cache for sparkline: 5-minute TTL, refreshed each poll cycle
 
-### Session Stats (side panel)
+### Session Stats (grid above table)
 
-- **Session cost delta**: difference between current poll cost and first poll cost
 - **Elapsed**: wall-clock time since first poll
-- **Tokens/min**: `totalTokens / elapsedMinutes`
-- **Burn rate**: rolling window of last 5 polls, `(latest.cost - oldest.cost) / timeDelta * 3600000` ($/hr)
-- **Projected daily cost**: `todayCost + burnRate * hoursRemainingInDay`
-
-### Sparkline
-
-Braille-dot chart (Unicode U+2800-U+28FF) with 2 data points per character cell, 3 character rows (12 dot rows of resolution). Y-axis labels show min/max cost rounded to whole dollars. Date range shown as title. Data scoped to match the current table view (single tool or aggregated daily costs across all tools).
+- **Session cost delta**: difference between current poll cost and first poll cost; `$0.00` before 2 polls
+- **Tokens/min**: `totalTokens / elapsedMinutes`; `--` before 2 polls
+- **Burn rate**: rolling window of last 5 polls, `(latest.cost - oldest.cost) / timeDelta * 3600000` ($/hr); `--` before 2 polls
+- **Projected daily cost**: `todayCost + burnRate * hoursRemainingInDay`; `--` before 2 polls
+- Grid stays fixed at 3 rows; unavailable stats show `--` placeholder
 
 ### Matrix Rain
 
-Katakana + digits + latin characters falling at variable speeds (0.3-1.0 rows/tick). Column density ~30%. Trail length 3-8 characters with brightness gradient (bright head, green body, dim tail). ~5% shimmer rate for random character replacement. Respawns after falling off screen with random delay.
+Katakana + digits + latin characters falling at variable speeds (0.3-1.0 rows/tick). Column density ~30%. Trail length 3-8 characters with brightness gradient (bright head, green body, dim tail). ~5% shimmer rate for random character replacement. Respawns after falling off screen with random delay. Tick interval: 107ms (75% of original 80ms for calmer ambient feel).

@@ -89,21 +89,22 @@ Total        |         $6.45  |        $14.75  |         $2.32  |   $23.52
 
 Enters alternate screen buffer. Layout adapts to terminal dimensions:
 
-### Wide terminal (>= 113 cols): table + side panel
+### Full mode (>= 60 cols): stats grid + table + rain
 
 ```
-📊 Combined Cost History (daily)                               2026-03-01 → 2026-03-06
-                                                          $8.97 ┤⠀⠀⠀⠀⣀⠤⠤⠤⠤⠒⠒⠒⠉⠉⠉
-Date         | Claude Code    | Codex          |     Cost        ┤⠀⣀⠤⠒⠉
-──────────────────────────────────────────────────────────  $1.50 ┤⠉
+ Elapsed  5m 32s     Tok/min   ~12,345
+ Session  +$0.50     Rate      ~$1.25/hr
+                     Proj. day ~$15.00
+─────────────────────────────────────────────
+📊 Combined Cost History (daily)
+
+Date         | Claude Code    | Codex          |     Cost
+──────────────────────────────────────────────────────────
 2026-03-06   |         $2.85  |         $5.45  |    $8.97 ↑
-2026-03-05   |         $2.10  |         $3.20  |    $5.75        Session
-2026-03-04   |         $1.50  |         $6.10  |    $8.80        ───────────────────
-──────────────────────────────────────────────────────────        Session     +$0.50
-Total        |         $6.45  |        $14.75  |   $23.52        Elapsed     5m 32s
-                                                                  Tokens/min  ~12,345
-                                                                  Rate        ~$1.25/hr
-                                                                  Proj. day   ~$15.00
+2026-03-05   |         $2.10  |         $3.20  |    $5.75
+2026-03-04   |         $1.50  |         $6.10  |    $8.80
+──────────────────────────────────────────────────────────
+Total        |         $6.45  |        $14.75  |   $23.52
 
                   ﾗ0ﾑa                    7ﾘ
                   ﾗ                        ﾘk
@@ -113,28 +114,14 @@ Total        |         $6.45  |        $14.75  |   $23.52        Elapsed     5m 
 Next refresh: 8s · ↵ refresh · q quit
 ```
 
-- **Left:** any of Layouts 1-4, depending on command args
-- **Right (side panel):** sparkline (braille, 3 char rows, green) + session stats
+- **Stats grid:** 2x3 grid above the table — session stats left (Elapsed, Session), cost stats right (Tok/min, Rate, Proj. day)
+- **Separator:** dim horizontal rule between stats grid and table title
+- **Table:** any of Layouts 1-4, depending on command args — same render functions as non-watch mode
 - **Rain:** matrix rain fills vertical space below content (or right margin if no vertical space)
 - **Footer:** status line at terminal bottom row, all `dim`
-- **Gutter:** 3 spaces between table and side panel
+- Unavailable stats show `--` placeholder; grid stays fixed at 3 rows
 
-### Medium terminal (60-112 cols): table only, no side panel
-
-```
-📊 Combined Usage (daily)
-
-Tool           |        Tokens |        Input |       Output |         Cost
-────────────────────────────────────────────────────────────────────────────
-Claude Code    |     1,234,567 |      567,890 |      666,677 |       $12.34 ↑
-Codex          |     2,345,678 |      987,654 |    1,358,024 |       $23.45
-────────────────────────────────────────────────────────────────────────────
-Total          |     4,037,034 |    1,790,111 |    2,246,923 |       $40.35
-
-Next refresh: 8s · ↵ refresh · q quit
-```
-
-### Narrow terminal (< 60 cols): compact mode
+### Compact mode (< 60 cols)
 
 ```
 Claude Code      $12.34 ↑
@@ -147,42 +134,38 @@ Refreshing... · ↵ refresh · q quit
 ```
 
 - Two columns only: name (14 left-padded) + cost (12 right-padded)
-- No token breakdown, no side panel, no rain, no bars
+- No token breakdown, no stats grid, no rain, no bars
 
-## 6. Watch Mode — Side Panel Detail
+## 6. Watch Mode — Stats Grid Detail
 
-### Sparkline
-
-```
- 2026-03-01 → 2026-03-06
-$8.97 ┤⠀⠀⠀⠀⣀⠤⠤⠤⠤⠒⠒⠒⠉⠉⠉
-      ┤⠀⣀⠤⠒⠉
-$1.50 ┤⠉
-```
-
-- Braille dots (U+2800-U+28FF): 2 data points per character, 3 rows = 12 vertical dots
-- Y-axis: min/max cost labels, right-aligned, followed by `┤`
-- X-axis: date range as title above chart
-- Color: green braille, dim date/label text
-
-### Session Stats
+### Full stats (2+ polls)
 
 ```
- Session
- ───────────────────
- Session     +$0.50
- Elapsed     5m 32s
- Tokens/min  ~12,345
- Rate        ~$1.25/hr
- Proj. day   ~$15.00
+ Elapsed  5m 32s     Tok/min   ~12,345
+ Session  +$0.50     Rate      ~$1.25/hr
+                     Proj. day ~$15.00
 ```
 
-- **Session:** cost delta since watch start
 - **Elapsed:** `Xh Xm Xs` / `Xm Xs` / `Xs`
-- **Tokens/min:** only shown when totalTokens > 0
-- **Rate:** 5-poll rolling window burn rate, shown in `yellow`
-- **Proj. day:** today's cost + rate * remaining hours
+- **Session:** cost delta since watch start (shown as `$0.00` before 2 polls)
+- **Tokens/min:** `--` until 2+ polls with totalTokens > 0
+- **Rate:** 5-poll rolling window burn rate, shown in `yellow`; `--` until 2+ polls
+- **Proj. day:** today's cost + rate * remaining hours; `--` until 2+ polls
 - Labels `dim`, values `boldWhite`
+
+### Loading skeleton (before first fetch)
+
+```
+ Elapsed  0s         Tok/min   --
+ Session  $0.00      Rate      --
+                     Proj. day --
+─────────────────────────────────────────────
+📊 Combined Usage (daily)
+
+Tool           |        Tokens |        Input |       Output |         Cost
+────────────────────────────────────────────────────────────────────────────
+                         Loading...
+```
 
 ## 7. Watch Mode — Delta Indicators
 
@@ -210,7 +193,7 @@ Fills available terminal space with falling characters:
 
 - **Characters:** katakana + digits + latin
 - **Density:** ~30% of available columns active
-- **Speed:** 0.3-1.0 rows per 80ms tick (fractional)
+- **Speed:** 0.3-1.0 rows per 107ms tick (fractional)
 - **Trail:** 3-8 chars with brightness gradient (brightGreen head, green body, dimGreen tail)
 - **Shimmer:** ~5% of trail chars randomly replaced each tick
 - **Positioning:** below content (preferred) or right margin (fallback, >= 10 cols); disabled with `--no-rain`

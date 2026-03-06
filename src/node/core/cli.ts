@@ -789,45 +789,12 @@ async function main() {
         return dispatchSingleToolLines(config, source, period, display, skipCache, fmtOpts);
       }
     };
-    const historyFetcher = async (): Promise<UsageEntry[]> => {
-      // Scope sparkline data to match what the table is showing
-      if (source !== "all") {
-        // Single-tool: fetch only that tool's daily history
-        if (config.mode === "multi") {
-          return fetchToolMerged(config, source, "daily", [], true);
-        } else {
-          return fetchHistory(source, "daily", [], true);
-        }
-      }
-      // All-tools: aggregate daily costs across tools
-      if (config.mode === "multi") {
-        const toolKeys = Object.keys(TOOLS);
-        const allMerged = await Promise.all(toolKeys.map((k) => fetchToolMerged(config, k, "daily", [], true)));
-        const byDate = new Map<string, number>();
-        for (const entries of allMerged) {
-          for (const e of entries) byDate.set(e.label, (byDate.get(e.label) || 0) + e.totalCost);
-        }
-        return [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([label, totalCost]) => ({
-          label, totalCost, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0,
-        }));
-      } else {
-        const results = await fetchAllHistory("daily", [], true);
-        const byDate = new Map<string, number>();
-        for (const entries of results.values()) {
-          for (const e of entries) byDate.set(e.label, (byDate.get(e.label) || 0) + e.totalCost);
-        }
-        return [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([label, totalCost]) => ({
-          label, totalCost, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0,
-        }));
-      }
-    };
     await runWatch({
       interval: watchInterval,
       action,
       getCost: () => _lastRenderCost,
       getPrevCosts: () => new Map(_lastRenderCostMap),
       getTotalTokens: () => _lastRenderTotalTokens,
-      fetchHistory: historyFetcher,
       noRain: noRainFlag,
     });
   } else {

@@ -1,9 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildPanel } from "../panel.js";
+import { buildStatsGrid } from "../panel.js";
 import type { PanelSession } from "../panel.js";
 import { setNoColor } from "../colors.js";
-import type { UsageEntry } from "../../core/types.js";
 
 // Disable colors for simpler assertions
 setNoColor(true);
@@ -24,96 +23,99 @@ function makeSession(overrides: Partial<PanelSession> = {}): PanelSession {
   };
 }
 
-function makeHistory(days: number): UsageEntry[] {
-  return Array.from({ length: days }, (_, i) => ({
-    label: `2026-01-${String(i + 1).padStart(2, "0")}`,
-    totalCost: 10 + i * 2,
-    inputTokens: 1000,
-    outputTokens: 500,
-    cacheCreationTokens: 100,
-    cacheReadTokens: 50,
-    totalTokens: 1650,
-  }));
-}
-
-describe("buildPanel", () => {
-  it("returns empty array for narrow panel width", () => {
-    const result = buildPanel(makeSession(), makeHistory(7), 15, 25);
-    assert.deepEqual(result, []);
+describe("buildStatsGrid", () => {
+  it("returns 4 lines (3 grid rows + separator)", () => {
+    const result = buildStatsGrid(makeSession(), 25);
+    assert.equal(result.length, 4, "should return 4 lines");
   });
 
-  it("renders panel with sparkline and session stats", () => {
-    const result = buildPanel(makeSession(), makeHistory(7), 30, 25);
-    assert.ok(result.length > 0, "should return lines");
+  it("shows Elapsed and Session labels", () => {
+    const result = buildStatsGrid(makeSession(), 25);
     const text = result.join("\n");
-    assert.ok(text.includes("Session"), "should have session stats header");
-    assert.ok(text.includes("Elapsed"), "should show elapsed time");
+    assert.ok(text.includes("Elapsed"), "should show Elapsed");
+    assert.ok(text.includes("Session"), "should show Session delta");
   });
 
-  it("renders panel without sparkline when history is empty", () => {
-    const result = buildPanel(makeSession(), [], 30, 25);
-    assert.ok(result.length > 0, "should return lines");
+  it("shows Tok/min when session has tokens and 2+ polls", () => {
+    const result = buildStatsGrid(makeSession({ totalTokens: 100000 }), 25);
     const text = result.join("\n");
-    assert.ok(text.includes("Session"), "should have session stats");
-    assert.ok(!text.includes("Spend"), "should not have sparkline title");
+    assert.ok(text.includes("Tok/min"), "should show Tok/min");
+    assert.ok(!text.includes("Tok/min   --"), "should show a real value, not placeholder");
   });
 
-  it("renders panel without sparkline when history has 1 entry", () => {
-    const result = buildPanel(makeSession(), makeHistory(1), 30, 25);
-    const text = result.join("\n");
-    assert.ok(!text.includes("Spend"), "should not have sparkline for single entry");
-  });
-
-  it("shows tokens/min when session has tokens and 2+ polls", () => {
-    const result = buildPanel(makeSession({ totalTokens: 100000 }), [], 30, 25);
-    const text = result.join("\n");
-    assert.ok(text.includes("Tokens/min"), "should show tokens/min");
-  });
-
-  it("suppresses tokens/min on first poll despite having tokens", () => {
+  it("shows dashes for Tok/min on first poll", () => {
     const now = Date.now();
-    const result = buildPanel(makeSession({
+    const result = buildStatsGrid(makeSession({
       totalTokens: 100000,
       pollHistory: [{ time: now, cost: 10 }],
-    }), [], 30, 25);
+    }), 25);
     const text = result.join("\n");
-    assert.ok(!text.includes("Tokens/min"), "should not show tokens/min with single poll");
-    assert.ok(text.includes("Elapsed"), "should still show elapsed time");
+    assert.ok(text.includes("Tok/min"), "should show Tok/min label");
+    assert.ok(text.includes("--"), "should show placeholder");
   });
 
-  it("suppresses tokens/min when zero tokens after multiple polls", () => {
-    const result = buildPanel(makeSession({ totalTokens: 0 }), [], 30, 25);
+  it("shows $0.00 for Session delta on first poll", () => {
+    const now = Date.now();
+    const result = buildStatsGrid(makeSession({
+      pollHistory: [{ time: now, cost: 10 }],
+    }), 25);
     const text = result.join("\n");
-    assert.ok(!text.includes("Tokens/min"), "should not show tokens/min with zero tokens");
+    const lines = result.filter(l => l.includes("Session"));
+    assert.ok(lines.length > 0, "should have Session line");
+    assert.ok(lines[0].includes("$0.00"), "should show $0.00 for session delta on first poll");
   });
 
   it("shows burn rate when poll history has 2+ entries", () => {
-    const result = buildPanel(makeSession(), [], 30, 25);
+    const result = buildStatsGrid(makeSession(), 25);
     const text = result.join("\n");
     assert.ok(text.includes("Rate"), "should show burn rate");
   });
 
-  it("shows session cost delta when poll history has 2+ entries", () => {
-    const result = buildPanel(makeSession(), [], 30, 25);
-    const text = result.join("\n");
-    assert.ok(text.includes("Session"), "should show session cost delta");
-    assert.ok(text.includes("+$"), "should show positive delta with + prefix");
-  });
-
-  it("omits session cost delta on first poll", () => {
+  it("shows dashes for Rate when only 1 poll", () => {
     const now = Date.now();
-    const result = buildPanel(makeSession({
+    const result = buildStatsGrid(makeSession({
       pollHistory: [{ time: now, cost: 10 }],
-    }), [], 30, 25);
+    }), 25);
     const text = result.join("\n");
-    // "Session" appears as the section header, but not as a cost delta stat
-    const lines = result.filter(l => l.includes("+$"));
-    assert.equal(lines.length, 0, "should not show cost delta on first poll");
+    const rateLine = result.find(l => l.includes("Rate"));
+    assert.ok(rateLine, "should have Rate label");
+    assert.ok(rateLine!.includes("--"), "should show -- placeholder for Rate");
   });
 
   it("shows projected daily cost", () => {
-    const result = buildPanel(makeSession(), [], 30, 25);
+    const result = buildStatsGrid(makeSession(), 25);
     const text = result.join("\n");
     assert.ok(text.includes("Proj. day"), "should show projected daily cost");
+  });
+
+  it("shows session cost delta with + prefix when 2+ polls", () => {
+    const result = buildStatsGrid(makeSession(), 25);
+    const text = result.join("\n");
+    assert.ok(text.includes("+$"), "should show positive delta with + prefix");
+  });
+
+  it("ends with a separator line (dim horizontal rule)", () => {
+    const result = buildStatsGrid(makeSession(), 25);
+    const lastLine = result[result.length - 1];
+    assert.ok(lastLine.includes("\u2500"), "last line should contain horizontal rule characters");
+  });
+
+  it("grid stays fixed at 3 rows + separator even with no data", () => {
+    const now = Date.now();
+    const result = buildStatsGrid(makeSession({
+      startTime: now,
+      startCost: 0,
+      pollHistory: [],
+      totalTokens: 0,
+    }), 0);
+    assert.equal(result.length, 4, "should always return 4 lines");
+  });
+
+  it("shows dashes for Tok/min when zero tokens after multiple polls", () => {
+    const result = buildStatsGrid(makeSession({ totalTokens: 0 }), 25);
+    const text = result.join("\n");
+    const tokLine = result.find(l => l.includes("Tok/min"));
+    assert.ok(tokLine, "should have Tok/min label");
+    assert.ok(tokLine!.includes("--"), "should show -- for zero tokens");
   });
 });
