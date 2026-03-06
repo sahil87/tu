@@ -14,3 +14,4 @@
 | Spec | Description |
 |------|-------------|
 | [usage](usage.md) | CLI grammar, data flow, output formats, multi-machine sync, and watch mode |
+| [layouts](layouts.md) | Visual mockups of every distinct output layout (tables, watch mode, side panel, rain) |

@@ -33,6 +33,9 @@ Tests MUST conform to the implementation spec — never the other way around. Wh
 ### Test Runner
 Tests use Node.js built-in test runner via `npx tsx --test tests/*.test.ts`. New test files MUST follow the `tests/{module}.test.ts` naming convention. No additional test frameworks SHOULD be introduced without justification.
 
+### Test Location
+Node/TypeScript test files MUST be co-located with the source code they test, in `__tests__/` folders within the same directory (e.g., `src/__tests__/fetcher.test.ts` for `src/fetcher.ts`).
+
 ### Output Stability
 CLI output format (table layouts, color usage, JSON structure) SHOULD remain stable across patch versions. Breaking output changes MUST be accompanied by a minor version bump since downstream scripts may parse the output.
 

@@ -1,0 +1,3 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-03-06T17:45:03+05:30"}
+{"args":"Reorganize src/ for future Rust sibling — move TypeScript into src/node/ with core/tui/sync subdirs","cmd":"fab-new","event":"command","ts":"2026-03-06T17:45:03+05:30"}
+{"delta":"+4.4","event":"confidence","score":4.4,"trigger":"calc-score","ts":"2026-03-06T17:45:50+05:30"}
