@@ -1,7 +1,7 @@
 // Stats grid: 2x3 grid of session stats rendered above the table
 // Replaces the old side panel (sparkline + vertical stats list)
 
-import { dim, boldWhite, yellow } from "./colors.js";
+import { dim, boldWhite, yellow, stripAnsi } from "./colors.js";
 
 const ROLLING_WINDOW = 5;
 
@@ -43,8 +43,6 @@ const LEFT_LABEL_W = 9;      // "Elapsed  " or "Session  "
 const MAX_LEFT_VALUE_W = 8;  // max width of left-column values (e.g., "+$12.34")
 const GAP = 5;               // gap between left value and right label
 const RIGHT_LABEL_W = 10;    // "Tok/min   " or "Proj. day "
-const GRID_WIDTH = 1 + LEFT_LABEL_W + MAX_LEFT_VALUE_W + GAP + RIGHT_LABEL_W + 12; // 1 leading space + columns + max right value
-
 /**
  * Build a 2x3 stats grid + dim separator line.
  *
@@ -52,7 +50,9 @@ const GRID_WIDTH = 1 + LEFT_LABEL_W + MAX_LEFT_VALUE_W + GAP + RIGHT_LABEL_W + 1
  * Right column (cost):    Tok/min, Rate, Proj. day
  * Row 3 left is blank.
  *
- * Unavailable stats show "--" to keep the grid fixed at 3 rows.
+ * Elapsed always shows time since session start.
+ * Session shows "$0.00" until at least two polls are available to compute a delta.
+ * Other unavailable stats show "--" to keep the grid fixed at 3 rows.
  */
 export function buildStatsGrid(session: PanelSession, todayCost: number): string[] {
   const now = Date.now();
@@ -115,8 +115,9 @@ export function buildStatsGrid(session: PanelSession, todayCost: number): string
     formatGridRow("", "", "Proj. day", projVal, false),
   );
 
-  // Dim separator
-  lines.push(dim("\u2500".repeat(GRID_WIDTH)));
+  // Dim separator — width matches the widest grid row
+  const maxVisible = Math.max(...lines.map(l => stripAnsi(l).length));
+  lines.push(dim("\u2500".repeat(maxVisible)));
 
   return lines;
 }

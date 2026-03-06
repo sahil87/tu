@@ -54,26 +54,31 @@ function renderSkeleton(termWidth: number): void {
     }
   }
 
-  // Table header
-  process.stdout.write(boldWhite("\u{1F4CA} Combined Usage (daily)") + "\n");
-  process.stdout.write("\n");
+  if (!compact) {
+    // Full table header
+    process.stdout.write(boldWhite("\u{1F4CA} Combined Usage (daily)") + "\n");
+    process.stdout.write("\n");
 
-  const W = 14;
-  const N = 14;
-  const cols = ["Tool", "Tokens", "Input", "Output", "Cost"];
-  const header = cols
-    .map((c, i) => boldCyan(i === 0 ? c.padEnd(W) : c.padStart(N)))
-    .join(" | ");
-  process.stdout.write(header + "\n");
+    const W = 14;
+    const N = 14;
+    const cols = ["Tool", "Tokens", "Input", "Output", "Cost"];
+    const header = cols
+      .map((c, i) => boldCyan(i === 0 ? c.padEnd(W) : c.padStart(N)))
+      .join(" | ");
+    process.stdout.write(header + "\n");
 
-  const divider = [W, N, N, N, N].map((w) => "\u2500".repeat(w)).join("\u2500|\u2500");
-  process.stdout.write(dim(divider) + "\n");
+    const divider = [W, N, N, N, N].map((w) => "\u2500".repeat(w)).join("\u2500|\u2500");
+    process.stdout.write(dim(divider) + "\n");
 
-  // Centered "Loading..." placeholder
-  const loadingText = "Loading...";
-  const visibleDivLen = divider.length;
-  const pad = Math.max(0, Math.floor((visibleDivLen - loadingText.length) / 2));
-  process.stdout.write(" ".repeat(pad) + dim(loadingText) + "\n");
+    // Centered "Loading..." placeholder
+    const loadingText = "Loading...";
+    const visibleDivLen = divider.length;
+    const pad = Math.max(0, Math.floor((visibleDivLen - loadingText.length) / 2));
+    process.stdout.write(" ".repeat(pad) + dim(loadingText) + "\n");
+  } else {
+    // Compact skeleton: just centered loading text
+    process.stdout.write("\n" + dim("Loading...") + "\n");
+  }
 }
 
 export async function runWatch(opts: WatchOptions): Promise<never> {

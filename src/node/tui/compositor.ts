@@ -179,7 +179,7 @@ export class Compositor {
     // Compositor tick: check dirty flags and recomposite
     this.compositorTimer = setInterval(() => this.tick(), COMPOSITOR_TICK_MS);
 
-    // Rain tick: independent ~107ms animation (75% of original 80ms rate)
+    // Rain tick: independent ~107ms animation (~75% as fast as the original 80ms rate)
     if (!this.opts.noRain) {
       this.rainTimer = setInterval(() => {
         this.rainLayer.tick();
