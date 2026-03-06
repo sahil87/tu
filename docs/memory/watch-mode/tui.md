@@ -21,6 +21,7 @@ Watch mode (`--watch`/`-w`) provides a persistent live-polling terminal UI using
 - Side panel MUST show when terminal width >= 113 (90 min table + 3 gutter + 20 min panel) and not compact
 - Sparkline MUST use braille characters (U+2800-U+28FF) with 2 data points per character and 3 rows of chart height
 - Session stats MUST include: session cost delta, elapsed time, tokens/min, burn rate ($/hr), projected daily cost
+- Rate-based stats (Tokens/min) MUST NOT display until at least two poll cycles have completed (`pollHistory.length > 1`); this prevents divide-by-near-zero producing absurd values on first render
 - Burn rate MUST use a rolling window of last 5 polls
 - History cache for sparkline MUST have 5-minute TTL
 - Compact mode MUST activate below 60 columns terminal width
@@ -41,3 +42,4 @@ Watch mode (`--watch`/`-w`) provides a persistent live-polling terminal UI using
 |------|--------|
 | 2026-03-06 | Generated from code analysis |
 | 2026-03-06 | Updated file paths from `src/` to `src/node/tui/` for watch, compositor, panel, sparkline, rain |
+| 2026-03-06 | Added requirement: Tokens/min suppressed until 2+ polls (fix divide-by-near-zero on first render) |

@@ -64,10 +64,27 @@ describe("buildPanel", () => {
     assert.ok(!text.includes("Spend"), "should not have sparkline for single entry");
   });
 
-  it("shows tokens/min when session has tokens", () => {
+  it("shows tokens/min when session has tokens and 2+ polls", () => {
     const result = buildPanel(makeSession({ totalTokens: 100000 }), [], 30, 25);
     const text = result.join("\n");
     assert.ok(text.includes("Tokens/min"), "should show tokens/min");
+  });
+
+  it("suppresses tokens/min on first poll despite having tokens", () => {
+    const now = Date.now();
+    const result = buildPanel(makeSession({
+      totalTokens: 100000,
+      pollHistory: [{ time: now, cost: 10 }],
+    }), [], 30, 25);
+    const text = result.join("\n");
+    assert.ok(!text.includes("Tokens/min"), "should not show tokens/min with single poll");
+    assert.ok(text.includes("Elapsed"), "should still show elapsed time");
+  });
+
+  it("suppresses tokens/min when zero tokens after multiple polls", () => {
+    const result = buildPanel(makeSession({ totalTokens: 0 }), [], 30, 25);
+    const text = result.join("\n");
+    assert.ok(!text.includes("Tokens/min"), "should not show tokens/min with zero tokens");
   });
 
   it("shows burn rate when poll history has 2+ entries", () => {
