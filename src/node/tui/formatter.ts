@@ -4,6 +4,7 @@ import { bold, dim, green, red, cyan, yellow, boldWhite, boldCyan } from "./colo
 export interface FormatOptions {
   prevCosts?: Map<string, number>;  // key: "{toolName}:{label}" or "{toolName}"
   compact?: boolean;
+  maxRows?: number;  // truncate history to most recent N data rows (watch mode)
 }
 
 export function fmtNum(n: number): string {
@@ -72,6 +73,11 @@ export function renderHistory(toolName: string, period: string, entries: UsageEn
     lines.push("  No data");
     lines.push("");
     return lines;
+  }
+
+  // Truncate to most recent maxRows entries (watch mode)
+  if (opts?.maxRows && entries.length > opts.maxRows) {
+    entries = entries.slice(-opts.maxRows);
   }
 
   // Compact mode: date + cost only
@@ -216,7 +222,12 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
   for (const entries of allToolEntries.values()) {
     for (const e of entries) labelSet.add(e.label);
   }
-  const labels = [...labelSet].sort();
+  let labels = [...labelSet].sort();
+
+  // Truncate to most recent maxRows labels (watch mode)
+  if (opts?.maxRows && labels.length > opts.maxRows) {
+    labels = labels.slice(-opts.maxRows);
+  }
 
   if (labels.length === 0) {
     lines.push("  No data");

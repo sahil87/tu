@@ -181,6 +181,7 @@ export async function runWatch(opts: WatchOptions): Promise<never> {
       const formatOpts: FormatOptions = {
         prevCosts: session.previousCosts.size > 0 ? session.previousCosts : undefined,
         compact: compact || undefined,
+        maxRows: 15,
       };
 
       let tableLines: string[] = [];
