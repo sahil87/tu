@@ -51,7 +51,29 @@ The table rendered in watch mode is identical to non-watch mode output — same 
 
 Change rain tick interval from 80ms to ~107ms (80 / 0.75 ≈ 107). This makes the rain calmer and less "screensaver," more ambient. Rain still fills vertical space below content as before.
 
-### 5. Simplify terminal breakpoints
+### 5. Loading skeleton on alt-screen entry
+
+When entering watch mode, render a skeleton immediately after switching to the alternate screen buffer — before the first fetch completes. The skeleton uses the real layout structure (stats grid + table) with placeholder values:
+
+```
+ Elapsed  0s         Tok/min   --
+ Session  $0.00      Rate      --
+                     Proj. day --
+
+📊 Combined Usage (daily)
+
+Tool           |        Tokens |        Input |       Output |         Cost
+────────────────────────────────────────────────────────────────────────────
+                         Loading...
+```
+
+- Stats show zeros/dashes for unavailable values
+- Table header renders normally, data area shows centered "Loading..." in `dim`
+- Rain starts immediately alongside the skeleton (no need to wait for data)
+- Skeleton is replaced by real data on the first successful fetch
+- Only applies to watch mode — non-watch mode blocks on fetch normally
+
+### 6. Simplify terminal breakpoints
 
 Remove the three-tier system (wide ≥113 / medium 60-112 / narrow <60). Replace with two tiers:
 - **Full** (≥60 cols): stats grid + full table + rain
@@ -69,7 +91,7 @@ The 113-col threshold and side panel logic are removed entirely.
 - **`src/node/tui/sparkline.ts`**: Deleted entirely
 - **`src/node/tui/panel.ts`**: Rewritten — stats grid rendering replaces vertical list + sparkline
 - **`src/node/tui/compositor.ts`**: Simplified — remove SparkPanel, remove `mergeSideBySide()`, stats grid becomes a new panel rendered above table
-- **`src/node/tui/watch.ts`**: Remove sparkline history cache, update panel composition order, update rain tick constant
+- **`src/node/tui/watch.ts`**: Remove sparkline history cache, update panel composition order, update rain tick constant, add skeleton render on startup
 - **`src/node/tui/rain.ts`**: Tick interval constant change (80 → 107)
 - **Tests**: Panel tests, compositor tests need updates; sparkline tests deleted
 - **Layouts spec** (`docs/specs/layouts.md`): Sections 5, 6 need rewriting to reflect new layout
@@ -89,7 +111,8 @@ None — all design decisions were resolved in the discussion session.
 | 5 | Certain | Rain tick changes from 80ms to ~107ms | Discussed — user specified "75% of current refresh rate" | S:90 R:95 A:90 D:95 |
 | 6 | Confident | Delete sparkline.ts file entirely (not just stop using it) | No other consumer exists; dead code should be removed | S:80 R:80 A:85 D:90 |
 | 7 | Confident | Remove `mergeSideBySide()` from compositor | No side panel means no side-by-side merge needed | S:80 R:80 A:85 D:85 |
-| 8 | Tentative | No visual separator (dim rule or blank line) between stats grid and table | Not explicitly discussed — a blank line may be sufficient | S:50 R:95 A:60 D:55 |
+| 8 | Certain | Loading skeleton on alt-screen entry with zeros/dashes and "Loading..." | Discussed — user chose Option A (structure skeleton with placeholders), watch mode only | S:95 R:90 A:90 D:95 |
+| 9 | Tentative | No visual separator (dim rule or blank line) between stats grid and table | Not explicitly discussed — a blank line may be sufficient | S:50 R:95 A:60 D:55 |
 <!-- assumed: No separator between stats grid and table — not discussed, defaulting to blank line which is easily changed -->
 
-8 assumptions (5 certain, 2 confident, 1 tentative, 0 unresolved).
+9 assumptions (6 certain, 2 confident, 1 tentative, 0 unresolved).
