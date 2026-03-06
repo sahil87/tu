@@ -1,0 +1,3 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-03-06T18:39:08+05:30"}
+{"args":"Fix watch mode bugs: (1) Tokens/min divide-by-near-zero at 0s elapsed, (2) Total row shown with single tool","cmd":"fab-new","event":"command","ts":"2026-03-06T18:39:08+05:30"}
+{"delta":"+4.7","event":"confidence","score":4.7,"trigger":"calc-score","ts":"2026-03-06T18:40:18+05:30"}
