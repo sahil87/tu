@@ -1,6 +1,6 @@
 {
   "name": "token-usage",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "AI coding assistant cost tracking CLI",
   "type": "module",
   "bin": {
