@@ -13,3 +13,4 @@
 
 | Spec | Description |
 |------|-------------|
+| [usage](usage.md) | CLI grammar, data flow, output formats, multi-machine sync, and watch mode |
