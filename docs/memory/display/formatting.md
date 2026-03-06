@@ -2,7 +2,7 @@
 
 ## Overview
 
-The formatting layer (`src/formatter.ts`) renders token usage data into terminal tables with ANSI colors. It supports three table layouts plus compact variants for narrow terminals. The color system (`src/colors.ts`) provides NO_COLOR-compliant ANSI wrappers.
+The formatting layer (`src/node/tui/formatter.ts`) renders token usage data into terminal tables with ANSI colors. It supports three table layouts plus compact variants for narrow terminals. The color system (`src/node/tui/colors.ts`) provides NO_COLOR-compliant ANSI wrappers.
 
 ## Requirements
 
@@ -31,3 +31,4 @@ The formatting layer (`src/formatter.ts`) renders token usage data into terminal
 | Date | Change |
 |------|--------|
 | 2026-03-06 | Generated from code analysis |
+| 2026-03-06 | Updated file paths from `src/` to `src/node/tui/` for formatter and colors |

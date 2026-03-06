@@ -2,7 +2,7 @@
 
 ## Overview
 
-Multi-machine sync (`src/sync.ts`) enables aggregating AI usage costs across multiple machines via a shared git repository. Each machine writes per-day JSONL files to a structured directory hierarchy, then syncs via git commit/pull/push.
+Multi-machine sync (`src/node/sync/sync.ts`) enables aggregating AI usage costs across multiple machines via a shared git repository. Each machine writes per-day JSONL files to a structured directory hierarchy, then syncs via git commit/pull/push.
 
 ## Requirements
 
@@ -34,3 +34,4 @@ Multi-machine sync (`src/sync.ts`) enables aggregating AI usage costs across mul
 | Date | Change |
 |------|--------|
 | 2026-03-06 | Generated from code analysis |
+| 2026-03-06 | Updated file path from `src/sync.ts` to `src/node/sync/sync.ts` |
