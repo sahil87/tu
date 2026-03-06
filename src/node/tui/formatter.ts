@@ -187,8 +187,11 @@ export function renderTotal(period: string, toolTotals: Map<string, UsageTotals>
     grandTotal += t.totalTokens;
   }
 
-  lines.push(dim(divider));
-  lines.push(colorRow(["Total", fmtNum(grandTotal), fmtNum(grandInput), fmtNum(grandOutput), fmtCost(grandCost)], boldWhite));
+  const visibleCount = [...toolTotals.values()].filter(t => t.totalTokens > 0).length;
+  if (visibleCount > 1) {
+    lines.push(dim(divider));
+    lines.push(colorRow(["Total", fmtNum(grandTotal), fmtNum(grandInput), fmtNum(grandOutput), fmtCost(grandCost)], boldWhite));
+  }
   lines.push("");
   return lines;
 }
@@ -322,8 +325,11 @@ function renderCompactSnapshot(toolTotals: Map<string, UsageTotals>, prevCosts?:
   }
   let grandCost = 0;
   for (const t of toolTotals.values()) grandCost += t.totalCost;
-  lines.push(dim(COMPACT_DIV));
-  lines.push(`${boldWhite("Total".padEnd(COMPACT_NAME_W))} ${boldWhite(fmtCost(grandCost).padStart(COMPACT_COST_W))}`);
+  const visibleCount = [...toolTotals.values()].filter(t => t.totalTokens > 0).length;
+  if (visibleCount > 1) {
+    lines.push(dim(COMPACT_DIV));
+    lines.push(`${boldWhite("Total".padEnd(COMPACT_NAME_W))} ${boldWhite(fmtCost(grandCost).padStart(COMPACT_COST_W))}`);
+  }
   lines.push("");
   return lines;
 }

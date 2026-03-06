@@ -288,6 +288,48 @@ describe("printTotal", () => {
     assert.match(output, /No usage/);
   });
 
+  it("omits Total row when only one tool has data", (t) => {
+    t.after(restoreLog);
+    const totals = new Map<string, UsageTotals>([
+      ["Claude Code", { totalCost: 5, inputTokens: 1000, outputTokens: 500, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1500 }],
+    ]);
+    printTotal("daily", totals);
+    const totalLines = logged.filter(l => l.includes("Total") && !l.includes("Combined"));
+    assert.equal(totalLines.length, 0, "should not render Total row with single tool");
+  });
+
+  it("shows Total row when multiple tools have data", (t) => {
+    t.after(restoreLog);
+    const totals = new Map<string, UsageTotals>([
+      ["Claude Code", { totalCost: 5, inputTokens: 1000, outputTokens: 500, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1500 }],
+      ["Codex", { totalCost: 3, inputTokens: 800, outputTokens: 200, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1000 }],
+    ]);
+    printTotal("daily", totals);
+    const totalLines = logged.filter(l => l.includes("Total") && !l.includes("Combined"));
+    assert.equal(totalLines.length, 1, "should render Total row with multiple tools");
+  });
+
+  it("omits Total row in compact mode when only one tool has data", (t) => {
+    t.after(restoreLog);
+    const totals = new Map<string, UsageTotals>([
+      ["Claude Code", { totalCost: 5, inputTokens: 1000, outputTokens: 500, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1500 }],
+    ]);
+    printTotal("daily", totals, { compact: true });
+    const totalLines = logged.filter(l => l.includes("Total"));
+    assert.equal(totalLines.length, 0, "should not render Total row in compact with single tool");
+  });
+
+  it("shows Total row in compact mode when multiple tools have data", (t) => {
+    t.after(restoreLog);
+    const totals = new Map<string, UsageTotals>([
+      ["Claude Code", { totalCost: 5, inputTokens: 1000, outputTokens: 500, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1500 }],
+      ["Codex", { totalCost: 3, inputTokens: 800, outputTokens: 200, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1000 }],
+    ]);
+    printTotal("daily", totals, { compact: true });
+    const totalLines = logged.filter(l => l.includes("Total"));
+    assert.equal(totalLines.length, 1, "should render Total row in compact with multiple tools");
+  });
+
   it("skips tools with zero tokens but still includes in grand total", (t) => {
     t.after(restoreLog);
     const totals = new Map<string, UsageTotals>([

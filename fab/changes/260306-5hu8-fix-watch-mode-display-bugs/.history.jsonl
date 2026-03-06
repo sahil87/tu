@@ -1,3 +1,12 @@
 {"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-03-06T18:39:08+05:30"}
 {"args":"Fix watch mode bugs: (1) Tokens/min divide-by-near-zero at 0s elapsed, (2) Total row shown with single tool","cmd":"fab-new","event":"command","ts":"2026-03-06T18:39:08+05:30"}
 {"delta":"+4.7","event":"confidence","score":4.7,"trigger":"calc-score","ts":"2026-03-06T18:40:18+05:30"}
+{"cmd":"fab-switch","event":"command","ts":"2026-03-06T18:54:19+05:30"}
+{"cmd":"fab-ff","event":"command","ts":"2026-03-06T18:54:54+05:30"}
+{"action":"enter","driver":"fab-ff","event":"stage-transition","stage":"spec","ts":"2026-03-06T18:56:08+05:30"}
+{"action":"enter","driver":"fab-ff","event":"stage-transition","stage":"tasks","ts":"2026-03-06T18:56:37+05:30"}
+{"action":"enter","driver":"fab-ff","event":"stage-transition","stage":"apply","ts":"2026-03-06T18:56:37+05:30"}
+{"action":"enter","driver":"fab-ff","event":"stage-transition","stage":"review","ts":"2026-03-06T18:58:29+05:30"}
+{"action":"enter","driver":"fab-ff","event":"stage-transition","stage":"hydrate","ts":"2026-03-06T19:01:17+05:30"}
+{"event":"review","result":"passed","ts":"2026-03-06T19:01:17+05:30"}
+{"action":"enter","driver":"fab-ff","event":"stage-transition","stage":"ship","ts":"2026-03-06T19:01:48+05:30"}

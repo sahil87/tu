@@ -78,7 +78,7 @@ export function buildPanel(
 
   stats.push(["Elapsed", formatElapsed(elapsed)]);
 
-  if (elapsedMin > 0 && session.totalTokens > 0) {
+  if (session.pollHistory.length > 1 && session.totalTokens > 0) {
     const tokPerMin = Math.round(session.totalTokens / elapsedMin);
     stats.push(["Tokens/min", `~${tokPerMin.toLocaleString("en-US")}`]);
   }
