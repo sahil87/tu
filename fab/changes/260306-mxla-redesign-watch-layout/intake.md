@@ -35,13 +35,15 @@ Replace the vertical stats list with a horizontal 2-column, 3-row grid rendered 
  Elapsed  5m 32s     Tok/min   ~12,345
  Session  +$0.50     Rate      ~$1.25/hr
                      Proj. day ~$15.00
+───────────────────────────────────────────
 ```
 
 - **Left column** (session-related): Elapsed, Session cost delta
 - **Right column** (cost-related): Tok/min, Rate, Proj. day
 - Left column has a blank cell at row 3 (only 2 session stats vs 3 cost stats)
 - Same styling: labels `dim`, values `boldWhite`, Rate in `yellow`
-- Stats that aren't available yet (e.g., Rate before 2 polls) are omitted; the grid contracts vertically
+- Dim horizontal rule (`───`) separates the stats grid from the table title below
+- Stats that aren't available yet (e.g., Rate before 2 polls) show `--` as placeholder; grid stays fixed at 3 rows to avoid layout shift
 
 ### 3. Regular table below stats
 
@@ -59,7 +61,7 @@ When entering watch mode, render a skeleton immediately after switching to the a
  Elapsed  0s         Tok/min   --
  Session  $0.00      Rate      --
                      Proj. day --
-
+───────────────────────────────────────────
 📊 Combined Usage (daily)
 
 Tool           |        Tokens |        Input |       Output |         Cost
@@ -112,7 +114,18 @@ None — all design decisions were resolved in the discussion session.
 | 6 | Confident | Delete sparkline.ts file entirely (not just stop using it) | No other consumer exists; dead code should be removed | S:80 R:80 A:85 D:90 |
 | 7 | Confident | Remove `mergeSideBySide()` from compositor | No side panel means no side-by-side merge needed | S:80 R:80 A:85 D:85 |
 | 8 | Certain | Loading skeleton on alt-screen entry with zeros/dashes and "Loading..." | Discussed — user chose Option A (structure skeleton with placeholders), watch mode only | S:95 R:90 A:90 D:95 |
-| 9 | Tentative | No visual separator (dim rule or blank line) between stats grid and table | Not explicitly discussed — a blank line may be sufficient | S:50 R:95 A:60 D:55 |
-<!-- assumed: No separator between stats grid and table — not discussed, defaulting to blank line which is easily changed -->
+| 9 | Certain | Dim horizontal rule (`───`) separates stats grid from table title | Clarified — user chose dim rule over blank line or no separator | S:95 R:95 A:90 D:95 |
+<!-- clarified: Stats grid separator — user chose dim horizontal rule (option B) -->
+| 10 | Certain | Unavailable stats show `--` placeholder; grid stays fixed 3 rows | Clarified — user chose stable layout over contracting grid | S:95 R:85 A:85 D:95 |
+<!-- clarified: Stats grid stays fixed size with dash placeholders for unavailable stats -->
 
-9 assumptions (6 certain, 2 confident, 1 tentative, 0 unresolved).
+10 assumptions (8 certain, 2 confident, 0 tentative, 0 unresolved).
+
+## Clarifications
+
+### Session 2026-03-06
+
+| # | Action | Detail |
+|---|--------|--------|
+| 9 | Changed | Dim horizontal rule (`───`) between stats grid and table title |
+| 10 | Changed | Unavailable stats show `--` placeholder; grid stays fixed 3 rows (replaces "omitted; grid contracts") |

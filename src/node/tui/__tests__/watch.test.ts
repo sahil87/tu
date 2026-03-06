@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { formatElapsed, computeBurnRate, buildFooter, ROLLING_WINDOW, mergeSideBySide } from "../watch.js";
+import { formatElapsed, computeBurnRate, buildFooter, ROLLING_WINDOW } from "../watch.js";
 import { setNoColor } from "../colors.js";
 import type { WatchSession } from "../watch.js";
 
@@ -117,7 +117,7 @@ describe("buildFooter", () => {
     assert.ok(footer.includes("Refreshing..."));
   });
 
-  it("does not include session delta (moved to SparkPanel)", () => {
+  it("does not include session delta (moved to stats grid)", () => {
     const now = Date.now();
     const s = makeSession({
       startTime: now - 60_000,
@@ -131,7 +131,7 @@ describe("buildFooter", () => {
     assert.ok(!footer.includes("Session:"), "session delta should not be in footer");
   });
 
-  it("does not include burn rate (moved to SparkPanel)", () => {
+  it("does not include burn rate (moved to stats grid)", () => {
     const now = Date.now();
     const s = makeSession({
       startTime: now - 20_000,
@@ -149,7 +149,7 @@ describe("buildFooter", () => {
   it("includes key hints", () => {
     const s = makeSession({ pollHistory: [{ time: 0, cost: 10 }] });
     const footer = buildFooter(10, s, 120);
-    assert.ok(footer.includes("↵ refresh · q quit"));
+    assert.ok(footer.includes("\u21B5 refresh \u00B7 q quit"));
   });
 
   it("progressively truncates for narrow terminals", () => {
@@ -159,41 +159,5 @@ describe("buildFooter", () => {
     // Very narrow footer should drop key hints
     const narrowFooter = buildFooter(10, s, 15);
     assert.ok(narrowFooter.length < fullFooter.length, "narrow footer should be shorter");
-  });
-});
-
-describe("mergeSideBySide", () => {
-  it("returns tableLines as-is when panelLines is empty", () => {
-    const tableLines = ["line1", "line2", "line3"];
-    const result = mergeSideBySide(tableLines, [], 80, 60);
-    assert.deepEqual(result, tableLines);
-  });
-
-  it("merges table and panel lines with padding and gutter", () => {
-    const tableLines = ["abc", "defgh"];
-    const panelLines = ["PAN1", "PAN2"];
-    const result = mergeSideBySide(tableLines, panelLines, 80, 10);
-    // "abc" is 3 visible chars, padded to 10 = 7 spaces + 3-space gutter + panel
-    assert.equal(result.length, 2);
-    assert.ok(result[0].includes("PAN1"), "first line should contain panel content");
-    assert.ok(result[1].includes("PAN2"), "second line should contain panel content");
-  });
-
-  it("pads shorter table when panel has more lines", () => {
-    const tableLines = ["abc"];
-    const panelLines = ["P1", "P2", "P3"];
-    const result = mergeSideBySide(tableLines, panelLines, 80, 10);
-    assert.equal(result.length, 3);
-    assert.ok(result[2].includes("P3"), "third line should contain panel content");
-  });
-
-  it("pads shorter panel when table has more lines", () => {
-    const tableLines = ["a", "b", "c"];
-    const panelLines = ["P1"];
-    const result = mergeSideBySide(tableLines, panelLines, 80, 10);
-    assert.equal(result.length, 3);
-    assert.ok(result[0].includes("P1"), "first line should contain panel");
-    // Lines 2-3 should have table content but no panel content
-    assert.ok(!result[2].includes("P"), "third line should not have panel content");
   });
 });

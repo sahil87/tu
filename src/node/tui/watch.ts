@@ -1,15 +1,11 @@
 import type { FormatOptions } from "./formatter.js";
-import type { UsageEntry } from "../core/types.js";
 import type { PanelSession } from "./panel.js";
-import { formatElapsed, computeBurnRate } from "./panel.js";
-import { Compositor } from "./compositor.js";
-import { dim, stripAnsi } from "./colors.js";
+import { buildStatsGrid, formatElapsed, computeBurnRate } from "./panel.js";
+import { Compositor, COMPACT_THRESHOLD } from "./compositor.js";
+import { dim, boldWhite, boldCyan, stripAnsi } from "./colors.js";
 
-// Re-export for backward compatibility (tests and panel.ts import from watch.ts)
-export { formatElapsed, computeBurnRate, stripAnsi };
-
-// Re-export mergeSideBySide from compositor for backward compat
-export { mergeSideBySide } from "./compositor.js";
+// Re-export for backward compatibility (tests import from watch.ts)
+export { formatElapsed, computeBurnRate, stripAnsi, COMPACT_THRESHOLD };
 
 export interface WatchOptions {
   interval: number;        // poll interval in seconds
@@ -17,7 +13,6 @@ export interface WatchOptions {
   getCost: () => number;   // callback to get current total cost after render
   getPrevCosts: () => Map<string, number>;  // callback to get per-item costs for delta indicators
   getTotalTokens?: () => number;  // callback to get total tokens for session stats
-  fetchHistory?: () => Promise<UsageEntry[]>;  // callback to fetch daily history for sparkline
   noRain?: boolean;        // disable rain animation
 }
 
@@ -30,8 +25,6 @@ interface WatchSession {
 }
 
 export const ROLLING_WINDOW = 5;
-export const COMPACT_THRESHOLD = 60;
-const HISTORY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 function enterAltScreen(): void {
   process.stdout.write("\x1b[?1049h");
@@ -41,8 +34,55 @@ function exitAltScreen(): void {
   process.stdout.write("\x1b[?1049l");
 }
 
+function renderSkeleton(termWidth: number): void {
+  const compact = termWidth < COMPACT_THRESHOLD;
+
+  // Cursor home
+  process.stdout.write("\x1b[H");
+
+  if (!compact) {
+    // Stats grid with placeholder values
+    const skeletonSession: PanelSession = {
+      startTime: Date.now(),
+      startCost: 0,
+      pollHistory: [],
+      totalTokens: 0,
+    };
+    const statsLines = buildStatsGrid(skeletonSession, 0);
+    for (const line of statsLines) {
+      process.stdout.write(line + "\n");
+    }
+  }
+
+  if (!compact) {
+    // Full table header
+    process.stdout.write(boldWhite("\u{1F4CA} Combined Usage (daily)") + "\n");
+    process.stdout.write("\n");
+
+    const W = 14;
+    const N = 14;
+    const cols = ["Tool", "Tokens", "Input", "Output", "Cost"];
+    const header = cols
+      .map((c, i) => boldCyan(i === 0 ? c.padEnd(W) : c.padStart(N)))
+      .join(" | ");
+    process.stdout.write(header + "\n");
+
+    const divider = [W, N, N, N, N].map((w) => "\u2500".repeat(w)).join("\u2500|\u2500");
+    process.stdout.write(dim(divider) + "\n");
+
+    // Centered "Loading..." placeholder
+    const loadingText = "Loading...";
+    const visibleDivLen = divider.length;
+    const pad = Math.max(0, Math.floor((visibleDivLen - loadingText.length) / 2));
+    process.stdout.write(" ".repeat(pad) + dim(loadingText) + "\n");
+  } else {
+    // Compact skeleton: just centered loading text
+    process.stdout.write("\n" + dim("Loading...") + "\n");
+  }
+}
+
 export async function runWatch(opts: WatchOptions): Promise<never> {
-  const { interval, action, getCost, getPrevCosts, getTotalTokens, fetchHistory, noRain } = opts;
+  const { interval, action, getCost, getPrevCosts, getTotalTokens, noRain } = opts;
 
   const session: WatchSession = {
     startTime: 0,
@@ -56,10 +96,6 @@ export async function runWatch(opts: WatchOptions): Promise<never> {
   let polling = false;
   let lastRenderedLines: string[] = [];
 
-  // History cache for sparkline
-  let historyCache: UsageEntry[] = [];
-  let historyCacheTime = 0;
-
   const termWidth = () => process.stdout.columns ?? 80;
   const termRows = () => process.stdout.rows ?? 24;
 
@@ -69,18 +105,6 @@ export async function runWatch(opts: WatchOptions): Promise<never> {
     getTermWidth: termWidth,
     getTermRows: termRows,
   });
-
-  async function refreshHistoryCache(): Promise<void> {
-    if (!fetchHistory) return;
-    const now = Date.now();
-    if (now - historyCacheTime < HISTORY_CACHE_TTL && historyCache.length > 0) return;
-    try {
-      historyCache = await fetchHistory();
-      historyCacheTime = now;
-    } catch {
-      // Keep stale cache on failure
-    }
-  }
 
   function cleanup(): void {
     if (cleaning) return;
@@ -110,10 +134,11 @@ export async function runWatch(opts: WatchOptions): Promise<never> {
   // Register SIGINT handler
   process.on("SIGINT", () => { cleanup(); });
 
-  // Enter alternate screen
+  // Enter alternate screen and render skeleton
   enterAltScreen();
+  renderSkeleton(termWidth());
 
-  // Start compositor
+  // Start compositor (rain begins immediately alongside skeleton)
   compositor.start();
 
   // Real-time resize handling
@@ -148,9 +173,6 @@ export async function runWatch(opts: WatchOptions): Promise<never> {
     try {
       // Show "Refreshing..." status
       compositor.setRefreshing();
-
-      // Refresh history cache for sparkline
-      await refreshHistoryCache();
 
       // Build FormatOptions
       const tw = termWidth();
@@ -198,7 +220,7 @@ export async function runWatch(opts: WatchOptions): Promise<never> {
       lastRenderedLines = tableLines;
 
       // Update compositor with new data
-      compositor.updateAfterPoll(tableLines, panelSession, historyCache, cost);
+      compositor.updateAfterPoll(tableLines, panelSession, cost);
 
       // Flush all panels to screen
       compositor.flush();
@@ -213,9 +235,6 @@ export async function runWatch(opts: WatchOptions): Promise<never> {
     }
   }
 
-  // Initial history fetch
-  await refreshHistoryCache();
-
   // Initial poll
   await doPoll();
 
@@ -224,7 +243,6 @@ export async function runWatch(opts: WatchOptions): Promise<never> {
 }
 
 // Exported for testing
-export { HISTORY_CACHE_TTL };
 export type { WatchSession };
 
 // Legacy buildFooter export for backward compatibility in tests.

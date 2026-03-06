@@ -4,9 +4,8 @@
 // bypassing the compositor tick — this decouples rain from the rendering pipeline
 // so it never freezes during API fetches.
 
-import type { UsageEntry } from "../core/types.js";
 import type { PanelSession } from "./panel.js";
-import { buildPanel } from "./panel.js";
+import { buildStatsGrid } from "./panel.js";
 import { RainState } from "./rain.js";
 import { dim, stripAnsi } from "./colors.js";
 
@@ -22,12 +21,9 @@ export interface CompositorOptions {
 }
 
 const COMPOSITOR_TICK_MS = 16;
-const RAIN_TICK_MS = 80;
+const RAIN_TICK_MS = 107;
 const COUNTDOWN_TICK_MS = 1000;
-const MIN_TABLE_WIDTH = 90;
-const MIN_PANEL = 20;
-const MERGE_GUTTER = 3;
-const COMPACT_THRESHOLD = 60;
+export const COMPACT_THRESHOLD = 60;
 
 // --- TablePanel ---
 class TablePanel implements PanelBuffer {
@@ -46,14 +42,14 @@ class TablePanel implements PanelBuffer {
   }
 }
 
-// --- SparkPanel ---
-class SparkPanel implements PanelBuffer {
+// --- StatsPanel ---
+class StatsPanel implements PanelBuffer {
   dirty = false;
 
   private lines: string[] = [];
 
-  update(session: PanelSession, history: UsageEntry[], panelWidth: number, todayCost: number): void {
-    this.lines = buildPanel(session, history, panelWidth, todayCost);
+  update(session: PanelSession, todayCost: number): void {
+    this.lines = buildStatsGrid(session, todayCost);
     this.dirty = true;
   }
 
@@ -156,7 +152,7 @@ class RainLayer {
 // --- Compositor ---
 export class Compositor {
   readonly table: TablePanel;
-  readonly spark: SparkPanel;
+  readonly stats: StatsPanel;
   readonly status: StatusPanel;
   readonly rainLayer: RainLayer;
 
@@ -165,18 +161,16 @@ export class Compositor {
   private rainTimer: ReturnType<typeof setInterval> | null = null;
   private countdownTimer: ReturnType<typeof setTimeout> | null = null;
   private countdownValue = 0;
-  private lastShowPanel = false;
 
   // Cached data for resize re-rendering
   private lastTableLines: string[] = [];
   private lastSession: PanelSession | null = null;
-  private lastHistory: UsageEntry[] = [];
   private lastTodayCost = 0;
 
   constructor(opts: CompositorOptions) {
     this.opts = opts;
     this.table = new TablePanel();
-    this.spark = new SparkPanel();
+    this.stats = new StatsPanel();
     this.status = new StatusPanel();
     this.rainLayer = new RainLayer();
   }
@@ -185,7 +179,7 @@ export class Compositor {
     // Compositor tick: check dirty flags and recomposite
     this.compositorTimer = setInterval(() => this.tick(), COMPOSITOR_TICK_MS);
 
-    // Rain tick: independent ~80ms animation
+    // Rain tick: independent ~107ms animation (~75% as fast as the original 80ms rate)
     if (!this.opts.noRain) {
       this.rainTimer = setInterval(() => {
         this.rainLayer.tick();
@@ -242,16 +236,14 @@ export class Compositor {
   updateAfterPoll(
     tableLines: string[],
     session: PanelSession,
-    history: UsageEntry[],
     todayCost: number,
   ): void {
     // Cache data for resize re-rendering
     this.lastTableLines = tableLines;
     this.lastSession = session;
-    this.lastHistory = history;
     this.lastTodayCost = todayCost;
 
-    this.layoutAndUpdate(tableLines, session, history, todayCost);
+    this.layoutAndUpdate(tableLines, session, todayCost);
   }
 
   /** Re-layout and flush using cached data (called on terminal resize) */
@@ -260,7 +252,6 @@ export class Compositor {
     this.layoutAndUpdate(
       this.lastTableLines,
       this.lastSession!,
-      this.lastHistory,
       this.lastTodayCost,
     );
     this.flush();
@@ -269,41 +260,36 @@ export class Compositor {
   private layoutAndUpdate(
     tableLines: string[],
     session: PanelSession,
-    history: UsageEntry[],
     todayCost: number,
   ): void {
     const tw = this.opts.getTermWidth();
     const compact = tw < COMPACT_THRESHOLD;
-    const showPanel = tw >= (MIN_TABLE_WIDTH + MERGE_GUTTER + MIN_PANEL) && !compact;
-    const panelWidth = showPanel ? Math.min(40, Math.max(MIN_PANEL, tw - MIN_TABLE_WIDTH - MERGE_GUTTER)) : 0;
 
     this.table.update(tableLines);
-    this.lastShowPanel = showPanel;
 
-    if (showPanel) {
-      this.spark.update(session, history, panelWidth, todayCost);
+    if (!compact) {
+      this.stats.update(session, todayCost);
     }
 
-    // Compute merged height for rain zone calculation
-    const sparkLines = showPanel ? this.spark.getLines() : [];
-    const mergedHeight = Math.max(tableLines.length, sparkLines.length);
+    // Compute content height for rain zone calculation
+    const statsLines = compact ? [] : this.stats.getLines();
+    const contentHeight = statsLines.length + tableLines.length;
 
     // Setup rain zone
     const footerRow = 1;
     const termRows = this.opts.getTermRows();
-    const availableRainRows = termRows - mergedHeight - footerRow;
+    const availableRainRows = termRows - contentHeight - footerRow;
     const wantRain = !this.opts.noRain && !compact;
 
     if (wantRain && availableRainRows > 0) {
-      // Below-content rain (full width, rows below merged output)
-      this.rainLayer.setup(tw, availableRainRows, mergedHeight + 1);
+      // Below-content rain (full width, rows below content)
+      this.rainLayer.setup(tw, availableRainRows, contentHeight + 1);
     } else if (wantRain) {
       // Right-margin rain: render in columns past the content width
-      const maxContentWidth = this.computeMaxContentWidth(tableLines, sparkLines, showPanel);
+      const maxContentWidth = this.computeMaxContentWidth(tableLines, statsLines);
       const MIN_RAIN_COLS = 10;
       const marginCols = tw - maxContentWidth;
       if (marginCols >= MIN_RAIN_COLS) {
-        // Use all visible rows except footer for right-margin rain
         const rainRows = termRows - footerRow;
         this.rainLayer.setup(marginCols, rainRows, 1, maxContentWidth);
       } else {
@@ -314,21 +300,11 @@ export class Compositor {
     }
   }
 
-  private computeMaxContentWidth(tableLines: string[], sparkLines: string[], showPanel: boolean): number {
+  private computeMaxContentWidth(tableLines: string[], statsLines: string[]): number {
     let maxWidth = 0;
-    if (showPanel) {
-      // When panel is shown, content width = tableWidth + gutter + panelWidth
-      for (let i = 0; i < Math.max(tableLines.length, sparkLines.length); i++) {
-        const tLen = stripAnsi(tableLines[i] ?? "").length;
-        const pLen = stripAnsi(sparkLines[i] ?? "").length;
-        const rowWidth = Math.max(tLen, MIN_TABLE_WIDTH) + MERGE_GUTTER + pLen;
-        if (rowWidth > maxWidth) maxWidth = rowWidth;
-      }
-    } else {
-      for (const line of tableLines) {
-        const len = stripAnsi(line).length;
-        if (len > maxWidth) maxWidth = len;
-      }
+    for (const line of [...statsLines, ...tableLines]) {
+      const len = stripAnsi(line).length;
+      if (len > maxWidth) maxWidth = len;
     }
     return maxWidth;
   }
@@ -336,14 +312,15 @@ export class Compositor {
   /** Force a full composite and flush to screen */
   flush(): void {
     const tw = this.opts.getTermWidth();
+    const compact = tw < COMPACT_THRESHOLD;
 
+    const statsLines = compact ? [] : this.stats.render();
     const tableLines = this.table.render();
-    const sparkLines = this.lastShowPanel ? this.spark.render() : [];
-    const merged = mergeSideBySide(tableLines, sparkLines, tw, this.lastShowPanel ? MIN_TABLE_WIDTH : tw);
+    const allLines = [...statsLines, ...tableLines];
 
-    // Cursor home, write merged output
+    // Cursor home, write output
     process.stdout.write("\x1b[H");
-    for (const line of merged) {
+    for (const line of allLines) {
       process.stdout.write(line + "\n");
     }
     // Clear stale trailing lines
@@ -357,7 +334,7 @@ export class Compositor {
   }
 
   private tick(): void {
-    // Full table/spark composites are driven via explicit flush() calls
+    // Full table/stats composites are driven via explicit flush() calls
     // (e.g., after a poll). The periodic tick is responsible only for
     // incremental status updates to avoid duplicate full-screen renders.
     if (this.status.dirty) {
@@ -372,29 +349,4 @@ export class Compositor {
 // Shared utilities
 function writeFooterLine(content: string, rows: number): void {
   process.stdout.write(`\x1b[${rows};1H\x1b[K${content}`);
-}
-
-export function mergeSideBySide(
-  tableLines: string[],
-  panelLines: string[],
-  termWidth: number,
-  tableWidth: number,
-): string[] {
-  if (panelLines.length === 0) return tableLines;
-
-  const maxLen = Math.max(tableLines.length, panelLines.length);
-  const result: string[] = [];
-
-  for (let i = 0; i < maxLen; i++) {
-    const tableLine = tableLines[i] ?? "";
-    const panelLine = panelLines[i] ?? "";
-
-    const visibleLen = stripAnsi(tableLine).length;
-    const padding = Math.max(0, tableWidth - visibleLen);
-    const gutter = " ".repeat(MERGE_GUTTER);
-
-    result.push(tableLine + " ".repeat(padding) + gutter + panelLine);
-  }
-
-  return result;
 }
