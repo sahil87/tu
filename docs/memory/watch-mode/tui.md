@@ -2,7 +2,7 @@
 
 ## Overview
 
-Watch mode (`--watch`/`-w`) provides a persistent live-polling terminal UI using the alternate screen buffer. The architecture is built around a `Compositor` class that manages independent panel buffers with dirty-flag rendering. Components: `src/watch.ts` (orchestration), `src/compositor.ts` (layout engine), `src/panel.ts` (side panel with session stats), `src/sparkline.ts` (braille chart), `src/rain.ts` (matrix rain animation).
+Watch mode (`--watch`/`-w`) provides a persistent live-polling terminal UI using the alternate screen buffer. The architecture is built around a `Compositor` class that manages independent panel buffers with dirty-flag rendering. Components: `src/node/tui/watch.ts` (orchestration), `src/node/tui/compositor.ts` (layout engine), `src/node/tui/panel.ts` (side panel with session stats), `src/node/tui/sparkline.ts` (braille chart), `src/node/tui/rain.ts` (matrix rain animation).
 
 ## Requirements
 
@@ -40,3 +40,4 @@ Watch mode (`--watch`/`-w`) provides a persistent live-polling terminal UI using
 | Date | Change |
 |------|--------|
 | 2026-03-06 | Generated from code analysis |
+| 2026-03-06 | Updated file paths from `src/` to `src/node/tui/` for watch, compositor, panel, sparkline, rain |

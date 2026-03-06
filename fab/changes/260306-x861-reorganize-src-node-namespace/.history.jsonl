@@ -1,3 +1,12 @@
 {"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-03-06T17:45:03+05:30"}
 {"args":"Reorganize src/ for future Rust sibling — move TypeScript into src/node/ with core/tui/sync subdirs","cmd":"fab-new","event":"command","ts":"2026-03-06T17:45:03+05:30"}
 {"delta":"+4.4","event":"confidence","score":4.4,"trigger":"calc-score","ts":"2026-03-06T17:45:50+05:30"}
+{"cmd":"fab-switch","event":"command","ts":"2026-03-06T17:52:09+05:30"}
+{"cmd":"fab-ff","event":"command","ts":"2026-03-06T17:52:46+05:30"}
+{"action":"enter","driver":"fab-ff","event":"stage-transition","stage":"spec","ts":"2026-03-06T17:55:10+05:30"}
+{"action":"enter","driver":"fab-ff","event":"stage-transition","stage":"tasks","ts":"2026-03-06T17:55:56+05:30"}
+{"action":"enter","driver":"fab-ff","event":"stage-transition","stage":"apply","ts":"2026-03-06T17:57:20+05:30"}
+{"action":"enter","driver":"fab-ff","event":"stage-transition","stage":"review","ts":"2026-03-06T18:02:09+05:30"}
+{"action":"enter","driver":"fab-ff","event":"stage-transition","stage":"hydrate","ts":"2026-03-06T18:04:47+05:30"}
+{"event":"review","result":"passed","ts":"2026-03-06T18:04:47+05:30"}
+{"action":"enter","driver":"fab-ff","event":"stage-transition","stage":"ship","ts":"2026-03-06T18:05:46+05:30"}

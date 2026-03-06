@@ -7,8 +7,8 @@
     "tu": "dist/tu.mjs"
   },
   "scripts": {
-    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --outfile=dist/tu.mjs --banner:js='#!/usr/bin/env node'",
-    "test": "npx tsx --test tests/*.test.ts",
+    "build": "esbuild src/node/core/cli.ts --bundle --platform=node --format=esm --outfile=dist/tu.mjs --banner:js='#!/usr/bin/env node'",
+    "test": "npx tsx --test 'src/node/**/__tests__/*.test.ts'",
     "prepublishOnly": "npm run build"
   },
   "files": [

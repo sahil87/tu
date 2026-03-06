@@ -4,7 +4,7 @@
 
 `tu` is a Node.js CLI tool (binary name: `tu`) that tracks AI coding assistant costs across Claude Code, Codex, and OpenCode. It parses positional arguments into a `{source, period, display}` grammar and dispatches to data-fetching and formatting pipelines.
 
-Entry point: `src/cli.ts`. Data types: `src/types.ts`. Data fetching: `src/fetcher.ts`.
+Entry point: `src/node/core/cli.ts`. Data types: `src/node/core/types.ts`. Data fetching: `src/node/core/fetcher.ts`. Config: `src/node/core/config.ts`.
 
 ## Requirements
 
@@ -36,3 +36,4 @@ Entry point: `src/cli.ts`. Data types: `src/types.ts`. Data fetching: `src/fetch
 | Date | Change |
 |------|--------|
 | 2026-03-06 | Generated from code analysis |
+| 2026-03-06 | Updated file paths from `src/` to `src/node/core/` for cli, types, fetcher, config |
