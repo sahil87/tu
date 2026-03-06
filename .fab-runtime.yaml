@@ -4,3 +4,6 @@
 260306-5hu8-fix-watch-mode-display-bugs:
   agent:
     idle_since: 1772803463
+260306-mxla-redesign-watch-layout:
+  agent:
+    idle_since: 1772806886
