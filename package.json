@@ -1,0 +1,34 @@
+{
+  "name": "token-usage",
+  "version": "0.1.0",
+  "description": "AI coding assistant cost tracking CLI",
+  "type": "module",
+  "bin": {
+    "tu": "dist/tu.mjs"
+  },
+  "scripts": {
+    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --outfile=dist/tu.mjs --banner:js='#!/usr/bin/env node'",
+    "test": "npx tsx --test tests/*.test.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "dist/",
+    "tu.default.conf",
+    "tu.default.weaver.conf"
+  ],
+  "license": "PolyForm-Internal-Use-1.0.0",
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.2",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@ccusage/codex": "^18.0.8",
+    "@ccusage/opencode": "^18.0.8",
+    "ccusage": "^18.0.8"
+  }
+}
