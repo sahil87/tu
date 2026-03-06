@@ -55,7 +55,8 @@ function renderSkeleton(termWidth: number): void {
   }
 
   if (!compact) {
-    // Full table header
+    // Full table header (leading blank matches renderTotal's output)
+    process.stdout.write("\n");
     process.stdout.write(boldWhite("\u{1F4CA} Combined Usage (daily)") + "\n");
     process.stdout.write("\n");
 
