@@ -14,14 +14,12 @@ git commit -m "v$version"
 git tag "v$version"
 git push && git push --tags
 
-# 3. Get the SHA of the tarball
-sha=$(curl -sL "https://github.com/wvrdz/token-usage/archive/refs/tags/v${version}.tar.gz" | shasum -a 256 | awk '{print $1}')
-echo "SHA: $sha"
+# 3. Create a GitHub Release
+gh release create "v$version" --title "v$version" --generate-notes
 
-# 4. Update formula
+# 4. Update formula tag
 sed -i '' \
-    -e "s|archive/refs/tags/v.*\.tar\.gz|archive/refs/tags/v${version}.tar.gz|" \
-    -e "s|sha256 \".*\"|sha256 \"$sha\"|" \
+    -e "s|tag: \"v.*\"|tag: \"v${version}\"|" \
     "$tap/Formula/tu.rb"
 
 # 5. Push homebrew-tap

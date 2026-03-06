@@ -4,6 +4,8 @@ AI coding assistant cost tracking CLI.
 
 ## Install
 
+Requires SSH access to the wvrdz GitHub org:
+
 ```bash
 brew tap wvrdz/tap git@github.com:wvrdz/homebrew-tap.git
 brew install tu
@@ -12,6 +14,7 @@ brew install tu
 ## Update
 
 ```bash
+brew update        # pull latest formula
 brew upgrade tu
 ```
 
