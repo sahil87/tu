@@ -37,5 +37,6 @@ stage_metrics:
     review: {started_at: "2026-03-07T19:26:18+05:30", driver: fab-ff, iterations: 1, completed_at: "2026-03-07T19:30:17+05:30"}
     hydrate: {started_at: "2026-03-07T19:30:17+05:30", driver: fab-ff, iterations: 1, completed_at: "2026-03-07T19:30:53+05:30"}
     ship: {started_at: "2026-03-07T19:30:53+05:30", driver: fab-ff, iterations: 1}
-prs: []
-last_updated: 2026-03-07T19:30:53+05:30
+prs:
+    - https://github.com/wvrdz/tu/pull/4
+last_updated: 2026-03-07T19:32:16+05:30
