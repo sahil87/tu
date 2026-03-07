@@ -62,6 +62,7 @@ describe("FULL_HELP", () => {
     assert.ok(FULL_HELP.includes("tu init-metrics"));
     assert.ok(FULL_HELP.includes("tu sync"));
     assert.ok(FULL_HELP.includes("tu status"));
+    assert.ok(FULL_HELP.includes("tu update"));
   });
 
   it("contains all help forms", () => {
