@@ -13,7 +13,7 @@ Entry point: `src/node/core/cli.ts`. Data types: `src/node/core/types.ts`. Data 
 - Periods MUST include: `d`/`daily` (default), `m`/`monthly`; combined shorthands `dh`, `mh`
 - Display MUST include: bare (snapshot, default), `h`/`history`
 - Global flags: `--json`, `--sync`, `--fresh`/`-f`, `--watch`/`-w`, `--interval`/`-i <s>`, `--user`/`-u <user>`, `--no-color`, `--no-rain`
-- `--user`/`-u` MUST set a target user for data display (multi mode only); in single mode, warn on stderr and ignore; when set, display only metrics repo data for the target user (no local ccusage data)
+- `--user`/`-u` MUST set a target user for data display (multi mode only); in single mode, warn on stderr and ignore; when targeting a different user, display only metrics repo data (no local ccusage data); when targeting the same user as `config.user`, behave identically to the default (no `-u`) path — perform a local fetch (using cache unless `--fresh`/`-f` is provided), write to the metrics repo, then merge with other machines
 - `--watch` and `--json` MUST be mutually exclusive
 - `--interval` range: 5-3600 seconds, default 10
 - Non-data commands (`init-conf`, `init-metrics`, `sync`, `status`, `update`, `help`) MUST be dispatched before grammar parsing
@@ -41,3 +41,4 @@ Entry point: `src/node/core/cli.ts`. Data types: `src/node/core/types.ts`. Data 
 | 2026-03-06 | Updated file paths from `src/` to `src/node/core/` for cli, types, fetcher, config |
 | 2026-03-07 | Added `--user`/`-u` flag for viewing another user's usage in multi mode |
 | 2026-03-07 | Added `tu update` self-update command (Homebrew detection, brew update/info/upgrade flow) |
+| 2026-03-07 | Fixed `-u` same-user path to fetch fresh local data instead of reading stale metrics repo |

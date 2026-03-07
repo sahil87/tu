@@ -381,7 +381,7 @@ async function fetchToolMerged(
   skipCache = false,
   targetUser?: string,
 ): Promise<UsageEntry[]> {
-  if (targetUser) {
+  if (targetUser && targetUser !== config.user) {
     _mark(`fetchToolMerged(${toolKey}) → readRemote for ${targetUser}`);
     const entries = readRemoteEntries(config.metricsDir, targetUser, null, toolKey);
     _mark(`fetchToolMerged(${toolKey}) → readRemote done (${entries.length} entries)`);

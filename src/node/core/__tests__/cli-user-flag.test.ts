@@ -45,3 +45,31 @@ describe("--user / -u flag: argument filtering", () => {
   // without mocking process.exit. The validation path is covered by the
   // parseGlobalFlags implementation (hasUserFlag + undefined userFlag check).
 });
+
+describe("--user / -u flag: same-user detection", () => {
+  // fetchToolMerged is not exported and depends on external ccusage binaries,
+  // so we test the branching condition directly. When targetUser === config.user,
+  // the remote-only path must NOT be taken — the default fresh-fetch path should
+  // execute instead. This mirrors the condition in fetchToolMerged; if the
+  // production condition changes, these tests should be updated to match.
+
+  function shouldUseRemoteOnlyPath(targetUser: string | undefined, configUser: string): boolean {
+    return !!(targetUser && targetUser !== configUser);
+  }
+
+  it("returns false when targetUser matches config.user (same user)", () => {
+    assert.equal(shouldUseRemoteOnlyPath("sahil", "sahil"), false);
+  });
+
+  it("returns true when targetUser differs from config.user", () => {
+    assert.equal(shouldUseRemoteOnlyPath("alice", "sahil"), true);
+  });
+
+  it("returns false when targetUser is undefined (default path)", () => {
+    assert.equal(shouldUseRemoteOnlyPath(undefined, "sahil"), false);
+  });
+
+  it("comparison is case-sensitive", () => {
+    assert.equal(shouldUseRemoteOnlyPath("Sahil", "sahil"), true);
+  });
+});
