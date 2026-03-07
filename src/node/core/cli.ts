@@ -261,7 +261,11 @@ export function runUpdate(): void {
   try {
     const infoRaw = execSync("brew info --json=v2 tu", { stdio: "pipe", timeout: 10_000 });
     const info = JSON.parse(infoRaw.toString());
-    latest = info.formulae[0].versions.stable;
+    const stable = info?.formulae?.[0]?.versions?.stable;
+    if (typeof stable !== "string" || stable.trim() === "") {
+      throw new Error("Invalid stable version in brew info output");
+    }
+    latest = stable;
   } catch {
     console.error("Error: could not determine latest version.");
     process.exit(1);
