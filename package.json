@@ -1,5 +1,5 @@
 {
-  "name": "token-usage",
+  "name": "tu",
   "version": "0.2.2",
   "description": "AI coding assistant cost tracking CLI",
   "type": "module",

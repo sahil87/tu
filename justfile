@@ -1,4 +1,4 @@
-# token-usage
+# tu
 
 test:
     npx tsx --test 'src/node/**/__tests__/*.test.ts'

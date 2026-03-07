@@ -1,5 +1,5 @@
 project:
-  name: "token-usage"
+  name: "tu"
   description: "AI coding assistant cost tracking CLI"
 
 # Directories containing implementation code (relative to repo root).

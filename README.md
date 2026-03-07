@@ -1,4 +1,4 @@
-# token-usage
+# tu
 
 AI coding assistant cost tracking CLI.
 

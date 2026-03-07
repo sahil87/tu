@@ -1,4 +1,4 @@
-# token-usage Constitution
+# tu Constitution
 
 ## Core Principles
 
