@@ -25,7 +25,7 @@ Multi-machine sync (`src/node/sync/sync.ts`) enables aggregating AI usage costs 
 
 - **Git as sync transport**: Using a git repository avoids building a custom sync server. Commit/pull/push is simple and works over SSH. Rebase on pull avoids merge commits.
 - **Per-day JSONL files**: One file per tool per day enables efficient incremental writes and avoids conflicts when multiple machines sync.
-- **User-scoped remote reads**: `readRemoteEntries` reads only from the target user's directory (default: config user). The `excludeMachine` parameter (default: config machine) prevents double-counting with local data. When `-u` overrides the target user, `excludeMachine` is `null` to include all machines.
+- **User-scoped remote reads**: `readRemoteEntries` reads only from the target user's directory (default: config user). The `excludeMachine` parameter (default: config machine) prevents double-counting with local data. When `-u` targets a different user, `excludeMachine` is `null` to include all of that user's machines. When `-u` targets the same user as `config.user`, the default path is used instead (fresh local fetch + merge), ensuring identical behavior to no `-u` flag.
 - **Graceful degradation**: If multi mode is configured but the metrics repo is unavailable, the tool falls back to single mode rather than failing. This ensures the tool always works for local data.
 - **Clone-failed marker with cooldown**: Prevents repeated clone attempts on every invocation when the repo is unreachable (e.g., no network). 3-hour cooldown matches the staleness threshold.
 
@@ -36,3 +36,4 @@ Multi-machine sync (`src/node/sync/sync.ts`) enables aggregating AI usage costs 
 | 2026-03-06 | Generated from code analysis |
 | 2026-03-06 | Updated file path from `src/sync.ts` to `src/node/sync/sync.ts` |
 | 2026-03-07 | readRemoteEntries scoped to single target user; excludeMachine parameter replaces user+machine skip; supports `-u` flag for viewing other users' data |
+| 2026-03-07 | Fixed `-u` same-user: falls through to fresh-fetch path instead of reading stale repo data |
