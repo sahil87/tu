@@ -48,9 +48,10 @@ describe("--user / -u flag: argument filtering", () => {
 
 describe("--user / -u flag: same-user detection", () => {
   // fetchToolMerged is not exported and depends on external ccusage binaries,
-  // so we test the branching condition directly. The fix (z40v): when
-  // targetUser === config.user, the remote-only path must NOT be taken —
-  // the default fresh-fetch path should execute instead.
+  // so we test the branching condition directly. When targetUser === config.user,
+  // the remote-only path must NOT be taken — the default fresh-fetch path should
+  // execute instead. This mirrors the condition in fetchToolMerged; if the
+  // production condition changes, these tests should be updated to match.
 
   function shouldUseRemoteOnlyPath(targetUser: string | undefined, configUser: string): boolean {
     return !!(targetUser && targetUser !== configUser);
