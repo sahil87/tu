@@ -10,7 +10,8 @@ Multi-machine sync (`src/node/sync/sync.ts`) enables aggregating AI usage costs 
 - Metrics directory structure MUST follow: `{metricsDir}/{user}/{year}/{machine}/{toolKey}-{YYYY-MM-DD}.jsonl`
 - Each JSONL file MUST contain a single `UsageEntry` JSON object
 - `writeMetrics()` MUST write local entries to the metrics directory (creates dirs as needed)
-- `readRemoteEntries(metricsDir, targetUser, excludeMachine, toolKey)` MUST read entries only from the specified target user's directory; when `excludeMachine` is non-null, that machine's directory is skipped (prevents double-counting with local data)
+- `readRemoteEntriesByMachine(metricsDir, targetUser, excludeMachine, toolKey)` MUST return `Map<string, UsageEntry[]>` grouped by machine directory name; when `excludeMachine` is non-null, that machine is excluded from the map
+- `readRemoteEntries(metricsDir, targetUser, excludeMachine, toolKey)` MUST delegate to `readRemoteEntriesByMachine` and flatten the result into a single `UsageEntry[]`; signature and behavior unchanged from callers' perspective
 - `mergeEntries()` MUST sum token counts and costs for entries with matching labels [INFERRED]
 - `syncMetrics()` MUST: (1) git add user dir, (2) commit if changes, (3) pull --rebase, (4) push (with one retry)
 - `fullSync()` MUST: fetch all tools locally, write metrics, sync via git, touch `.last-sync` timestamp
@@ -37,3 +38,4 @@ Multi-machine sync (`src/node/sync/sync.ts`) enables aggregating AI usage costs 
 | 2026-03-06 | Updated file path from `src/sync.ts` to `src/node/sync/sync.ts` |
 | 2026-03-07 | readRemoteEntries scoped to single target user; excludeMachine parameter replaces user+machine skip; supports `-u` flag for viewing other users' data |
 | 2026-03-07 | Fixed `-u` same-user: falls through to fresh-fetch path instead of reading stale repo data |
+| 2026-03-07 | Added `readRemoteEntriesByMachine` returning grouped `Map<string, UsageEntry[]>`; refactored `readRemoteEntries` to delegate and flatten |

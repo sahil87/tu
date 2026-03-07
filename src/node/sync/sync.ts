@@ -67,25 +67,26 @@ export async function syncMetrics(metricsDir: string, user: string): Promise<boo
   return true;
 }
 
-export function readRemoteEntries(
+export function readRemoteEntriesByMachine(
   metricsDir: string,
   targetUser: string,
   excludeMachine: string | null,
   toolKey: string,
-): UsageEntry[] {
+): Map<string, UsageEntry[]> {
   const userPath = join(metricsDir, targetUser);
-  if (!existsSync(userPath)) return [];
+  if (!existsSync(userPath)) return new Map();
 
-  const entries: UsageEntry[] = [];
+  const result = new Map<string, UsageEntry[]>();
   const prefix = `${toolKey}-`;
 
   let yearDirs: string[];
   try {
     yearDirs = readdirSync(userPath, { withFileTypes: true })
       .filter((d) => d.isDirectory())
-      .map((d) => d.name);
+      .map((d) => d.name)
+      .sort();
   } catch {
-    return [];
+    return new Map();
   }
 
   for (const yearDir of yearDirs) {
@@ -93,7 +94,8 @@ export function readRemoteEntries(
     try {
       machineDirs = readdirSync(join(userPath, yearDir), { withFileTypes: true })
         .filter((d) => d.isDirectory())
-        .map((d) => d.name);
+        .map((d) => d.name)
+        .sort();
     } catch {
       continue;
     }
@@ -105,7 +107,8 @@ export function readRemoteEntries(
       let files: string[];
       try {
         files = readdirSync(machPath)
-          .filter((f) => f.startsWith(prefix) && f.endsWith(".jsonl"));
+          .filter((f) => f.startsWith(prefix) && f.endsWith(".jsonl"))
+          .sort();
       } catch {
         continue;
       }
@@ -114,7 +117,8 @@ export function readRemoteEntries(
         try {
           const raw = readFileSync(join(machPath, file), "utf-8").trim();
           if (raw) {
-            entries.push(JSON.parse(raw) as UsageEntry);
+            if (!result.has(machineDir)) result.set(machineDir, []);
+            result.get(machineDir)!.push(JSON.parse(raw) as UsageEntry);
           }
         } catch {
           // Invalid file — skip silently
@@ -123,6 +127,20 @@ export function readRemoteEntries(
     }
   }
 
+  return result;
+}
+
+export function readRemoteEntries(
+  metricsDir: string,
+  targetUser: string,
+  excludeMachine: string | null,
+  toolKey: string,
+): UsageEntry[] {
+  const byMachine = readRemoteEntriesByMachine(metricsDir, targetUser, excludeMachine, toolKey);
+  const entries: UsageEntry[] = [];
+  for (const machineEntries of byMachine.values()) {
+    entries.push(...machineEntries);
+  }
   return entries;
 }
 

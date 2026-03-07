@@ -2,7 +2,7 @@ import { TOOLS, EMPTY, fetchHistory, fetchAllTotals, fetchAllHistory, aggregateM
 import { printHistory, printTotal, printTotalHistory, renderHistory, renderTotal, renderTotalHistory } from "../tui/formatter.js";
 import type { FormatOptions } from "../tui/formatter.js";
 import { readConfig, CONFIG_PATH, TU_HOME, THREE_HOURS_MS, resolveHome, DEFAULT_CONFIG_PATH } from "./config.js";
-import { writeMetrics, readRemoteEntries, fullSync } from "../sync/sync.js";
+import { writeMetrics, readRemoteEntries, readRemoteEntriesByMachine, fullSync } from "../sync/sync.js";
 import { runWatch } from "../tui/watch.js";
 import { setNoColor } from "../tui/colors.js";
 import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, unlinkSync } from "node:fs";
@@ -75,6 +75,7 @@ Flags:
   --watch / -w         Persistent polling mode with live display (data commands only)
   --interval / -i <s>  Poll interval in seconds (default: 10, range: 5-3600)
   --user / -u <user>   Show usage for a specific user (multi mode only)
+  --by-machine         Show per-machine cost breakdown (data commands only)
   --no-color           Disable ANSI color output
   --no-rain            Disable matrix rain animation in watch mode`;
 
@@ -400,6 +401,61 @@ async function fetchToolMerged(
   return merged;
 }
 
+interface MergedResult {
+  entries: UsageEntry[];
+  machineMap: Map<string, UsageEntry[]>;
+}
+
+async function fetchToolMergedWithMachines(
+  config: TuConfig,
+  toolKey: string,
+  period: string,
+  extra: string[],
+  skipCache = false,
+  targetUser?: string,
+): Promise<MergedResult> {
+  if (targetUser && targetUser !== config.user) {
+    _mark(`fetchToolMergedWithMachines(${toolKey}) → readRemoteByMachine for ${targetUser}`);
+    const machineMap = readRemoteEntriesByMachine(config.metricsDir, targetUser, null, toolKey);
+    const entries: UsageEntry[] = [];
+    for (const machineEntries of machineMap.values()) entries.push(...machineEntries);
+    const merged = mergeEntries(entries, []);
+    if (period === "monthly") {
+      const monthlyEntries = aggregateMonthly(merged);
+      const monthlyMap = new Map<string, UsageEntry[]>();
+      for (const [machine, mEntries] of machineMap) monthlyMap.set(machine, aggregateMonthly(mEntries));
+      return { entries: monthlyEntries, machineMap: monthlyMap };
+    }
+    return { entries: merged, machineMap };
+  }
+
+  _mark(`fetchToolMergedWithMachines(${toolKey}) → fetchHistory`);
+  const local = await fetchHistory(toolKey, "daily", extra, skipCache);
+  _mark(`fetchToolMergedWithMachines(${toolKey}) → fetchHistory done`);
+
+  const machineMap = new Map<string, UsageEntry[]>();
+  machineMap.set(config.machine, local);
+
+  if (config.mode === "multi") {
+    writeMetrics(config.metricsDir, config.user, config.machine, toolKey, local);
+    const remoteMachines = readRemoteEntriesByMachine(config.metricsDir, config.user, config.machine, toolKey);
+    for (const [machine, mEntries] of remoteMachines) machineMap.set(machine, mEntries);
+  }
+
+  const allEntries: UsageEntry[] = [];
+  for (const mEntries of machineMap.values()) allEntries.push(...mEntries);
+  const merged = mergeEntries(allEntries, []);
+
+  if (period === "monthly") {
+    const monthlyEntries = aggregateMonthly(merged);
+    const monthlyMap = new Map<string, UsageEntry[]>();
+    for (const [machine, mEntries] of machineMap) monthlyMap.set(machine, aggregateMonthly(mEntries));
+    return { entries: monthlyEntries, machineMap: monthlyMap };
+  }
+
+  return { entries: merged, machineMap };
+}
+
 function emitJson(data: unknown): void {
   const obj = data instanceof Map ? Object.fromEntries(data) : data;
   console.log(JSON.stringify(obj, null, 2));
@@ -419,6 +475,7 @@ export interface GlobalFlags {
   noColorFlag: boolean;
   noRainFlag: boolean;
   userFlag: string | undefined;
+  byMachineFlag: boolean;
   filteredArgs: string[];
 }
 
@@ -429,6 +486,7 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   const watchFlag = rawArgs.includes("--watch") || rawArgs.includes("-w");
   const noColorFlag = rawArgs.includes("--no-color");
   const noRainFlag = rawArgs.includes("--no-rain");
+  const byMachineFlag = rawArgs.includes("--by-machine");
 
   let watchInterval = 10;
   let hasIntervalFlag = false;
@@ -438,7 +496,7 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   const filteredArgs: string[] = [];
   for (let i = 0; i < rawArgs.length; i++) {
     const a = rawArgs[i];
-    if (a === "--json" || a === "--sync" || a === "--fresh" || a === "-f" || a === "--watch" || a === "-w" || a === "--no-color" || a === "--no-rain") continue;
+    if (a === "--json" || a === "--sync" || a === "--fresh" || a === "-f" || a === "--watch" || a === "-w" || a === "--no-color" || a === "--no-rain" || a === "--by-machine") continue;
     if (a === "--interval" || a === "-i") {
       hasIntervalFlag = true;
       const next = rawArgs[i + 1];
@@ -487,7 +545,7 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
     process.exit(1);
   }
 
-  return { jsonFlag, syncFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, filteredArgs };
+  return { jsonFlag, syncFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, filteredArgs };
 }
 
 const KNOWN_SOURCES = new Set(["cc", "codex", "co", "oc", "all"]);
@@ -563,7 +621,23 @@ async function dispatchAllHistory(config: TuConfig, period: string, jsonFlag: bo
   }
 }
 
-async function dispatchAllSnapshot(config: TuConfig, period: string, jsonFlag: boolean, skipCache = false, fmtOpts?: FormatOptions, targetUser?: string): Promise<void> {
+async function dispatchAllSnapshot(config: TuConfig, period: string, jsonFlag: boolean, skipCache = false, fmtOpts?: FormatOptions, targetUser?: string, byMachine = false): Promise<void> {
+  if (byMachine) {
+    const toolKeys = Object.keys(TOOLS);
+    const allResults = await Promise.all(toolKeys.map((k) => fetchToolMergedWithMachines(config, k, period, [], skipCache, targetUser)));
+    const result = new Map<string, UsageTotals>();
+    for (let i = 0; i < toolKeys.length; i++) {
+      const current = allResults[i].entries.find((e) => e.label === currentLabel(period));
+      result.set(TOOLS[toolKeys[i]].name, current ?? { ...EMPTY });
+    }
+    const machineCosts = buildSnapshotMachineCosts(toolKeys, allResults, period);
+    if (jsonFlag) { emitJson(attachMachinesJson(result, machineCosts)); }
+    else { printTotal(period, result, { ...fmtOpts, machineCosts }); }
+    _lastRenderCost = sumToolTotalsCost(result);
+    _lastRenderCostMap = buildCostMap(result);
+    return;
+  }
+
   if (config.mode === "multi") {
     const toolKeys = Object.keys(TOOLS);
     const allMerged = await Promise.all(toolKeys.map((k) => fetchToolMerged(config, k, period, [], skipCache, targetUser)));
@@ -602,7 +676,7 @@ async function dispatchAllSnapshot(config: TuConfig, period: string, jsonFlag: b
 }
 
 async function dispatchSingleTool(
-  config: TuConfig, toolKey: string, period: string, display: string, jsonFlag: boolean, skipCache = false, fmtOpts?: FormatOptions, targetUser?: string,
+  config: TuConfig, toolKey: string, period: string, display: string, jsonFlag: boolean, skipCache = false, fmtOpts?: FormatOptions, targetUser?: string, byMachine = false,
 ): Promise<void> {
   const toolCfg = TOOLS[toolKey];
   if (!toolCfg) {
@@ -612,6 +686,38 @@ async function dispatchSingleTool(
   }
 
   _mark(`fetching ${toolKey} ${period}`);
+
+  if (byMachine) {
+    const merged = await fetchToolMergedWithMachines(config, toolKey, period, [], skipCache, targetUser);
+    _mark("fetch done (by-machine)");
+
+    if (display === "history") {
+      const machineCosts = buildHistoryMachineCosts(merged.machineMap);
+      if (jsonFlag) { emitJson(attachMachinesJson(merged.entries, machineCosts)); }
+      else { printHistory(toolCfg.name, period, merged.entries, undefined, { ...fmtOpts, machineCosts }); }
+      _lastRenderCost = merged.entries.reduce((sum, e) => sum + e.totalCost, 0);
+      _lastRenderCostMap = buildCostMap(merged.entries, toolCfg.name);
+    } else {
+      const target = currentLabel(period);
+      const current = merged.entries.find((e) => e.label === target);
+      const result = new Map<string, UsageTotals>();
+      result.set(toolCfg.name, current ?? { ...EMPTY });
+      const machineCosts = new Map<string, Map<string, number>>();
+      const toolMachines = new Map<string, number>();
+      for (const [machine, entries] of merged.machineMap) {
+        const match = entries.find((e) => e.label === target);
+        toolMachines.set(machine, match ? match.totalCost : 0);
+      }
+      machineCosts.set(toolCfg.name, toolMachines);
+      if (jsonFlag) { emitJson(attachMachinesJson(result, machineCosts)); }
+      else { printTotal(period, result, { ...fmtOpts, machineCosts }); }
+      _lastRenderCost = sumToolTotalsCost(result);
+      _lastRenderCostMap = buildCostMap(result);
+    }
+    _mark("done");
+    return;
+  }
+
   let entries: UsageEntry[];
   if (config.mode === "multi") {
     entries = await fetchToolMerged(config, toolKey, period, [], skipCache, targetUser);
@@ -637,6 +743,68 @@ async function dispatchSingleTool(
     _lastRenderCostMap = buildCostMap(result);
   }
   _mark("done");
+}
+
+// Build machineCosts map for history: label → (machine → cost)
+function buildHistoryMachineCosts(machineMap: Map<string, UsageEntry[]>): Map<string, Map<string, number>> {
+  const result = new Map<string, Map<string, number>>();
+  for (const [machine, entries] of machineMap) {
+    for (const e of entries) {
+      if (!result.has(e.label)) result.set(e.label, new Map());
+      result.get(e.label)!.set(machine, (result.get(e.label)!.get(machine) ?? 0) + e.totalCost);
+    }
+  }
+  return result;
+}
+
+// Build machineCosts map for snapshot: toolName → (machine → cost)
+function buildSnapshotMachineCosts(
+  toolKeys: string[],
+  allResults: MergedResult[],
+  period: string,
+): Map<string, Map<string, number>> {
+  const result = new Map<string, Map<string, number>>();
+  const target = currentLabel(period);
+  for (let i = 0; i < toolKeys.length; i++) {
+    const toolName = TOOLS[toolKeys[i]].name;
+    const machCosts = new Map<string, number>();
+    for (const [machine, entries] of allResults[i].machineMap) {
+      const match = entries.find((e) => e.label === target);
+      if (match) machCosts.set(machine, match.totalCost);
+    }
+    result.set(toolName, machCosts);
+  }
+  return result;
+}
+
+// Attach machines breakdown to JSON data
+function attachMachinesJson(data: unknown, machineCosts: Map<string, Map<string, number>>): unknown {
+  if (data instanceof Map) {
+    const obj: Record<string, unknown> = {};
+    for (const [key, val] of data) {
+      const mCosts = machineCosts.get(key);
+      if (mCosts && mCosts.size > 0) {
+        const machines: Record<string, number> = {};
+        for (const [m, c] of mCosts) machines[m] = c;
+        obj[key] = { ...(val as object), machines };
+      } else {
+        obj[key] = val;
+      }
+    }
+    return obj;
+  }
+  if (Array.isArray(data)) {
+    return data.map((item: UsageEntry) => {
+      const mCosts = machineCosts.get(item.label);
+      if (mCosts && mCosts.size > 0) {
+        const machines: Record<string, number> = {};
+        for (const [m, c] of mCosts) machines[m] = c;
+        return { ...item, machines };
+      }
+      return item;
+    });
+  }
+  return data;
 }
 
 function sumToolTotalsCost(m: Map<string, UsageTotals>): number {
@@ -719,7 +887,22 @@ async function dispatchAllHistoryLines(config: TuConfig, period: string, skipCac
   }
 }
 
-async function dispatchAllSnapshotLines(config: TuConfig, period: string, skipCache = false, fmtOpts?: FormatOptions, targetUser?: string): Promise<string[]> {
+async function dispatchAllSnapshotLines(config: TuConfig, period: string, skipCache = false, fmtOpts?: FormatOptions, targetUser?: string, byMachine = false): Promise<string[]> {
+  if (byMachine) {
+    const toolKeys = Object.keys(TOOLS);
+    const allResults = await Promise.all(toolKeys.map((k) => fetchToolMergedWithMachines(config, k, period, [], skipCache, targetUser)));
+    const result = new Map<string, UsageTotals>();
+    for (let i = 0; i < toolKeys.length; i++) {
+      const current = allResults[i].entries.find((e) => e.label === currentLabel(period));
+      result.set(TOOLS[toolKeys[i]].name, current ?? { ...EMPTY });
+    }
+    const machineCosts = buildSnapshotMachineCosts(toolKeys, allResults, period);
+    _lastRenderCost = sumToolTotalsCost(result);
+    _lastRenderCostMap = buildCostMap(result);
+    _lastRenderTotalTokens = sumToolTotalsTokens(result);
+    return renderTotal(period, result, { ...fmtOpts, machineCosts });
+  }
+
   if (config.mode === "multi") {
     const toolKeys = Object.keys(TOOLS);
     const allMerged = await Promise.all(toolKeys.map((k) => fetchToolMerged(config, k, period, [], skipCache, targetUser)));
@@ -758,10 +941,37 @@ async function dispatchAllSnapshotLines(config: TuConfig, period: string, skipCa
 }
 
 async function dispatchSingleToolLines(
-  config: TuConfig, toolKey: string, period: string, display: string, skipCache = false, fmtOpts?: FormatOptions, targetUser?: string,
+  config: TuConfig, toolKey: string, period: string, display: string, skipCache = false, fmtOpts?: FormatOptions, targetUser?: string, byMachine = false,
 ): Promise<string[]> {
   const toolCfg = TOOLS[toolKey];
   if (!toolCfg) return [`Unknown tool: ${toolKey}`];
+
+  if (byMachine) {
+    const merged = await fetchToolMergedWithMachines(config, toolKey, period, [], skipCache, targetUser);
+    if (display === "history") {
+      const machineCosts = buildHistoryMachineCosts(merged.machineMap);
+      _lastRenderCost = merged.entries.reduce((sum, e) => sum + e.totalCost, 0);
+      _lastRenderCostMap = buildCostMap(merged.entries, toolCfg.name);
+      _lastRenderTotalTokens = merged.entries.reduce((sum, e) => sum + e.totalTokens, 0);
+      return renderHistory(toolCfg.name, period, merged.entries, undefined, { ...fmtOpts, machineCosts });
+    } else {
+      const target = currentLabel(period);
+      const current = merged.entries.find((e) => e.label === target);
+      const result = new Map<string, UsageTotals>();
+      result.set(toolCfg.name, current ?? { ...EMPTY });
+      const machineCosts = new Map<string, Map<string, number>>();
+      const toolMachines = new Map<string, number>();
+      for (const [machine, entries] of merged.machineMap) {
+        const match = entries.find((e) => e.label === target);
+        toolMachines.set(machine, match ? match.totalCost : 0);
+      }
+      machineCosts.set(toolCfg.name, toolMachines);
+      _lastRenderCost = sumToolTotalsCost(result);
+      _lastRenderCostMap = buildCostMap(result);
+      _lastRenderTotalTokens = sumToolTotalsTokens(result);
+      return renderTotal(period, result, { ...fmtOpts, machineCosts });
+    }
+  }
 
   let entries: UsageEntry[];
   if (config.mode === "multi") {
@@ -805,7 +1015,7 @@ function sumToolTotalsTokens(m: Map<string, UsageTotals>): number {
 async function main() {
   _mark("main() entered");
   const rawArgs = process.argv.slice(2);
-  let { jsonFlag, syncFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, filteredArgs } = parseGlobalFlags(rawArgs);
+  let { jsonFlag, syncFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, filteredArgs } = parseGlobalFlags(rawArgs);
 
   if (noColorFlag) setNoColor(true);
 
@@ -860,13 +1070,19 @@ async function main() {
     }
   }
 
+  // --by-machine is incompatible with all-tools history pivot
+  if (byMachineFlag && source === "all" && display === "history") {
+    process.stderr.write("Warning: --by-machine is not supported with all-tools history — ignoring.\n");
+    byMachineFlag = false;
+  }
+
   if (watchFlag) {
     const action = async (skipCache: boolean, fmtOpts?: FormatOptions): Promise<string[]> => {
       if (source === "all") {
         if (display === "history") { return dispatchAllHistoryLines(config, period, skipCache, fmtOpts, userFlag); }
-        else { return dispatchAllSnapshotLines(config, period, skipCache, fmtOpts, userFlag); }
+        else { return dispatchAllSnapshotLines(config, period, skipCache, fmtOpts, userFlag, byMachineFlag); }
       } else {
-        return dispatchSingleToolLines(config, source, period, display, skipCache, fmtOpts, userFlag);
+        return dispatchSingleToolLines(config, source, period, display, skipCache, fmtOpts, userFlag, byMachineFlag);
       }
     };
     await runWatch({
@@ -880,9 +1096,9 @@ async function main() {
   } else {
     if (source === "all") {
       if (display === "history") { await dispatchAllHistory(config, period, jsonFlag, freshFlag, undefined, userFlag); }
-      else { await dispatchAllSnapshot(config, period, jsonFlag, freshFlag, undefined, userFlag); }
+      else { await dispatchAllSnapshot(config, period, jsonFlag, freshFlag, undefined, userFlag, byMachineFlag); }
     } else {
-      await dispatchSingleTool(config, source, period, display, jsonFlag, freshFlag, undefined, userFlag);
+      await dispatchSingleTool(config, source, period, display, jsonFlag, freshFlag, undefined, userFlag, byMachineFlag);
     }
   }
 }
