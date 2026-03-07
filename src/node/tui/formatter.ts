@@ -5,6 +5,7 @@ export interface FormatOptions {
   prevCosts?: Map<string, number>;  // key: "{toolName}:{label}" or "{toolName}"
   compact?: boolean;
   maxRows?: number;  // truncate history to most recent N data rows (watch mode)
+  machineCosts?: Map<string, Map<string, number>>;  // key: label/toolName → (machine → cost)
 }
 
 export function fmtNum(n: number): string {
@@ -48,6 +49,23 @@ const MIN_BAR_AREA = 10;
 const MAX_BAR_WIDTH = 30;
 const GUTTER = 3; // " | " separator between main table and cost area
 const COST_WIDTH = 8;
+
+// Machine column rendering helpers
+export const MACHINE_COL_WIDTH = COST_WIDTH;
+
+export interface MachineColumn {
+  letter: string;
+  name: string;
+}
+
+export function buildMachineColumns(machineNames: string[]): MachineColumn[] {
+  const sorted = [...machineNames].sort();
+  return sorted.map((name, i) => ({ letter: String.fromCharCode(65 + i), name }));
+}
+
+export function renderMachineLegend(columns: MachineColumn[]): string {
+  return "Machines: " + columns.map((c) => `${c.letter} = ${c.name}`).join(", ");
+}
 
 export function renderBar(value: number, maxValue: number, barWidth: number): string {
   if (value === 0 || maxValue === 0) return "";
@@ -101,9 +119,17 @@ export function renderHistory(toolName: string, period: string, entries: UsageEn
   const costDiv = "─|─" + "─".repeat(COST_WIDTH);
   const barDiv = showBars ? "─" + "─".repeat(barWidth) : "";
 
+  // Machine columns setup
+  const machineCosts = opts?.machineCosts;
+  const machineNames = machineCosts ? [...new Set([...machineCosts.values()].flatMap((m) => [...m.keys()]))] : [];
+  const mcols = buildMachineColumns(machineNames);
+  const hasMachines = mcols.length > 0;
+  const machineDiv = hasMachines ? mcols.map(() => "─|─" + "─".repeat(MACHINE_COL_WIDTH)).join("") : "";
+  const machineHeader = hasMachines ? mcols.map((c) => " | " + boldCyan(c.letter.padStart(MACHINE_COL_WIDTH))).join("") : "";
+
   const costHeader = " | " + boldCyan("Cost".padStart(COST_WIDTH));
-  lines.push(colorRow(["Date", "Input", "Output", "Cache Write", "Cache Read", "Total"], boldCyan) + costHeader);
-  lines.push(dim(divStr + costDiv + barDiv));
+  lines.push(colorRow(["Date", "Input", "Output", "Cache Write", "Cache Read", "Total"], boldCyan) + costHeader + machineHeader);
+  lines.push(dim(divStr + costDiv + machineDiv + barDiv));
 
   const maxCost = Math.max(...entries.map((e) => e.totalCost));
   const prevCosts = opts?.prevCosts;
@@ -114,14 +140,26 @@ export function renderHistory(toolName: string, period: string, entries: UsageEn
   let sumCacheW = 0;
   let sumCacheR = 0;
   let sumTotal = 0;
+  const machineSums = new Map<string, number>();
 
   for (const e of entries) {
     const rowStr = row(e.label, fmtNum(e.inputTokens), fmtNum(e.outputTokens), fmtNum(e.cacheCreationTokens), fmtNum(e.cacheReadTokens), fmtNum(e.totalTokens));
     const costBase = " | " + fmtCost(e.totalCost).padStart(COST_WIDTH);
     const indicator = deltaIndicator(e.totalCost, `${toolName}:${e.label}`, prevCosts);
+
+    let machineCells = "";
+    if (hasMachines) {
+      const rowMachines = machineCosts?.get(e.label);
+      for (const mc of mcols) {
+        const cost = rowMachines?.get(mc.name) ?? 0;
+        machineCells += " | " + fmtCost(cost).padStart(MACHINE_COL_WIDTH);
+        machineSums.set(mc.name, (machineSums.get(mc.name) ?? 0) + cost);
+      }
+    }
+
     const rawBar = showBars ? renderBar(e.totalCost, maxCost, barWidth) : "";
     const bar = rawBar ? " " + green(rawBar) : "";
-    lines.push(rowStr + costBase + indicator + bar);
+    lines.push(rowStr + costBase + machineCells + indicator + bar);
     sumCost += e.totalCost;
     sumInput += e.inputTokens;
     sumOutput += e.outputTokens;
@@ -131,10 +169,20 @@ export function renderHistory(toolName: string, period: string, entries: UsageEn
   }
 
   if (entries.length > 1) {
-    lines.push(dim(divStr + costDiv + barDiv));
+    lines.push(dim(divStr + costDiv + machineDiv + barDiv));
     const totalRow = colorRow(["Total", fmtNum(sumInput), fmtNum(sumOutput), fmtNum(sumCacheW), fmtNum(sumCacheR), fmtNum(sumTotal)], boldWhite);
     const totalCost = " | " + boldWhite(fmtCost(sumCost).padStart(COST_WIDTH));
-    lines.push(totalRow + totalCost);
+    let totalMachineCells = "";
+    if (hasMachines) {
+      for (const mc of mcols) {
+        totalMachineCells += " | " + boldWhite(fmtCost(machineSums.get(mc.name) ?? 0).padStart(MACHINE_COL_WIDTH));
+      }
+    }
+    lines.push(totalRow + totalCost + totalMachineCells);
+  }
+  if (hasMachines) {
+    lines.push("");
+    lines.push(dim(renderMachineLegend(mcols)));
   }
   lines.push("");
   return lines;
@@ -174,18 +222,36 @@ export function renderTotal(period: string, toolTotals: Map<string, UsageTotals>
     cols.map((c, i) => colorFn(i === 0 ? c.padEnd(W) : c.padStart(N))).join(" | ");
   const divider = [W, N, N, N, N].map(w => "─".repeat(w)).join("─|─");
 
-  lines.push(colorRow(["Tool", "Tokens", "Input", "Output", "Cost"], boldCyan));
-  lines.push(dim(divider));
+  // Machine columns setup
+  const machineCosts = opts?.machineCosts;
+  const machineNames = machineCosts ? [...new Set([...machineCosts.values()].flatMap((m) => [...m.keys()]))] : [];
+  const mcols = buildMachineColumns(machineNames);
+  const hasMachines = mcols.length > 0;
+  const machineDiv = hasMachines ? mcols.map(() => "─|─" + "─".repeat(MACHINE_COL_WIDTH)).join("") : "";
+  const machineHeader = hasMachines ? mcols.map((c) => " | " + boldCyan(c.letter.padStart(MACHINE_COL_WIDTH))).join("") : "";
+
+  lines.push(colorRow(["Tool", "Tokens", "Input", "Output", "Cost"], boldCyan) + machineHeader);
+  lines.push(dim(divider + machineDiv));
 
   let grandCost = 0;
   let grandInput = 0;
   let grandOutput = 0;
   let grandTotal = 0;
+  const machineSums = new Map<string, number>();
 
   for (const [name, t] of toolTotals) {
     if (t.totalTokens > 0) {
       const costStr = fmtCostDelta(t.totalCost, name, prevCosts);
-      lines.push(row(name, fmtNum(t.totalTokens), fmtNum(t.inputTokens), fmtNum(t.outputTokens), costStr));
+      let machineCells = "";
+      if (hasMachines) {
+        const toolMachines = machineCosts?.get(name);
+        for (const mc of mcols) {
+          const cost = toolMachines?.get(mc.name) ?? 0;
+          machineCells += " | " + fmtCost(cost).padStart(MACHINE_COL_WIDTH);
+          machineSums.set(mc.name, (machineSums.get(mc.name) ?? 0) + cost);
+        }
+      }
+      lines.push(row(name, fmtNum(t.totalTokens), fmtNum(t.inputTokens), fmtNum(t.outputTokens), costStr) + machineCells);
     }
     grandCost += t.totalCost;
     grandInput += t.inputTokens;
@@ -195,8 +261,18 @@ export function renderTotal(period: string, toolTotals: Map<string, UsageTotals>
 
   const visibleCount = [...toolTotals.values()].filter(t => t.totalTokens > 0).length;
   if (visibleCount > 1) {
-    lines.push(dim(divider));
-    lines.push(colorRow(["Total", fmtNum(grandTotal), fmtNum(grandInput), fmtNum(grandOutput), fmtCost(grandCost)], boldWhite));
+    lines.push(dim(divider + machineDiv));
+    let totalMachineCells = "";
+    if (hasMachines) {
+      for (const mc of mcols) {
+        totalMachineCells += " | " + boldWhite(fmtCost(machineSums.get(mc.name) ?? 0).padStart(MACHINE_COL_WIDTH));
+      }
+    }
+    lines.push(colorRow(["Total", fmtNum(grandTotal), fmtNum(grandInput), fmtNum(grandOutput), fmtCost(grandCost)], boldWhite) + totalMachineCells);
+  }
+  if (hasMachines) {
+    lines.push("");
+    lines.push(dim(renderMachineLegend(mcols)));
   }
   lines.push("");
   return lines;

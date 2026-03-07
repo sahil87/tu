@@ -20,6 +20,9 @@ The formatting layer (`src/node/tui/formatter.ts`) renders token usage data into
 - `stripAnsi()` MUST be available for measuring visible string length
 - Total row MUST only render when more than one tool has visible data (`totalTokens > 0`) — applies to all snapshot layouts: `renderTotal`, `renderCompactSnapshot`
 - Watch mode uses the same `render*` functions as non-watch mode — no side-by-side merge or layout transformation is applied by the formatter
+- When `FormatOptions.machineCosts` is provided (`Map<string, Map<string, number>>`, keyed by label/toolName → machine → cost), `renderHistory` and `renderTotal` MUST append letter-coded machine cost columns (A, B, C...) after the Cost column, with 8-char right-aligned width (`MACHINE_COL_WIDTH`), alphabetically sorted machine names, and a `dim` legend line (`Machines: A = name, B = name`)
+- Machine columns MUST include per-machine totals in the Total row
+- Machine columns MUST be omitted in compact mode regardless of `machineCosts` presence
 
 ## Design Decisions
 
@@ -37,3 +40,4 @@ The formatting layer (`src/node/tui/formatter.ts`) renders token usage data into
 | 2026-03-06 | Updated file paths from `src/` to `src/node/tui/` for formatter and colors |
 | 2026-03-06 | Added requirement: Total row guarded by visible tool count > 1 in renderTotal and renderCompactSnapshot |
 | 2026-03-06 | Added: watch mode uses same render functions without side-by-side merge (redesign removed mergeSideBySide) |
+| 2026-03-07 | Added per-machine cost columns to `renderHistory` and `renderTotal` via `FormatOptions.machineCosts`; letter-coded headers (A/B/C), dim legend line, omitted in compact mode |
