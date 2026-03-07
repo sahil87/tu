@@ -1,0 +1,4 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-03-07T19:58:13+05:30"}
+{"args":"Add a tu update self-update command that shells out to brew update \u0026\u0026 brew upgrade tu. Detect Homebrew install, handle non-brew gracefully, show version comparison.","cmd":"fab-new","event":"command","ts":"2026-03-07T19:58:13+05:30"}
+{"delta":"+4.4","event":"confidence","score":4.4,"trigger":"calc-score","ts":"2026-03-07T19:58:49+05:30"}
+{"delta":"+0.0","event":"confidence","score":4.4,"trigger":"calc-score","ts":"2026-03-07T19:58:55+05:30"}
