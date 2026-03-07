@@ -73,6 +73,7 @@ Flags:
   --fresh / -f         Bypass cache, fetch fresh data (data commands only)
   --watch / -w         Persistent polling mode with live display (data commands only)
   --interval / -i <s>  Poll interval in seconds (default: 10, range: 5-3600)
+  --user / -u <user>   Show usage for a specific user (multi mode only)
   --no-color           Disable ANSI color output
   --no-rain            Disable matrix rain animation in watch mode`;
 
@@ -330,7 +331,15 @@ async function fetchToolMerged(
   period: string,
   extra: string[],
   skipCache = false,
+  targetUser?: string,
 ): Promise<UsageEntry[]> {
+  if (targetUser) {
+    _mark(`fetchToolMerged(${toolKey}) → readRemote for ${targetUser}`);
+    const entries = readRemoteEntries(config.metricsDir, targetUser, null, toolKey);
+    _mark(`fetchToolMerged(${toolKey}) → readRemote done (${entries.length} entries)`);
+    if (period === "monthly") return aggregateMonthly(entries);
+    return entries;
+  }
   _mark(`fetchToolMerged(${toolKey}) → fetchHistory`);
   const local = await fetchHistory(toolKey, "daily", extra, skipCache);
   _mark(`fetchToolMerged(${toolKey}) → fetchHistory done (${local.length} entries)`);
@@ -361,6 +370,7 @@ export interface GlobalFlags {
   watchInterval: number;
   noColorFlag: boolean;
   noRainFlag: boolean;
+  userFlag: string | undefined;
   filteredArgs: string[];
 }
 
@@ -375,6 +385,8 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   let watchInterval = 10;
   let hasIntervalFlag = false;
   let rawIntervalVal: string | undefined;
+  let userFlag: string | undefined;
+  let hasUserFlag = false;
   const filteredArgs: string[] = [];
   for (let i = 0; i < rawArgs.length; i++) {
     const a = rawArgs[i];
@@ -384,6 +396,15 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
       const next = rawArgs[i + 1];
       if (next !== undefined && /^\d+$/.test(next)) {
         rawIntervalVal = next;
+        i++;
+      }
+      continue;
+    }
+    if (a === "--user" || a === "-u") {
+      hasUserFlag = true;
+      const next = rawArgs[i + 1];
+      if (next !== undefined && !next.startsWith("-")) {
+        userFlag = next;
         i++;
       }
       continue;
@@ -413,7 +434,12 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
     process.exit(1);
   }
 
-  return { jsonFlag, syncFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, filteredArgs };
+  if (hasUserFlag && userFlag === undefined) {
+    console.error("Error: -u requires a username");
+    process.exit(1);
+  }
+
+  return { jsonFlag, syncFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, filteredArgs };
 }
 
 const KNOWN_SOURCES = new Set(["cc", "codex", "co", "oc", "all"]);
@@ -457,10 +483,10 @@ export function parseDataArgs(args: string[]): DataArgs {
   return { source, period, display };
 }
 
-async function dispatchAllHistory(config: TuConfig, period: string, jsonFlag: boolean, skipCache = false, fmtOpts?: FormatOptions): Promise<void> {
+async function dispatchAllHistory(config: TuConfig, period: string, jsonFlag: boolean, skipCache = false, fmtOpts?: FormatOptions, targetUser?: string): Promise<void> {
   if (config.mode === "multi") {
     const toolKeys = Object.keys(TOOLS);
-    const allMerged = await Promise.all(toolKeys.map((k) => fetchToolMerged(config, k, period, [], skipCache)));
+    const allMerged = await Promise.all(toolKeys.map((k) => fetchToolMerged(config, k, period, [], skipCache, targetUser)));
     const mergedMap = new Map<string, UsageEntry[]>();
     for (let i = 0; i < toolKeys.length; i++) {
       mergedMap.set(TOOLS[toolKeys[i]].name, allMerged[i]);
@@ -489,10 +515,10 @@ async function dispatchAllHistory(config: TuConfig, period: string, jsonFlag: bo
   }
 }
 
-async function dispatchAllSnapshot(config: TuConfig, period: string, jsonFlag: boolean, skipCache = false, fmtOpts?: FormatOptions): Promise<void> {
+async function dispatchAllSnapshot(config: TuConfig, period: string, jsonFlag: boolean, skipCache = false, fmtOpts?: FormatOptions, targetUser?: string): Promise<void> {
   if (config.mode === "multi") {
     const toolKeys = Object.keys(TOOLS);
-    const allMerged = await Promise.all(toolKeys.map((k) => fetchToolMerged(config, k, period, [], skipCache)));
+    const allMerged = await Promise.all(toolKeys.map((k) => fetchToolMerged(config, k, period, [], skipCache, targetUser)));
     const result = new Map<string, UsageTotals>();
     for (let i = 0; i < toolKeys.length; i++) {
       const current = allMerged[i].find((e) => e.label === currentLabel(period));
@@ -528,7 +554,7 @@ async function dispatchAllSnapshot(config: TuConfig, period: string, jsonFlag: b
 }
 
 async function dispatchSingleTool(
-  config: TuConfig, toolKey: string, period: string, display: string, jsonFlag: boolean, skipCache = false, fmtOpts?: FormatOptions,
+  config: TuConfig, toolKey: string, period: string, display: string, jsonFlag: boolean, skipCache = false, fmtOpts?: FormatOptions, targetUser?: string,
 ): Promise<void> {
   const toolCfg = TOOLS[toolKey];
   if (!toolCfg) {
@@ -540,7 +566,7 @@ async function dispatchSingleTool(
   _mark(`fetching ${toolKey} ${period}`);
   let entries: UsageEntry[];
   if (config.mode === "multi") {
-    entries = await fetchToolMerged(config, toolKey, period, [], skipCache);
+    entries = await fetchToolMerged(config, toolKey, period, [], skipCache, targetUser);
   } else {
     entries = await fetchHistory(toolKey, "daily", [], skipCache);
     if (period === "monthly") entries = aggregateMonthly(entries);
@@ -613,10 +639,10 @@ function buildCostMap(data: Map<string, UsageTotals> | Map<string, UsageEntry[]>
 
 // --- Watch-mode dispatch variants returning string[] ---
 
-async function dispatchAllHistoryLines(config: TuConfig, period: string, skipCache = false, fmtOpts?: FormatOptions): Promise<string[]> {
+async function dispatchAllHistoryLines(config: TuConfig, period: string, skipCache = false, fmtOpts?: FormatOptions, targetUser?: string): Promise<string[]> {
   if (config.mode === "multi") {
     const toolKeys = Object.keys(TOOLS);
-    const allMerged = await Promise.all(toolKeys.map((k) => fetchToolMerged(config, k, period, [], skipCache)));
+    const allMerged = await Promise.all(toolKeys.map((k) => fetchToolMerged(config, k, period, [], skipCache, targetUser)));
     const mergedMap = new Map<string, UsageEntry[]>();
     for (let i = 0; i < toolKeys.length; i++) {
       mergedMap.set(TOOLS[toolKeys[i]].name, allMerged[i]);
@@ -645,10 +671,10 @@ async function dispatchAllHistoryLines(config: TuConfig, period: string, skipCac
   }
 }
 
-async function dispatchAllSnapshotLines(config: TuConfig, period: string, skipCache = false, fmtOpts?: FormatOptions): Promise<string[]> {
+async function dispatchAllSnapshotLines(config: TuConfig, period: string, skipCache = false, fmtOpts?: FormatOptions, targetUser?: string): Promise<string[]> {
   if (config.mode === "multi") {
     const toolKeys = Object.keys(TOOLS);
-    const allMerged = await Promise.all(toolKeys.map((k) => fetchToolMerged(config, k, period, [], skipCache)));
+    const allMerged = await Promise.all(toolKeys.map((k) => fetchToolMerged(config, k, period, [], skipCache, targetUser)));
     const result = new Map<string, UsageTotals>();
     for (let i = 0; i < toolKeys.length; i++) {
       const current = allMerged[i].find((e) => e.label === currentLabel(period));
@@ -684,14 +710,14 @@ async function dispatchAllSnapshotLines(config: TuConfig, period: string, skipCa
 }
 
 async function dispatchSingleToolLines(
-  config: TuConfig, toolKey: string, period: string, display: string, skipCache = false, fmtOpts?: FormatOptions,
+  config: TuConfig, toolKey: string, period: string, display: string, skipCache = false, fmtOpts?: FormatOptions, targetUser?: string,
 ): Promise<string[]> {
   const toolCfg = TOOLS[toolKey];
   if (!toolCfg) return [`Unknown tool: ${toolKey}`];
 
   let entries: UsageEntry[];
   if (config.mode === "multi") {
-    entries = await fetchToolMerged(config, toolKey, period, [], skipCache);
+    entries = await fetchToolMerged(config, toolKey, period, [], skipCache, targetUser);
   } else {
     entries = await fetchHistory(toolKey, "daily", [], skipCache);
     if (period === "monthly") entries = aggregateMonthly(entries);
@@ -731,7 +757,7 @@ function sumToolTotalsTokens(m: Map<string, UsageTotals>): number {
 async function main() {
   _mark("main() entered");
   const rawArgs = process.argv.slice(2);
-  const { jsonFlag, syncFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, filteredArgs } = parseGlobalFlags(rawArgs);
+  let { jsonFlag, syncFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, filteredArgs } = parseGlobalFlags(rawArgs);
 
   if (noColorFlag) setNoColor(true);
 
@@ -770,6 +796,11 @@ async function main() {
   const config = checkMetricsDirGuard(readConfig());
   _mark(`config loaded (mode=${config.mode})`);
 
+  if (userFlag && config.mode !== "multi") {
+    process.stderr.write("Warning: -u flag requires multi mode — ignoring.\n");
+    userFlag = undefined;
+  }
+
   if (syncFlag && config.mode === "multi") {
     process.stderr.write("syncing metrics... ");
     const ok = await fullSync(config);
@@ -783,10 +814,10 @@ async function main() {
   if (watchFlag) {
     const action = async (skipCache: boolean, fmtOpts?: FormatOptions): Promise<string[]> => {
       if (source === "all") {
-        if (display === "history") { return dispatchAllHistoryLines(config, period, skipCache, fmtOpts); }
-        else { return dispatchAllSnapshotLines(config, period, skipCache, fmtOpts); }
+        if (display === "history") { return dispatchAllHistoryLines(config, period, skipCache, fmtOpts, userFlag); }
+        else { return dispatchAllSnapshotLines(config, period, skipCache, fmtOpts, userFlag); }
       } else {
-        return dispatchSingleToolLines(config, source, period, display, skipCache, fmtOpts);
+        return dispatchSingleToolLines(config, source, period, display, skipCache, fmtOpts, userFlag);
       }
     };
     await runWatch({
@@ -799,10 +830,10 @@ async function main() {
     });
   } else {
     if (source === "all") {
-      if (display === "history") { await dispatchAllHistory(config, period, jsonFlag, freshFlag); }
-      else { await dispatchAllSnapshot(config, period, jsonFlag, freshFlag); }
+      if (display === "history") { await dispatchAllHistory(config, period, jsonFlag, freshFlag, undefined, userFlag); }
+      else { await dispatchAllSnapshot(config, period, jsonFlag, freshFlag, undefined, userFlag); }
     } else {
-      await dispatchSingleTool(config, source, period, display, jsonFlag, freshFlag);
+      await dispatchSingleTool(config, source, period, display, jsonFlag, freshFlag, undefined, userFlag);
     }
   }
 }

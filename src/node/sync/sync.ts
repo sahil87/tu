@@ -69,66 +69,55 @@ export async function syncMetrics(metricsDir: string, user: string): Promise<boo
 
 export function readRemoteEntries(
   metricsDir: string,
-  user: string,
-  machine: string,
+  targetUser: string,
+  excludeMachine: string | null,
   toolKey: string,
 ): UsageEntry[] {
-  if (!existsSync(metricsDir)) return [];
+  const userPath = join(metricsDir, targetUser);
+  if (!existsSync(userPath)) return [];
 
   const entries: UsageEntry[] = [];
   const prefix = `${toolKey}-`;
 
-  let userDirs: string[];
+  let yearDirs: string[];
   try {
-    userDirs = readdirSync(metricsDir, { withFileTypes: true })
-      .filter((d) => d.isDirectory() && !d.name.startsWith("."))
+    yearDirs = readdirSync(userPath, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
       .map((d) => d.name);
   } catch {
     return [];
   }
 
-  for (const userDir of userDirs) {
-    let yearDirs: string[];
+  for (const yearDir of yearDirs) {
+    let machineDirs: string[];
     try {
-      yearDirs = readdirSync(join(metricsDir, userDir), { withFileTypes: true })
+      machineDirs = readdirSync(join(userPath, yearDir), { withFileTypes: true })
         .filter((d) => d.isDirectory())
         .map((d) => d.name);
     } catch {
       continue;
     }
 
-    for (const yearDir of yearDirs) {
-      let machineDirs: string[];
+    for (const machineDir of machineDirs) {
+      if (excludeMachine !== null && machineDir === excludeMachine) continue;
+
+      const machPath = join(userPath, yearDir, machineDir);
+      let files: string[];
       try {
-        machineDirs = readdirSync(join(metricsDir, userDir, yearDir), { withFileTypes: true })
-          .filter((d) => d.isDirectory())
-          .map((d) => d.name);
+        files = readdirSync(machPath)
+          .filter((f) => f.startsWith(prefix) && f.endsWith(".jsonl"));
       } catch {
         continue;
       }
 
-      for (const machineDir of machineDirs) {
-        // Skip own user+machine combination
-        if (userDir === user && machineDir === machine) continue;
-
-        const machPath = join(metricsDir, userDir, yearDir, machineDir);
-        let files: string[];
+      for (const file of files) {
         try {
-          files = readdirSync(machPath)
-            .filter((f) => f.startsWith(prefix) && f.endsWith(".jsonl"));
-        } catch {
-          continue;
-        }
-
-        for (const file of files) {
-          try {
-            const raw = readFileSync(join(machPath, file), "utf-8").trim();
-            if (raw) {
-              entries.push(JSON.parse(raw) as UsageEntry);
-            }
-          } catch {
-            // Invalid file — skip silently
+          const raw = readFileSync(join(machPath, file), "utf-8").trim();
+          if (raw) {
+            entries.push(JSON.parse(raw) as UsageEntry);
           }
+        } catch {
+          // Invalid file — skip silently
         }
       }
     }

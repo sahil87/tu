@@ -61,14 +61,13 @@ describe("readRemoteEntries", () => {
   beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
   afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
 
-  it("reads entries from other users", () => {
+  it("does NOT read entries from other users", () => {
     const dir = join(TEST_DIR, "bob", "2026", "laptop");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "cc-2026-02-20.jsonl"), JSON.stringify(entry("2026-02-20", 0.5)));
 
     const result = readRemoteEntries(TEST_DIR, "sahil", "macbook", "cc");
-    assert.equal(result.length, 1);
-    assert.equal(result[0].totalCost, 0.5);
+    assert.equal(result.length, 0);
   });
 
   it("reads entries from same user, different machine", () => {
@@ -81,7 +80,7 @@ describe("readRemoteEntries", () => {
     assert.equal(result[0].totalCost, 0.8);
   });
 
-  it("skips own user+machine entries", () => {
+  it("skips excluded machine entries", () => {
     const dir = join(TEST_DIR, "sahil", "2026", "macbook");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "cc-2026-02-20.jsonl"), JSON.stringify(entry("2026-02-20", 1.0)));
@@ -90,10 +89,24 @@ describe("readRemoteEntries", () => {
     assert.equal(result.length, 0);
   });
 
-  it("reads from multiple users and machines", () => {
+  it("reads all machines when excludeMachine is null", () => {
+    const dirs = [
+      join(TEST_DIR, "bob", "2026", "laptop"),
+      join(TEST_DIR, "bob", "2026", "desktop"),
+    ];
+    for (const d of dirs) {
+      mkdirSync(d, { recursive: true });
+      writeFileSync(join(d, "cc-2026-02-20.jsonl"), JSON.stringify(entry("2026-02-20", 0.5)));
+    }
+
+    const result = readRemoteEntries(TEST_DIR, "bob", null, "cc");
+    assert.equal(result.length, 2);
+  });
+
+  it("reads from same user, multiple machines", () => {
     const dirs = [
       join(TEST_DIR, "sahil", "2026", "workstation"),
-      join(TEST_DIR, "bob", "2026", "laptop"),
+      join(TEST_DIR, "sahil", "2026", "desktop"),
     ];
     for (const d of dirs) {
       mkdirSync(d, { recursive: true });
@@ -102,6 +115,11 @@ describe("readRemoteEntries", () => {
 
     const result = readRemoteEntries(TEST_DIR, "sahil", "macbook", "cc");
     assert.equal(result.length, 2);
+  });
+
+  it("returns empty array when target user dir does not exist", () => {
+    const result = readRemoteEntries(TEST_DIR, "alice", null, "cc");
+    assert.equal(result.length, 0);
   });
 
   it("returns empty array when metrics dir does not exist", () => {
@@ -119,7 +137,7 @@ describe("readRemoteEntries", () => {
   });
 
   it("only reads files matching the toolKey prefix", () => {
-    const dir = join(TEST_DIR, "bob", "2026", "laptop");
+    const dir = join(TEST_DIR, "sahil", "2026", "workstation");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "cc-2026-02-20.jsonl"), JSON.stringify(entry("2026-02-20", 0.5)));
     writeFileSync(join(dir, "codex-2026-02-20.jsonl"), JSON.stringify(entry("2026-02-20", 0.2)));
@@ -127,16 +145,6 @@ describe("readRemoteEntries", () => {
     const result = readRemoteEntries(TEST_DIR, "sahil", "macbook", "cc");
     assert.equal(result.length, 1);
     assert.equal(result[0].totalCost, 0.5);
-  });
-
-  it("skips .git directory", () => {
-    mkdirSync(join(TEST_DIR, ".git"), { recursive: true });
-    const dir = join(TEST_DIR, "bob", "2026", "laptop");
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "cc-2026-02-20.jsonl"), JSON.stringify(entry("2026-02-20", 0.5)));
-
-    const result = readRemoteEntries(TEST_DIR, "sahil", "macbook", "cc");
-    assert.equal(result.length, 1);
   });
 });
 
