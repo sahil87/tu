@@ -109,7 +109,15 @@ export function renderHistory(toolName: string, period: string, entries: UsageEn
   const numCols = 6;
   const tableWidth = D + (numCols - 1) * N + (numCols - 1) * 3;
   const width = termWidth ?? process.stdout.columns ?? 80;
-  const barWidth = Math.min(width - tableWidth - GUTTER - COST_WIDTH - 1, MAX_BAR_WIDTH);
+
+  // Machine columns setup (computed before bar width so we can subtract their width)
+  const machineCosts = opts?.machineCosts;
+  const machineNames = machineCosts ? [...new Set([...machineCosts.values()].flatMap((m) => [...m.keys()]))] : [];
+  const mcols = buildMachineColumns(machineNames);
+  const hasMachines = mcols.length > 0;
+  const machineColsWidth = hasMachines ? mcols.length * (MACHINE_COL_WIDTH + 3) : 0; // " | " + padded cost
+
+  const barWidth = Math.min(width - tableWidth - GUTTER - COST_WIDTH - machineColsWidth - 1, MAX_BAR_WIDTH);
   const showBars = barWidth >= MIN_BAR_AREA;
 
   const row = (...cols: string[]) => cols.map((c, i) => (i === 0 ? c.padEnd(D) : c.padStart(N))).join(" | ");
@@ -118,12 +126,6 @@ export function renderHistory(toolName: string, period: string, entries: UsageEn
   const divStr = [D, N, N, N, N, N].map(w => "─".repeat(w)).join("─|─");
   const costDiv = "─|─" + "─".repeat(COST_WIDTH);
   const barDiv = showBars ? "─" + "─".repeat(barWidth) : "";
-
-  // Machine columns setup
-  const machineCosts = opts?.machineCosts;
-  const machineNames = machineCosts ? [...new Set([...machineCosts.values()].flatMap((m) => [...m.keys()]))] : [];
-  const mcols = buildMachineColumns(machineNames);
-  const hasMachines = mcols.length > 0;
   const machineDiv = hasMachines ? mcols.map(() => "─|─" + "─".repeat(MACHINE_COL_WIDTH)).join("") : "";
   const machineHeader = hasMachines ? mcols.map((c) => " | " + boldCyan(c.letter.padStart(MACHINE_COL_WIDTH))).join("") : "";
 

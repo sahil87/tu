@@ -706,7 +706,7 @@ async function dispatchSingleTool(
       const toolMachines = new Map<string, number>();
       for (const [machine, entries] of merged.machineMap) {
         const match = entries.find((e) => e.label === target);
-        if (match) toolMachines.set(machine, match.totalCost);
+        toolMachines.set(machine, match ? match.totalCost : 0);
       }
       machineCosts.set(toolCfg.name, toolMachines);
       if (jsonFlag) { emitJson(attachMachinesJson(result, machineCosts)); }
@@ -963,7 +963,7 @@ async function dispatchSingleToolLines(
       const toolMachines = new Map<string, number>();
       for (const [machine, entries] of merged.machineMap) {
         const match = entries.find((e) => e.label === target);
-        if (match) toolMachines.set(machine, match.totalCost);
+        toolMachines.set(machine, match ? match.totalCost : 0);
       }
       machineCosts.set(toolCfg.name, toolMachines);
       _lastRenderCost = sumToolTotalsCost(result);

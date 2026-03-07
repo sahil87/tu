@@ -83,7 +83,8 @@ export function readRemoteEntriesByMachine(
   try {
     yearDirs = readdirSync(userPath, { withFileTypes: true })
       .filter((d) => d.isDirectory())
-      .map((d) => d.name);
+      .map((d) => d.name)
+      .sort();
   } catch {
     return new Map();
   }
@@ -93,7 +94,8 @@ export function readRemoteEntriesByMachine(
     try {
       machineDirs = readdirSync(join(userPath, yearDir), { withFileTypes: true })
         .filter((d) => d.isDirectory())
-        .map((d) => d.name);
+        .map((d) => d.name)
+        .sort();
     } catch {
       continue;
     }
@@ -105,7 +107,8 @@ export function readRemoteEntriesByMachine(
       let files: string[];
       try {
         files = readdirSync(machPath)
-          .filter((f) => f.startsWith(prefix) && f.endsWith(".jsonl"));
+          .filter((f) => f.startsWith(prefix) && f.endsWith(".jsonl"))
+          .sort();
       } catch {
         continue;
       }

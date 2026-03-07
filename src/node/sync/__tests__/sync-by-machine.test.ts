@@ -2,9 +2,10 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { readRemoteEntriesByMachine } from "../sync.js";
 
-const TMP = join(import.meta.dirname, ".tmp-by-machine-test");
+const TMP = join(tmpdir(), ".tmp-by-machine-test");
 
 function writeEntry(dir: string, file: string, entry: object): void {
   mkdirSync(dir, { recursive: true });
