@@ -1,6 +1,6 @@
 {
   "name": "tu",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "AI coding assistant cost tracking CLI",
   "type": "module",
   "bin": {
