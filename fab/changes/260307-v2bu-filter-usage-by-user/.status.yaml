@@ -4,33 +4,39 @@ created_by: sahil-weaver
 change_type: fix
 issues: []
 progress:
-    intake: ready
-    spec: pending
-    tasks: pending
-    apply: pending
-    review: pending
-    hydrate: pending
-    ship: pending
+    intake: done
+    spec: done
+    tasks: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
     review-pr: pending
 checklist:
-    generated: false
+    generated: true
     path: checklist.md
     completed: 0
     total: 0
 confidence:
-    certain: 3
-    confident: 4
+    certain: 4
+    confident: 7
     tentative: 0
     unresolved: 0
-    score: 3.8
-    indicative: true
+    score: 2.9
     fuzzy: true
     dimensions:
-        signal: 65.0
-        reversibility: 85.0
-        competence: 87.9
-        disambiguation: 86.4
+        signal: 62.3
+        reversibility: 84.5
+        competence: 86.4
+        disambiguation: 84.1
 stage_metrics:
-    intake: {started_at: "2026-03-07T17:12:50+05:30", driver: fab-new, iterations: 1}
-prs: []
-last_updated: 2026-03-07T17:19:28+05:30
+    intake: {started_at: "2026-03-07T17:12:50+05:30", driver: fab-new, iterations: 1, completed_at: "2026-03-07T19:19:04+05:30"}
+    spec: {started_at: "2026-03-07T19:19:04+05:30", driver: fab-ff, iterations: 1, completed_at: "2026-03-07T19:20:49+05:30"}
+    tasks: {started_at: "2026-03-07T19:20:49+05:30", driver: fab-ff, iterations: 1, completed_at: "2026-03-07T19:20:49+05:30"}
+    apply: {started_at: "2026-03-07T19:20:49+05:30", driver: fab-ff, iterations: 1, completed_at: "2026-03-07T19:26:18+05:30"}
+    review: {started_at: "2026-03-07T19:26:18+05:30", driver: fab-ff, iterations: 1, completed_at: "2026-03-07T19:30:17+05:30"}
+    hydrate: {started_at: "2026-03-07T19:30:17+05:30", driver: fab-ff, iterations: 1, completed_at: "2026-03-07T19:30:53+05:30"}
+    ship: {started_at: "2026-03-07T19:30:53+05:30", driver: fab-ff, iterations: 1}
+prs:
+    - https://github.com/wvrdz/tu/pull/4
+last_updated: 2026-03-07T19:32:16+05:30

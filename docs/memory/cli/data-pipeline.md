@@ -12,7 +12,8 @@ Entry point: `src/node/core/cli.ts`. Data types: `src/node/core/types.ts`. Data 
 - Sources MUST include: `cc` (Claude Code), `codex`/`co` (Codex), `oc` (OpenCode), `all` (default)
 - Periods MUST include: `d`/`daily` (default), `m`/`monthly`; combined shorthands `dh`, `mh`
 - Display MUST include: bare (snapshot, default), `h`/`history`
-- Global flags: `--json`, `--sync`, `--fresh`/`-f`, `--watch`/`-w`, `--interval`/`-i <s>`, `--no-color`, `--no-rain`
+- Global flags: `--json`, `--sync`, `--fresh`/`-f`, `--watch`/`-w`, `--interval`/`-i <s>`, `--user`/`-u <user>`, `--no-color`, `--no-rain`
+- `--user`/`-u` MUST set a target user for data display (multi mode only); in single mode, warn on stderr and ignore; when set, display only metrics repo data for the target user (no local ccusage data)
 - `--watch` and `--json` MUST be mutually exclusive
 - `--interval` range: 5-3600 seconds, default 10
 - Non-data commands (`init-conf`, `init-metrics`, `sync`, `status`, `help`) MUST be dispatched before grammar parsing
@@ -37,3 +38,4 @@ Entry point: `src/node/core/cli.ts`. Data types: `src/node/core/types.ts`. Data 
 |------|--------|
 | 2026-03-06 | Generated from code analysis |
 | 2026-03-06 | Updated file paths from `src/` to `src/node/core/` for cli, types, fetcher, config |
+| 2026-03-07 | Added `--user`/`-u` flag for viewing another user's usage in multi mode |
