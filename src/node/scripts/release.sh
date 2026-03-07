@@ -18,9 +18,11 @@ git push && git push --tags
 gh release create "v$version" --title "v$version" --generate-notes
 
 # 4. Update formula tag
-sed -i '' \
-    -e "s|tag: \"v.*\"|tag: \"v${version}\"|" \
-    "$tap/Formula/tu.rb"
+if [[ "$(uname)" == "Darwin" ]]; then
+  sed -i '' "s|tag: \"v.*\"|tag: \"v${version}\"|" "$tap/Formula/tu.rb"
+else
+  sed -i "s|tag: \"v.*\"|tag: \"v${version}\"|" "$tap/Formula/tu.rb"
+fi
 
 # 5. Push homebrew-tap
 cd "$tap"
