@@ -16,7 +16,8 @@ Entry point: `src/node/core/cli.ts`. Data types: `src/node/core/types.ts`. Data 
 - `--user`/`-u` MUST set a target user for data display (multi mode only); in single mode, warn on stderr and ignore; when set, display only metrics repo data for the target user (no local ccusage data)
 - `--watch` and `--json` MUST be mutually exclusive
 - `--interval` range: 5-3600 seconds, default 10
-- Non-data commands (`init-conf`, `init-metrics`, `sync`, `status`, `help`) MUST be dispatched before grammar parsing
+- Non-data commands (`init-conf`, `init-metrics`, `sync`, `status`, `update`, `help`) MUST be dispatched before grammar parsing
+- `tu update` MUST detect Homebrew installation via `_pkgDir.includes("/Cellar/tu/")`, show a helpful message for non-brew installs (exit 0), and run `brew update` → `brew info` → `brew upgrade` for brew installs with specific error messages per failure
 - Data fetching MUST use `ccusage` family binaries (`ccusage`, `ccusage-codex`, `ccusage-opencode`) via child process `exec`
 - Fetch results MUST be cached in `~/.tu/cache/` with 60-second TTL; `--fresh` bypasses cache
 - The `TOOLS` registry maps tool keys to `ToolConfig` objects with `name`, `command`, and `needsFilter` fields
@@ -39,3 +40,4 @@ Entry point: `src/node/core/cli.ts`. Data types: `src/node/core/types.ts`. Data 
 | 2026-03-06 | Generated from code analysis |
 | 2026-03-06 | Updated file paths from `src/` to `src/node/core/` for cli, types, fetcher, config |
 | 2026-03-07 | Added `--user`/`-u` flag for viewing another user's usage in multi mode |
+| 2026-03-07 | Added `tu update` self-update command (Homebrew detection, brew update/info/upgrade flow) |

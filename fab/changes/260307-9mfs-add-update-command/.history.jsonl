@@ -2,3 +2,15 @@
 {"args":"Add a tu update self-update command that shells out to brew update \u0026\u0026 brew upgrade tu. Detect Homebrew install, handle non-brew gracefully, show version comparison.","cmd":"fab-new","event":"command","ts":"2026-03-07T19:58:13+05:30"}
 {"delta":"+4.4","event":"confidence","score":4.4,"trigger":"calc-score","ts":"2026-03-07T19:58:49+05:30"}
 {"delta":"+0.0","event":"confidence","score":4.4,"trigger":"calc-score","ts":"2026-03-07T19:58:55+05:30"}
+{"cmd":"fab-switch","event":"command","ts":"2026-03-07T20:02:16+05:30"}
+{"cmd":"fab-ff","event":"command","ts":"2026-03-07T20:03:00+05:30"}
+{"action":"enter","driver":"fab-ff","event":"stage-transition","stage":"spec","ts":"2026-03-07T20:03:43+05:30"}
+{"delta":"+0.0","event":"confidence","score":4.4,"trigger":"calc-score","ts":"2026-03-07T20:04:35+05:30"}
+{"delta":"+0.0","event":"confidence","score":4.4,"trigger":"calc-score","ts":"2026-03-07T20:04:39+05:30"}
+{"action":"enter","driver":"fab-ff","event":"stage-transition","stage":"tasks","ts":"2026-03-07T20:04:47+05:30"}
+{"action":"enter","driver":"fab-ff","event":"stage-transition","stage":"apply","ts":"2026-03-07T20:05:17+05:30"}
+{"action":"enter","driver":"fab-ff","event":"stage-transition","stage":"review","ts":"2026-03-07T20:06:53+05:30"}
+{"action":"enter","driver":"fab-ff","event":"stage-transition","stage":"hydrate","ts":"2026-03-07T20:08:50+05:30"}
+{"event":"review","result":"passed","ts":"2026-03-07T20:08:50+05:30"}
+{"action":"enter","driver":"fab-ff","event":"stage-transition","stage":"ship","ts":"2026-03-07T20:09:07+05:30"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-03-07T20:11:13+05:30"}

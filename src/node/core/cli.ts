@@ -64,6 +64,7 @@ Setup:
   tu init-metrics      Clone metrics repo
   tu sync              Push/pull metrics manually
   tu status            Show config and sync state
+  tu update            Update tu to latest version
 
 Help: tu help | tu -h | tu --help
 
@@ -238,6 +239,53 @@ export function runStatus(
   console.log(`Metrics:     ${metricsLine}`);
   console.log(`Last sync:   ${formatLastSync(tuHome, now)}`);
   console.log(`Auto-sync:   ${config.autoSync ? "on" : "off"}`);
+}
+
+export function runUpdate(): void {
+  if (!_pkgDir.includes("/Cellar/tu/")) {
+    console.log(`tu v${PKG_VERSION} was not installed via Homebrew.`);
+    console.log("Update manually, or reinstall with: brew install wvrdz/tap/tu");
+    return;
+  }
+
+  console.log(`Current version: v${PKG_VERSION}`);
+
+  try {
+    execSync("brew update --quiet", { stdio: "pipe", timeout: 30_000 });
+  } catch {
+    console.error("Error: could not check for updates (brew update failed). Check your network connection.");
+    process.exit(1);
+  }
+
+  let latest: string;
+  try {
+    const infoRaw = execSync("brew info --json=v2 tu", { stdio: "pipe", timeout: 10_000 });
+    const info = JSON.parse(infoRaw.toString());
+    const stable = info?.formulae?.[0]?.versions?.stable;
+    if (typeof stable !== "string" || stable.trim() === "") {
+      throw new Error("Invalid stable version in brew info output");
+    }
+    latest = stable;
+  } catch {
+    console.error("Error: could not determine latest version.");
+    process.exit(1);
+  }
+
+  if (latest === PKG_VERSION) {
+    console.log(`Already up to date (v${PKG_VERSION}).`);
+    return;
+  }
+
+  console.log(`Updating v${PKG_VERSION} → v${latest}...`);
+
+  try {
+    execSync("brew upgrade tu", { stdio: "inherit", timeout: 120_000 });
+  } catch {
+    console.error("Error: brew upgrade failed.");
+    process.exit(1);
+  }
+
+  console.log(`Updated to v${latest}.`);
 }
 
 const CLONE_FAILED_MARKER = ".clone-failed";
@@ -779,6 +827,7 @@ async function main() {
     if (cmd === "init-metrics") { runInitMetrics(); return; }
     if (cmd === "sync") { await runSync(); return; }
     if (cmd === "status") { runStatus(); return; }
+    if (cmd === "update") { runUpdate(); return; }
   }
 
   // Parse positional data args (source, period, display)
