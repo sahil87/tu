@@ -9,7 +9,7 @@ version=$(npm version "$bump" --no-git-tag-version | tr -d 'v')
 echo "Releasing v$version"
 
 # 2. Commit the version bump, tag, and push
-git add package.json
+git add package.json package-lock.json
 git commit -m "v$version"
 git tag "v$version"
 git push && git push --tags
