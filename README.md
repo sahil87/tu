@@ -14,8 +14,9 @@ brew install tu
 ## Update
 
 ```bash
-brew update        # pull latest formula
-brew upgrade tu
+tu update
+# brew update
+# brew upgrade tu
 ```
 
 ## Usage
