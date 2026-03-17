@@ -25,3 +25,11 @@ fab/changes/**/.pr-done
 /.gemini
 
 /.ralph
+
+.fab-*
+
+fab/.kit/bin/*
+
+!fab/.kit/bin/fab
+
+!fab/.kit/bin/.gitkeep

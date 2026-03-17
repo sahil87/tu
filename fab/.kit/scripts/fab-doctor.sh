@@ -89,10 +89,10 @@ else
   hint "Install: brew install yq"
 fi
 
-# ── 4. jq ───────────────────────────────────────────────────────────
+# ── 4. jq ──────────────────────────────────────────────────────────
 
 if command -v jq &>/dev/null; then
-  ver=$(jq --version | sed 's/^jq-//')
+  ver=$(jq --version | sed 's/jq-//')
   pass "jq $ver"
 else
   fail "jq — not found"

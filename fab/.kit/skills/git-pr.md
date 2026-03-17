@@ -6,6 +6,8 @@ allowed-tools: Bash(git:*), Bash(gh:*)
 
 # /git-pr
 
+> Branch naming conventions are defined in `_naming.md`.
+
 Autonomously ship local changes to a GitHub PR. No questions, no prompts — just execute.
 
 ---
@@ -120,7 +122,7 @@ Run each step in order, skipping steps that aren't needed.
 
 Nothing to do.
 ```
-Before stopping, attempt to record the existing PR URL per Steps 4–4c (silently, no errors). Then STOP.
+Before stopping, attempt to record the existing PR URL per Steps 4a–4d (silently, no errors). Then STOP.
 
 **Otherwise**, print the header and execute:
 
@@ -171,7 +173,8 @@ Print: `  ✓ push   — origin/<branch>`
    - Check if `fab/changes/{name}/intake.md` exists → `{has_intake}`
    - Check if `fab/changes/{name}/spec.md` exists → `{has_spec}`
    - Check if `fab/changes/{name}/tasks.md` exists → `{has_tasks}`
-   - Read `fab/changes/{name}/.status.yaml` for `confidence`, `checklist`, `progress`, and `stage_metrics` fields
+   - Read `fab/changes/{name}/.status.yaml` for `id`, `name`, `confidence`, `checklist`, `progress`, and `stage_metrics` fields
+   - Read `fab/project/config.yaml` for the optional `linear_workspace` field under `project:`
 
    **Construct blob URLs** (only when `{has_fab}`):
    - `{owner_repo}` = `gh repo view --json nameWithOwner -q '.nameWithOwner'`
@@ -190,11 +193,23 @@ Print: `  ✓ push   — origin/<branch>`
    {if has_fab AND has_intake: bulleted list of subsection headings from intake's ## What Changes section}
    {otherwise: omit this section entirely}
 
+   ## Change
+   {if has_fab: render the Change table below}
+   {otherwise: omit this section entirely}
+   | ID | Name | Issue |
+   |----|------|-------|
+   | {id} | {status_name} | {issue_display} |
+
    ## Stats
    | Type | Confidence | Checklist | Tasks | Review |
    |------|-----------|-----------|-------|--------|
    | {type} | {confidence} | {checklist} | {tasks} | {review} |
    ```
+
+   **Change column population** (only when `{has_fab}`):
+   - **ID**: From `.status.yaml` `id` field (4-char change ID). Show `—` if unavailable
+   - **Name**: From `.status.yaml` `name` field (full change folder name). Use a distinct variable (e.g., `{status_name}`) to avoid clobbering `{name}` (the resolved change folder used for path construction). Show `—` if unavailable
+   - **Issue**: From `issues` resolved in Step 1 (`fab status get-issues`). If `linear_workspace` is configured in `fab/project/config.yaml`, render each issue as `[{ID}](https://linear.app/{linear_workspace}/issue/{ID})`. If `linear_workspace` is absent, render bare issue IDs. Multiple issues are comma-separated. Show `—` if no issues
 
    **Stats column population**:
    - **Type**: Always populated from the resolved PR type
@@ -222,7 +237,7 @@ Print: `  ✓ pr     — <PR URL>`
 
 **If PR already exists** (from Step 1), just print: `  ✓ pr     — <existing PR URL> (existing)`
 
-### Step 4: Record PR URL
+### Step 4a: Record PR URL
 
 After the PR URL is known (from step 3c or from the existing PR in step 1), attempt to record it in the active change's `.status.yaml`:
 
@@ -232,30 +247,7 @@ After the PR URL is known (from step 3c or from the existing PR in step 1), atte
 
 This step MUST NOT block or fail the PR workflow. Any error is silently ignored.
 
-### Step 4b: Commit and Push Status Update
-
-If Step 4 successfully recorded a PR URL (changeman resolved and statusman add-pr ran):
-
-1. Stage the status file: `git add fab/changes/{name}/.status.yaml`
-2. Check for changes: `git diff --cached --quiet`
-3. If changes exist: commit (`git commit -m "Record PR URL in .status.yaml"`) and push (`git push`). If commit or push fails → report the error and STOP.
-4. If no changes (already committed): skip commit+push silently
-
-Print (if committed): `  ✓ status — committed and pushed .status.yaml`
-
-If Step 4 was skipped (no active change, changeman not found), skip this step silently.
-
-### Step 4c: Write PR Sentinel
-
-If Step 4 successfully resolved the change directory:
-
-1. Write the sentinel: `echo "$PR_URL" > "$change_dir/.pr-done"`
-
-This file is gitignored and never committed. It provides a race-free filesystem signal that all git operations are complete. Write is unconditional — happens in both orchestrated and manual flows.
-
-If Step 4 was skipped, skip this step silently.
-
-### Step 4d: Finish Ship Stage
+### Step 4b: Finish Ship Stage
 
 If an active change was resolved in Step 0a and `progress.ship` was started (not already `done`):
 
@@ -264,6 +256,29 @@ fab/.kit/bin/fab status finish <change> ship git-pr 2>/dev/null || true
 ```
 
 This marks `ship` as `done` and auto-activates `review-pr`. Best-effort — failures silently ignored.
+
+### Step 4c: Commit and Push Status Update
+
+If Step 4a successfully recorded a PR URL (changeman resolved and statusman add-pr ran):
+
+1. Stage the status and history files: `git add fab/changes/{name}/.status.yaml fab/changes/{name}/.history.jsonl`
+2. Check for changes: `git diff --cached --quiet`
+3. If changes exist: commit (`git commit -m "Update ship status and record PR URL"`) and push (`git push`). If commit or push fails → report the error and STOP.
+4. If no changes (already committed): skip commit+push silently
+
+Print (if committed): `  ✓ status — committed and pushed status updates (.status.yaml, .history.jsonl)`
+
+If Step 4a was skipped (no active change, changeman not found), skip this step silently.
+
+### Step 4d: Write PR Sentinel
+
+If Step 4a successfully resolved the change directory:
+
+1. Write the sentinel: `echo "$PR_URL" > "$change_dir/.pr-done"`
+
+This file is gitignored and never committed. It provides a race-free filesystem signal that all git operations are complete. Write is unconditional — happens in both orchestrated and manual flows.
+
+If Step 4a was skipped, skip this step silently.
 
 ### Step 5: Report
 

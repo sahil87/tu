@@ -6,13 +6,15 @@ allowed-tools: Bash(git:*)
 
 # /git-branch [change-name]
 
+> Branch naming conventions are defined in `_naming.md`.
+
 Create or check out a git branch named `{change-name}` for the active or specified change. When an explicit argument doesn't match any change, falls back to creating a standalone branch with the literal name. Does not modify fab state.
 
 ---
 
 ## Arguments
 
-- **`<change-name>`** *(optional)* — target a specific change. If omitted, uses the active change from `fab/current`. Supports full folder names, partial slug matches, or any substring (resolved via `fab change resolve`).
+- **`<change-name>`** *(optional)* — target a specific change. If omitted, uses the active change resolved via `.fab-status.yaml`. Supports full folder names, partial slug matches, or any substring (resolved via `fab change resolve`).
 
 ---
 
@@ -42,7 +44,7 @@ If `<change-name>` provided:
 fab/.kit/bin/fab change resolve "<change-name>"
 ```
 
-If not provided, resolve from `fab/current`:
+If not provided, resolve from `.fab-status.yaml`:
 
 ```bash
 fab/.kit/bin/fab change resolve
@@ -162,7 +164,7 @@ Branch: {branch_name} (created|checked out|renamed from {old_branch}|created, le
 |----------|-------|
 | Advances stage? | No |
 | Idempotent? | Yes — checking out an already-active branch is a no-op |
-| Modifies `fab/current`? | No |
+| Modifies `.fab-status.yaml`? | No |
 | Modifies `.status.yaml`? | No |
 | Modifies git state? | Yes — may create, checkout, or rename a branch |
 | Requires config/constitution? | No |

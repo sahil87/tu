@@ -54,7 +54,9 @@ Read these files first — they define the project's identity, constraints, and 
 
 > **Note**: If the skill runs `fab/.kit/bin/fab preflight` (Section 2 above), the init check (config.yaml and constitution.md existence) is already covered by the script. Skills using preflight don't need separate existence checks for these files — they only need to read them for content.
 
-Also read **`fab/.kit/skills/_scripts.md`** — script invocation conventions (argument formats, stage transitions, error patterns). This is the authoritative reference for calling `fab status`, `fab change`, `fab score`, and `fab preflight`.
+Also read **`fab/.kit/skills/_cli-fab.md`** — script invocation conventions (argument formats, stage transitions, error patterns). This is the authoritative reference for calling `fab status`, `fab change`, `fab score`, and `fab preflight`.
+
+Also read **`fab/.kit/skills/_naming.md`** — naming conventions for change folders, git branches, worktree directories, and operator spawning rules.
 
 ### 2. Change Context (when operating on an active change)
 
@@ -66,11 +68,11 @@ Resolve the active change and load its state by running the preflight script:
 4. **Log command**: Call `fab/.kit/bin/fab log command "<skill-name>" "<id>" 2>/dev/null || true` where `<skill-name>` is the invoking skill (e.g., `fab-continue`) and `<id>` is the `id` field from the preflight YAML output. This is best-effort — failures are silently ignored.
 5. Load all completed artifacts in the change folder (e.g., `intake.md`, `spec.md`, `tasks.md`) — read each file that exists so you have full context of what has been decided so far
 
-> **Change-name override**: When a `[change-name]` argument is passed to the preflight script, it resolves the change using case-insensitive substring matching against `fab/changes/` folder names (excluding `archive/`) instead of reading `fab/current`. The override is **transient** — `fab/current` is never modified. This enables parallel workflows where multiple tabs target different changes concurrently. Supports full folder names, partial slugs, or 4-char IDs (e.g., `r3m7`).
+> **Change-name override**: When a `[change-name]` argument is passed to the preflight script, it resolves the change using case-insensitive substring matching against `fab/changes/` folder names (excluding `archive/`) instead of reading the `.fab-status.yaml` symlink. The override is **transient** — `.fab-status.yaml` is never modified. This enables parallel workflows where multiple tabs target different changes concurrently. Supports full folder names, partial slugs, or 4-char IDs (e.g., `r3m7`).
 
 > **What the script validates internally** (for reference — agents do not need to duplicate these checks):
 > 1. `fab/project/config.yaml` and `fab/project/constitution.md` exist (project initialized)
-> 2. `fab/current` exists and is non-empty (active change set) — OR `$1` override resolves to a valid change
+> 2. `.fab-status.yaml` symlink exists (active change set) — OR `$1` override resolves to a valid change
 > 3. Change directory `fab/changes/{name}/` exists
 > 4. `.status.yaml` exists within the change directory
 
@@ -121,7 +123,7 @@ Every skill MUST end its output with a `Next:` line derived from the State Table
 
 **State derivation**:
 - **(none)**: `fab/project/config.yaml` does not exist
-- **initialized**: `fab/project/config.yaml` exists AND no active change (`fab/current` absent or empty)
+- **initialized**: `fab/project/config.yaml` exists AND no active change (`.fab-status.yaml` symlink is absent)
 - **intake** through **apply**: Derived from the active change's `.status.yaml` progress map (the stage with `active` or `ready` state)
 - **review (pass)**: `progress.review == done`
 - **review (fail)**: `progress.review == failed`
@@ -135,7 +137,7 @@ Every skill MUST end its output with a `Next:` line derived from the State Table
 
 ### Activation Preamble
 
-When a skill creates or restores a change without activating it (no write to `fab/current`), the `Next:` line SHALL include a switch instruction followed by the state-derived commands:
+When a skill creates or restores a change without activating it (no `.fab-status.yaml` symlink created), the `Next:` line SHALL include a switch instruction followed by the state-derived commands:
 
 ```
 Next: /fab-switch {name} to make it active, then {default}, {other commands}
@@ -163,7 +165,7 @@ When one skill invokes another internally (e.g., `/fab-ff` invoking `/fab-clarif
 | Calling skill | Called skill | Mode signaled |
 |---------------|-------------|---------------|
 | `/fab-fff` | `/fab-clarify` | `[AUTO-MODE]` → auto mode (autonomous gap resolution between planning stages) |
-| `/fab-ff` | `/fab-clarify` | `[AUTO-MODE]` → auto mode (autonomous gap resolution after tasks generation) |
+| `/fab-ff` | `/fab-clarify` | `[AUTO-MODE]` → auto mode (autonomous gap resolution between planning stages) |
 
 User-invoked skills never carry the `[AUTO-MODE]` prefix, so called skills default to interactive mode.
 
@@ -225,12 +227,12 @@ Each decision produces an assumption graded on a 4-level scale:
 
 ### Skill-Specific Autonomy Levels
 
-| Aspect | fab-new (adaptive) | fab-continue (deliberate) | fab-fff (full pipeline) | fab-ff (from-spec, gated) |
+| Aspect | fab-new (adaptive) | fab-continue (deliberate) | fab-fff (full pipeline) | fab-ff (fast-forward) |
 |--------|-------------------|---------------------------|-------------------------|--------------------------|
-| **Posture** | SRAD-driven: 0 questions for clear inputs, conversational for vague; gap analysis before folder creation | Surface tentative, ask top ~3 unresolved | Batch all unresolved upfront, then go; no confidence gate | Gated on confidence > 3.0; no frontloaded questions |
-| **Interruption budget** | SRAD-driven (no fixed cap); conversational mode for vague inputs | 1-2 per stage | 0-1 batch at start | 0 (interactive rework on failure) |
-| **Output** | Assumptions summary + "Run /fab-clarify to review" | Key Decisions block + Assumptions summary + [NEEDS CLARIFICATION] count | Cumulative Assumptions summary + apply/review/hydrate output | Tasks + apply/review/hydrate output |
-| **Escape valve** | `/fab-clarify` | `/fab-clarify` | `/fab-continue` (autonomous rework with retry cap, bail after 3 cycles) | `/fab-clarify` (interactive rework on review failure) |
+| **Posture** | SRAD-driven: 0 questions for clear inputs, conversational for vague; gap analysis before folder creation | Surface tentative, ask top ~3 unresolved | Gated on confidence; extends through ship + review-pr | Gated on confidence; stops at hydrate |
+| **Interruption budget** | SRAD-driven (no fixed cap); conversational mode for vague inputs | 1-2 per stage | 0 (autonomous rework, then stop) | 0 (autonomous rework, then stop) |
+| **Output** | Assumptions summary + "Run /fab-clarify to review" | Key Decisions block + Assumptions summary + [NEEDS CLARIFICATION] count | Cumulative Assumptions summary + apply/review/hydrate/ship/review-pr output | Tasks + apply/review/hydrate output |
+| **Escape valve** | `/fab-clarify` | `/fab-clarify` | `/fab-clarify`, `/fab-continue` (after rework cap) | `/fab-clarify`, `/fab-continue` (after rework cap) |
 | **Recomputes confidence?** | No | Spec stage only | No | No |
 
 ### Worked Examples
@@ -333,11 +335,11 @@ Where `total_decisions = certain + confident + tentative + unresolved` and `expe
 
 ### Gate Thresholds
 
-`/fab-ff` has two confidence gates. `/fab-fff` has no confidence gates.
+Both `/fab-ff` and `/fab-fff` have two identical confidence gates. The `--force` flag on either skill bypasses both gates.
 
-**Intake gate** (fixed threshold): `/fab-ff` computes an indicative score from `intake.md` via `fab score --check-gate --stage intake`. Threshold: **3.0** (fixed, not per-type).
+**Intake gate** (fixed threshold): Both `/fab-ff` and `/fab-fff` compute an indicative score from `intake.md` via `fab score --check-gate --stage intake`. Threshold: **3.0** (fixed, not per-type).
 
-**Spec gate** (dynamic per-type thresholds): `/fab-ff` checks the spec confidence score via `fab score --check-gate`.
+**Spec gate** (dynamic per-type thresholds): Both `/fab-ff` and `/fab-fff` check the spec confidence score via `fab score --check-gate`.
 
 | Type | Spec Gate Threshold |
 |------|---------------------|
@@ -354,7 +356,7 @@ Confidence is computed by `fab/.kit/bin/fab score`, invoked by:
 - `/fab-new` (intake stage, normal mode with `--stage intake`) — persists indicative score with `indicative: true`
 - `/fab-continue` (spec stage) and `/fab-clarify` (suggest mode) — persists spec score, clears `indicative` flag
 
-`/fab-ff` gates at two points: (1) intake gate via `fab score --check-gate --stage intake` before starting, and (2) spec gate via `fab score --check-gate` after spec generation. `/fab-fff` does not gate or recompute.
+Both `/fab-ff` and `/fab-fff` gate at two points: (1) intake gate via `fab score --check-gate --stage intake` before starting, and (2) spec gate via `fab score --check-gate` after spec generation. The `--force` flag on either skill bypasses both gates entirely.
 
 ### Indicative vs Spec Scores
 
