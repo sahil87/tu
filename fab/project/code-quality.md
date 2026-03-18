@@ -7,6 +7,7 @@
 - Prefer functions and plain objects over classes (functional style)
 - Use `type` imports for type-only values
 - Use `node:` prefixed imports for built-in modules
+- Keep minimum pathways — prefer fewer distinct code paths over optimizing away a read/write round-trip; a single well-exercised path catches more bugs than two paths that each run half as often
 
 ## Anti-Patterns
 
