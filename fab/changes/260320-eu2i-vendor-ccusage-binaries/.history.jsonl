@@ -1,0 +1,4 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-03-20T07:00:22Z"}
+{"args":"Vendor ccusage binaries for single-bundle distribution","cmd":"fab-new","event":"command","ts":"2026-03-20T07:00:22Z"}
+{"delta":"+4.1","event":"confidence","score":4.1,"trigger":"calc-score","ts":"2026-03-20T07:01:14Z"}
+{"delta":"+0.0","event":"confidence","score":4.1,"trigger":"calc-score","ts":"2026-03-20T07:01:25Z"}
