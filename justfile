@@ -13,4 +13,4 @@ deploy: build
     npm publish
 
 release bump="patch":
-    src/node/scripts/release.sh {{bump}}
+    scripts/release.sh {{bump}}
