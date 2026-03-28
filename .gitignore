@@ -2,13 +2,11 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-fab/current
+.fab-status.yaml
 
 fab/.kit-sync-version
 
 fab/.kit/bin/fab-*
-
-fab/pipelines/.series-*.yaml
 
 fab/changes/**/.pr-done
 

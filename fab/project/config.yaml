@@ -1,6 +1,7 @@
 project:
   name: "tu"
   description: "AI coding assistant cost tracking CLI"
+  # linear_workspace: "your-workspace"  # optional — enables Linear issue links in PRs
 
 # Directories containing implementation code (relative to repo root).
 source_paths:
@@ -33,3 +34,8 @@ stage_directives:
 #     pre: "npm test"
 #   apply:
 #     post: "npx tsc --noEmit"
+
+agent:
+  # Base command for spawning agent sessions in scripts and operators.
+  # Shell expansions (e.g., $(basename "$(pwd)")) expand at invocation time.
+  spawn_command: 'claude --dangerously-skip-permissions --effort max -n "$(basename "$(pwd)")"'
