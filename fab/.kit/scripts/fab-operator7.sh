@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ---
-# name: fab-operator5
-# description: "Launch operator5 in a dedicated tmux tab (singleton per session)"
+# name: fab-operator7
+# description: "Launch operator7 in a dedicated tmux tab (singleton per session)"
 # ---
 set -euo pipefail
 
@@ -10,9 +10,9 @@ source "$SCRIPT_DIR/lib/spawn.sh"
 
 TAB_NAME="operator"
 
-# Must be inside tmux/byobu
+# Must be inside tmux
 if [[ -z "${TMUX:-}" ]]; then
-  echo "Error: not inside a tmux/byobu session." >&2
+  echo "Error: not inside a tmux session." >&2
   exit 1
 fi
 
@@ -28,5 +28,5 @@ CONFIG_FILE="$REPO_ROOT/fab/project/config.yaml"
 SPAWN_CMD=$(fab_spawn_cmd "$CONFIG_FILE")
 
 # Create new tab running the operator skill
-tmux new-window -c "$REPO_ROOT" -n "$TAB_NAME" "$SPAWN_CMD '/fab-operator5'"
+tmux new-window -c "$REPO_ROOT" -n "$TAB_NAME" "$SPAWN_CMD '/fab-operator7'"
 echo "Launched $TAB_NAME."
