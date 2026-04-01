@@ -5,33 +5,40 @@ created_by: sahil-weaver
 change_type: ci
 issues: []
 progress:
-    intake: ready
-    spec: pending
-    tasks: pending
-    apply: pending
-    review: pending
-    hydrate: pending
-    ship: pending
-    review-pr: pending
+    intake: done
+    spec: done
+    tasks: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: active
 checklist:
-    generated: false
+    generated: true
     path: checklist.md
-    completed: 0
+    completed: 21
     total: 0
 confidence:
     certain: 4
-    confident: 3
+    confident: 6
     tentative: 0
     unresolved: 0
-    score: 4.1
-    indicative: true
+    score: 3.2
     fuzzy: true
     dimensions:
-        signal: 85.7
-        reversibility: 87.1
-        competence: 85.0
-        disambiguation: 87.9
+        signal: 82.0
+        reversibility: 87.5
+        competence: 84.0
+        disambiguation: 84.5
 stage_metrics:
-    intake: {started_at: "2026-03-20T07:00:22Z", driver: fab-new, iterations: 1}
-prs: []
-last_updated: 2026-03-20T07:01:29Z
+    intake: {started_at: "2026-03-20T07:00:22Z", driver: fab-new, iterations: 1, completed_at: "2026-04-01T08:07:53Z"}
+    spec: {started_at: "2026-04-01T08:07:53Z", driver: fab-fff, iterations: 1, completed_at: "2026-04-01T08:12:35Z"}
+    tasks: {started_at: "2026-04-01T08:12:35Z", driver: fab-fff, iterations: 1, completed_at: "2026-04-01T08:12:35Z"}
+    apply: {started_at: "2026-04-01T08:12:35Z", driver: fab-fff, iterations: 1, completed_at: "2026-04-01T08:15:50Z"}
+    review: {started_at: "2026-04-01T08:15:50Z", driver: fab-continue, iterations: 1, completed_at: "2026-04-01T08:19:45Z"}
+    hydrate: {started_at: "2026-04-01T08:19:45Z", driver: fab-fff, iterations: 1, completed_at: "2026-04-01T08:20:57Z"}
+    ship: {started_at: "2026-04-01T08:20:57Z", driver: fab-fff, iterations: 1, completed_at: "2026-04-01T08:22:33Z"}
+    review-pr: {started_at: "2026-04-01T08:22:33Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/tu/pull/11
+last_updated: 2026-04-01T08:22:33Z

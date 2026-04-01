@@ -2,3 +2,20 @@
 {"args":"Vendor ccusage binaries for single-bundle distribution","cmd":"fab-new","event":"command","ts":"2026-03-20T07:00:22Z"}
 {"delta":"+4.1","event":"confidence","score":4.1,"trigger":"calc-score","ts":"2026-03-20T07:01:14Z"}
 {"delta":"+0.0","event":"confidence","score":4.1,"trigger":"calc-score","ts":"2026-03-20T07:01:25Z"}
+{"cmd":"fab-switch","event":"command","ts":"2026-04-01T08:03:26Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-04-01T08:04:10Z"}
+{"delta":"-0.9","event":"confidence","score":3.2,"trigger":"calc-score","ts":"2026-04-01T08:07:49Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"spec","ts":"2026-04-01T08:07:53Z"}
+{"cmd":"fab-clarify","event":"command","ts":"2026-04-01T08:08:36Z"}
+{"delta":"+0.0","event":"confidence","score":3.2,"trigger":"calc-score","ts":"2026-04-01T08:09:16Z"}
+{"delta":"+0.0","event":"confidence","score":3.2,"trigger":"calc-score","ts":"2026-04-01T08:09:21Z"}
+{"delta":"+0.0","event":"confidence","score":3.2,"trigger":"calc-score","ts":"2026-04-01T08:09:30Z"}
+{"delta":"+0.0","event":"confidence","score":3.2,"trigger":"calc-score","ts":"2026-04-01T08:09:40Z"}
+{"cmd":"fab-clarify","event":"command","ts":"2026-04-01T08:10:59Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"tasks","ts":"2026-04-01T08:12:35Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-04-01T08:12:35Z"}
+{"action":"enter","driver":"fab-continue","event":"stage-transition","stage":"review","ts":"2026-04-01T08:15:50Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-04-01T08:19:45Z"}
+{"event":"review","result":"passed","ts":"2026-04-01T08:19:45Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-04-01T08:20:57Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-04-01T08:22:33Z"}

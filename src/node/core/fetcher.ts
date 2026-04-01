@@ -14,7 +14,9 @@ while (_rootDir !== dirname(_rootDir)) {
   if (existsSync(join(_rootDir, "package.json"))) break;
   _rootDir = dirname(_rootDir);
 }
-const BIN = join(_rootDir, "node_modules", ".bin");
+const vendorDir = join(__dirname, "vendor");
+const useVendor = existsSync(vendorDir);
+const BIN = useVendor ? vendorDir : join(_rootDir, "node_modules", ".bin");
 
 // --- Fetch cache: avoids re-scanning 500MB+ of JSONL files on every call ---
 const CACHE_DIR = join(homedir(), ".tu", "cache");
@@ -53,9 +55,9 @@ function writeCache(toolKey: string, entries: UsageEntry[]): void {
 }
 
 export const TOOLS: Record<string, ToolConfig> = {
-  cc: { name: "Claude Code", command: `${BIN}/ccusage`, needsFilter: false },
-  codex: { name: "Codex", command: `${BIN}/ccusage-codex`, needsFilter: true },
-  oc: { name: "OpenCode", command: `${BIN}/ccusage-opencode`, needsFilter: true },
+  cc: { name: "Claude Code", command: useVendor ? `node ${BIN}/ccusage/index.js` : `${BIN}/ccusage`, needsFilter: false },
+  codex: { name: "Codex", command: useVendor ? `node ${BIN}/ccusage-codex/index.js` : `${BIN}/ccusage-codex`, needsFilter: true },
+  oc: { name: "OpenCode", command: useVendor ? `node ${BIN}/ccusage-opencode/index.js` : `${BIN}/ccusage-opencode`, needsFilter: true },
 };
 
 export const EMPTY: UsageTotals = {
