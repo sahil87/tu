@@ -1011,7 +1011,7 @@ async function main() {
 
   if (noColorFlag) setNoColor(true);
 
-  if (rawArgs.includes("--version") || rawArgs.includes("-V")) {
+  if (rawArgs.includes("--version") || rawArgs.includes("-V") || rawArgs.includes("-v")) {
     console.log(PKG_VERSION);
     return;
   }

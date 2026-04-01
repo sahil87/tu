@@ -1,0 +1,42 @@
+id: kuuh
+name: 260401-kuuh-add-v-version-shorthand
+created: 2026-04-01T10:41:36Z
+created_by: sahil-weaver
+change_type: feat
+issues: []
+progress:
+    intake: done
+    spec: done
+    tasks: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
+    review-pr: pending
+checklist:
+    generated: true
+    path: checklist.md
+    completed: 7
+    total: 7
+confidence:
+    certain: 7
+    confident: 0
+    tentative: 0
+    unresolved: 0
+    score: 5.0
+    fuzzy: true
+    dimensions:
+        signal: 92.1
+        reversibility: 93.6
+        competence: 94.3
+        disambiguation: 94.3
+stage_metrics:
+    intake: {started_at: "2026-04-01T10:41:36Z", driver: fab-new, iterations: 1, completed_at: "2026-04-01T10:44:31Z"}
+    spec: {started_at: "2026-04-01T10:44:31Z", driver: fab-fff, iterations: 1, completed_at: "2026-04-01T10:45:31Z"}
+    tasks: {started_at: "2026-04-01T10:45:31Z", driver: fab-fff, iterations: 1, completed_at: "2026-04-01T10:45:35Z"}
+    apply: {started_at: "2026-04-01T10:45:35Z", driver: fab-fff, iterations: 1, completed_at: "2026-04-01T10:46:14Z"}
+    review: {started_at: "2026-04-01T10:46:14Z", driver: fab-fff, iterations: 1, completed_at: "2026-04-01T10:47:08Z"}
+    hydrate: {started_at: "2026-04-01T10:47:08Z", driver: fab-continue, iterations: 1, completed_at: "2026-04-01T10:48:11Z"}
+    ship: {started_at: "2026-04-01T10:48:11Z", driver: fab-fff, iterations: 1}
+prs: []
+last_updated: 2026-04-01T10:48:11Z
