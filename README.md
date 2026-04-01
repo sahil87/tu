@@ -36,13 +36,15 @@ Sources: `cc` (Claude Code), `codex`/`co` (Codex), `oc` (OpenCode), `all` (defau
 ### Flags
 
 ```
---json               Output as JSON
---fresh / -f         Bypass cache
---watch / -w         Live polling mode
---interval / -i <s>  Poll interval (default: 10s)
---no-color           Disable colors
---no-rain            Disable matrix rain in watch mode
---sync               Sync metrics before fetch (multi mode)
+  --json               Output data as JSON (data commands only)
+  --sync               Sync metrics before fetching (multi mode)
+  --fresh / -f         Bypass cache, fetch fresh data (data commands only)
+  --watch / -w         Persistent polling mode with live display (data commands only)
+  --interval / -i <s>  Poll interval in seconds (default: 10, range: 5-3600)
+  --user / -u <user>   Show usage for a specific user (multi mode only)
+  --by-machine         Show per-machine cost breakdown (data commands only)
+  --no-color           Disable ANSI color output
+  --no-rain            Disable matrix rain animation in watch mode
 ```
 
 ### Setup (multi-machine sync)
