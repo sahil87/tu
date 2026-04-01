@@ -25,7 +25,7 @@ function writeDefaults(content: string): string {
   return p;
 }
 
-const STOCK_DEFAULTS = `version = 2\nmode = single\nmetrics_dir = ~/.tu/metrics_repo\nmachine = $HOSTNAME\nuser = $USER\nauto_sync = true\n`;
+const STOCK_DEFAULTS = `version = 2\nmetrics_dir = ~/.tu/metrics_repo\nmachine = $HOSTNAME\nuser = $USER\nauto_sync = true\n`;
 
 describe("readConfig", () => {
   beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
@@ -54,33 +54,25 @@ describe("readConfig", () => {
     assert.equal(cfg.autoSync, true);
   });
 
-  it("returns single mode when user sets mode=single", () => {
+  it("derives multi mode from metrics_repo presence, ignoring explicit mode=single", () => {
     const defaults = writeDefaults(STOCK_DEFAULTS);
     const path = writeConf("mode = single\nmetrics_repo = git@example.com:repo.git\n");
     const cfg = readConfig(path, defaults);
-    assert.equal(cfg.mode, "single");
+    assert.equal(cfg.mode, "multi");
   });
 
-  it("returns single mode when user file has no mode field", () => {
+  it("derives multi mode when user file has metrics_repo but no mode field", () => {
     const defaults = writeDefaults(STOCK_DEFAULTS);
     const path = writeConf("metrics_repo = git@example.com:repo.git\n");
     const cfg = readConfig(path, defaults);
-    assert.equal(cfg.mode, "single");
+    assert.equal(cfg.mode, "multi");
   });
 
-  it("falls back to single mode when mode=multi but metrics_repo is missing", () => {
+  it("derives single mode when mode=multi but metrics_repo is missing", () => {
     const defaults = writeDefaults(STOCK_DEFAULTS);
     const path = writeConf("mode = multi\n");
-    const errors: string[] = [];
-    const origError = console.error;
-    console.error = (...args: unknown[]) => errors.push(String(args[0]));
-    try {
-      const cfg = readConfig(path, defaults);
-      assert.equal(cfg.mode, "single");
-      assert.ok(errors.some((e) => e.includes("metrics_repo")));
-    } finally {
-      console.error = origError;
-    }
+    const cfg = readConfig(path, defaults);
+    assert.equal(cfg.mode, "single");
   });
 
   it("applies default metricsDir and machine when omitted", () => {
@@ -241,12 +233,37 @@ describe("readConfig", () => {
     assert.equal(cfg.version, 2);
     assert.equal(cfg.machine, hostname());
     assert.equal(cfg.user, userInfo().username);
-    if (process.env.WEAVER_DEV) {
+    assert.equal(cfg.mode, "single");
+    assert.equal(cfg.metricsRepo, "");
+  });
+
+  it("TU_METRICS_REPO env var overrides config file and enables multi mode", () => {
+    const defaults = writeDefaults(STOCK_DEFAULTS);
+    const path = writeConf("version = 2\n");
+    const origEnv = process.env.TU_METRICS_REPO;
+    process.env.TU_METRICS_REPO = "git@github.com:team/metrics.git";
+    try {
+      const cfg = readConfig(path, defaults);
+      assert.equal(cfg.metricsRepo, "git@github.com:team/metrics.git");
       assert.equal(cfg.mode, "multi");
-      assert.equal(cfg.metricsRepo, "git@github.com:wvrdz/tu-metrics.git");
-    } else {
-      assert.equal(cfg.mode, "single");
-      assert.equal(cfg.metricsRepo, "");
+    } finally {
+      if (origEnv === undefined) delete process.env.TU_METRICS_REPO;
+      else process.env.TU_METRICS_REPO = origEnv;
+    }
+  });
+
+  it("empty TU_METRICS_REPO does not override config file value", () => {
+    const defaults = writeDefaults(STOCK_DEFAULTS);
+    const path = writeConf("metrics_repo = git@example.com:repo.git\n");
+    const origEnv = process.env.TU_METRICS_REPO;
+    process.env.TU_METRICS_REPO = "";
+    try {
+      const cfg = readConfig(path, defaults);
+      assert.equal(cfg.metricsRepo, "git@example.com:repo.git");
+      assert.equal(cfg.mode, "multi");
+    } finally {
+      if (origEnv === undefined) delete process.env.TU_METRICS_REPO;
+      else process.env.TU_METRICS_REPO = origEnv;
     }
   });
 

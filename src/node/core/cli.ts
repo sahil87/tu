@@ -82,9 +82,8 @@ Flags:
 
 const FIELD_BLOCKS: Record<string, string> = {
   version: "\n# Config schema version\nversion = 2\n",
-  mode: "\n# mode: single (default) or multi (enables cross-machine sync)\nmode = single\n",
   metrics_repo:
-    "\n# Required for multi mode: git repo URL for metrics storage\n# Uncomment and set before running tu init-metrics\n# metrics_repo = git@github.com:you/tu-metrics.git\n",
+    "\n# Git repo URL for metrics storage (enables multi-machine sync)\n# Set here or via TU_METRICS_REPO env var\n# metrics_repo = git@github.com:you/tu-metrics.git\n",
   metrics_dir:
     "\n# Optional: local path where the metrics repo is cloned (default: ~/.tu/metrics_repo)\n# metrics_dir = ~/.tu/metrics_repo\n",
   machine:
@@ -152,14 +151,7 @@ export function runInitMetrics(configPath: string = CONFIG_PATH, defaultsPath: s
   const config = readConfig(configPath, defaultsPath);
 
   if (!config.metricsRepo) {
-    console.error(`Error: metrics_repo is not set. Add it to ${dp} or tu.default.conf.`);
-    process.exit(1);
-  }
-
-  if (config.mode !== "multi") {
-    console.error(
-      `Error: mode=${config.mode}. Set mode=multi to use multi-machine sync.`,
-    );
+    console.error(`Error: metrics_repo is not set. Add it to ${dp} or set TU_METRICS_REPO.`);
     process.exit(1);
   }
 
@@ -356,7 +348,7 @@ export async function runSync(configPath: string = CONFIG_PATH, tuHome: string =
   const config = readConfig(configPath, defaultsPath);
   if (config.mode !== "multi") {
     console.error(
-      "tu sync requires multi-machine mode.\nRun 'tu init-conf' and set mode=multi to enable cross-machine sync.",
+      "tu sync requires metrics_repo to be set.\nAdd metrics_repo to ~/.tu.conf or set TU_METRICS_REPO.",
     );
     process.exit(1);
   }
