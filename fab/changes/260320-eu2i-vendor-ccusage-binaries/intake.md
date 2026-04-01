@@ -79,7 +79,7 @@ Ensure `dist/vendor/` is included in the published files (it's already covered b
 
 ### Homebrew formula update
 
-The formula in `wvrdz/homebrew-tap` will need updating to remove any `npm install` step. This is out-of-scope for this change but is the downstream beneficiary.
+The formula in `sahil87/homebrew-tap` will need updating to remove any `npm install` step. This is out-of-scope for this change but is the downstream beneficiary.
 
 ## Affected Memory
 
