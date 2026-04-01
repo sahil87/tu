@@ -1,0 +1,4 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-04-01T06:31:34Z"}
+{"args":"Migrate tu from wvrdz to sahil87: change license to MIT, update all org references","cmd":"fab-new","event":"command","ts":"2026-04-01T06:31:34Z"}
+{"delta":"+4.7","event":"confidence","score":4.7,"trigger":"calc-score","ts":"2026-04-01T06:32:11Z"}
+{"delta":"+0.0","event":"confidence","score":4.7,"trigger":"calc-score","ts":"2026-04-01T06:32:19Z"}
