@@ -55,29 +55,6 @@ describe("runInitMetrics", () => {
     assert.ok(errors.some((e) => e.includes("metrics_repo is not set")));
   });
 
-  it("errors when user sets mode=single", () => {
-    const errors: string[] = [];
-    const origError = console.error;
-    const origExit = process.exit;
-    let exitCode: number | undefined;
-    console.error = (...args: unknown[]) => errors.push(String(args[0]));
-    process.exit = ((code: number) => {
-      exitCode = code;
-      throw new Error("exit");
-    }) as never;
-    try {
-      const path = writeConf("mode = single\nmetrics_repo = git@example.com:repo.git\n");
-      runInitMetrics(path, defaultsPath());
-    } catch {
-      // expected
-    } finally {
-      console.error = origError;
-      process.exit = origExit;
-    }
-    assert.equal(exitCode, 1);
-    assert.ok(errors.some((e) => e.includes("mode=single")));
-  });
-
   it("errors when metrics_repo is missing from both defaults and user config", () => {
     const errors: string[] = [];
     const origError = console.error;

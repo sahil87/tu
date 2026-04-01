@@ -232,7 +232,7 @@ describe("syncMetrics", () => {
 
     // Verify the commit reached the bare repo
     const log = execSync(`git -C "${BARE_DIR}" log --oneline`, { encoding: "utf-8" });
-    assert.ok(log.includes("sahil: update"));
+    assert.ok(log.includes("# sahil: update"));
   });
 
   it("returns true when no local changes exist", async () => {
@@ -352,11 +352,49 @@ exit 1
 
     // Verify both commits exist in the bare repo
     const log = execSync(`git -C "${BARE_DIR}" log --oneline`, { encoding: "utf-8" });
-    assert.ok(log.includes("sahil: update"));
+    assert.ok(log.includes("# sahil: update"));
     assert.ok(log.includes("bob: update"));
 
     // Verify sahil's commit is on top (pull --rebase puts local on top)
     const lines = log.trim().split("\n");
     assert.ok(lines[0].includes("sahil"));
+  });
+
+  it("recovers from interrupted rebase and syncs successfully", async () => {
+    const opts = { stdio: "pipe" as const };
+
+    // Create a local commit
+    writeMetrics(CLONE_DIR, "sahil", "macbook", "cc", [entry("2026-02-22", 1.0)]);
+    execSync(`git -C "${CLONE_DIR}" add .`, opts);
+    execSync(`git -C "${CLONE_DIR}" commit -m "local commit"`, opts);
+
+    // Use GIT_SEQUENCE_EDITOR=true to start an interactive rebase that
+    // pauses at "edit" — this reliably leaves .git/rebase-merge/
+    execSync(
+      `git -C "${CLONE_DIR}" rebase -i --root`,
+      { ...opts, env: { ...process.env, GIT_SEQUENCE_EDITOR: "sed -i.bak 's/^pick/edit/'" } },
+    );
+
+    // Verify repo is in a rebase state
+    assert.ok(
+      existsSync(join(CLONE_DIR, ".git", "rebase-merge")) ||
+      existsSync(join(CLONE_DIR, ".git", "rebase-apply")),
+      "Expected interrupted rebase state",
+    );
+
+    const errors: string[] = [];
+    const origError = console.error;
+    console.error = (...args: unknown[]) => errors.push(String(args[0]));
+    try {
+      writeMetrics(CLONE_DIR, "sahil", "macbook", "cc", [entry("2026-02-23", 2.0)]);
+      const result = await syncMetrics(CLONE_DIR, "sahil");
+      assert.equal(result, true);
+      assert.ok(
+        errors.some((e) => e.includes("recovering from interrupted rebase")),
+        `Expected recovery warning, got: ${errors.join("; ")}`,
+      );
+    } finally {
+      console.error = origError;
+    }
   });
 });

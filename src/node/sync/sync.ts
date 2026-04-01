@@ -36,21 +36,35 @@ export function writeMetrics(
 
 export async function syncMetrics(metricsDir: string, user: string): Promise<boolean> {
   const git = (args: string) => execAsync(`git -C "${metricsDir}" ${args}`);
+
+  // Recover from interrupted rebase left by a previous failed sync
+  try {
+    const rebaseMerge = join(metricsDir, ".git", "rebase-merge");
+    const rebaseApply = join(metricsDir, ".git", "rebase-apply");
+    if (existsSync(rebaseMerge) || existsSync(rebaseApply)) {
+      console.error("Warning: recovering from interrupted rebase");
+      await git("rebase --abort");
+    }
+  } catch {
+    // rebase --abort failed — try to continue anyway
+  }
+
   try {
     await git(`add "${user}/"`);
     const status = await git(`status --porcelain "${user}/"`);
     if (status.trim()) {
       const date = new Date().toISOString().slice(0, 10);
-      await git(`commit -m "${user}: update ${date}"`);
+      await git(`commit -m "# ${user}: update ${date}"`);
     }
   } catch {
     return false;
   }
   try {
-    await git("pull --rebase");
+    await git("pull --rebase origin main");
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     console.error(`Warning: sync pull failed — ${reason}`);
+    try { await git("rebase --abort"); } catch { /* already clean */ }
     return false;
   }
   try {
