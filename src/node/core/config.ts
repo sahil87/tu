@@ -28,10 +28,7 @@ while (_rootDir !== dirname(_rootDir)) {
   try { readFileSync(resolve(_rootDir, "package.json")); break; } catch { _rootDir = dirname(_rootDir); }
 }
 
-export const DEFAULT_CONFIG_PATH = resolve(
-  _rootDir,
-  process.env.WEAVER_DEV ? "tu.default.weaver.conf" : "tu.default.conf",
-);
+export const DEFAULT_CONFIG_PATH = resolve(_rootDir, "tu.default.conf");
 
 function parseConf(raw: string): Record<string, string> {
   const fields: Record<string, string> = {};
@@ -83,13 +80,12 @@ export function readConfig(
   // User fields override defaults; expand sentinels on the merged result
   const merged: Record<string, string> = { ...defaults, ...user };
 
-  const mode = (merged.mode === "multi" ? "multi" : "single") as TuConfig["mode"];
+  // TU_METRICS_REPO env var takes precedence over config file
+  const envRepo = process.env.TU_METRICS_REPO;
+  const metricsRepo = (envRepo && envRepo.length > 0) ? envRepo : (merged.metrics_repo || "");
 
-  // Warn if multi mode but no metrics_repo
-  if (mode === "multi" && !merged.metrics_repo) {
-    console.error("Warning: ~/.tu.conf has mode=multi but no metrics_repo — falling back to single mode");
-    merged.mode = "single";
-  }
+  // Derive mode from metrics_repo presence
+  const mode: TuConfig["mode"] = metricsRepo !== "" ? "multi" : "single";
 
   const versionRaw = merged.version ? parseInt(merged.version, 10) : 1;
   const version = Number.isNaN(versionRaw) ? 1 : versionRaw;
@@ -104,8 +100,8 @@ export function readConfig(
 
   return {
     version,
-    mode: merged.mode === "multi" ? "multi" : "single",
-    metricsRepo: merged.metrics_repo || "",
+    mode,
+    metricsRepo,
     metricsDir: resolveHome(expandSentinels(merged.metrics_dir || "~/.tu/metrics_repo")),
     machine: expandSentinels(merged.machine || "$HOSTNAME"),
     user: expandSentinels(merged.user || "$USER"),

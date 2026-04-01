@@ -1,0 +1,44 @@
+id: jufw
+name: 260401-jufw-remove-weaver-dev-derive-mode
+created: 2026-04-01T05:54:26Z
+created_by: sahil-weaver
+change_type: refactor
+issues: []
+progress:
+    intake: done
+    spec: done
+    tasks: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: active
+checklist:
+    generated: true
+    path: checklist.md
+    completed: 0
+    total: 25
+confidence:
+    certain: 9
+    confident: 0
+    tentative: 0
+    unresolved: 0
+    score: 5.0
+    fuzzy: true
+    dimensions:
+        signal: 90.6
+        reversibility: 87.2
+        competence: 91.7
+        disambiguation: 93.3
+stage_metrics:
+    intake: {started_at: "2026-04-01T05:54:26Z", driver: fab-new, iterations: 1, completed_at: "2026-04-01T05:58:17Z"}
+    spec: {started_at: "2026-04-01T05:58:17Z", driver: fab-fff, iterations: 1, completed_at: "2026-04-01T05:59:25Z"}
+    tasks: {started_at: "2026-04-01T05:59:25Z", driver: fab-fff, iterations: 1, completed_at: "2026-04-01T06:00:04Z"}
+    apply: {started_at: "2026-04-01T06:00:04Z", driver: fab-fff, iterations: 1, completed_at: "2026-04-01T06:07:07Z"}
+    review: {started_at: "2026-04-01T06:07:07Z", driver: fab-fff, iterations: 1, completed_at: "2026-04-01T06:10:45Z"}
+    hydrate: {started_at: "2026-04-01T06:10:45Z", driver: fab-fff, iterations: 1, completed_at: "2026-04-01T06:11:27Z"}
+    ship: {started_at: "2026-04-01T06:11:27Z", driver: fab-fff, iterations: 1, completed_at: "2026-04-01T06:12:54Z"}
+    review-pr: {started_at: "2026-04-01T06:12:54Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/wvrdz/tu/pull/9
+last_updated: 2026-04-01T06:12:54Z

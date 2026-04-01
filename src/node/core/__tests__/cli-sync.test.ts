@@ -9,7 +9,7 @@ import { runSync } from "../cli.js";
 
 const TEST_DIR = join(tmpdir(), "tu-sync-test-" + process.pid);
 
-const STOCK_DEFAULTS = `version = 2\nmode = single\nmetrics_dir = ~/.tu/metrics_repo\nmachine = $HOSTNAME\nuser = $USER\nauto_sync = true\n`;
+const STOCK_DEFAULTS = `version = 2\nmetrics_dir = ~/.tu/metrics_repo\nmachine = $HOSTNAME\nuser = $USER\nauto_sync = true\n`;
 
 function confPath(): string {
   return join(TEST_DIR, "tu.conf");
@@ -51,11 +51,10 @@ describe("runSync", () => {
       process.exit = origExit;
     }
     assert.equal(exitCode, 1);
-    assert.ok(errors.some((e) => e.includes("multi-machine mode")));
-    assert.ok(errors.some((e) => e.includes("tu init-conf")));
+    assert.ok(errors.some((e) => e.includes("metrics_repo")));
   });
 
-  it("errors when mode is not multi", async () => {
+  it("errors when no metrics_repo is set", async () => {
     const errors: string[] = [];
     const origError = console.error;
     const origExit = process.exit;
@@ -66,7 +65,7 @@ describe("runSync", () => {
       throw new Error("exit");
     }) as never;
     try {
-      const path = writeConf("mode = single\n");
+      const path = writeConf("version = 2\n");
       await runSync(path, join(TEST_DIR, "tu-home"), defaultsPath());
     } catch {
       // expected
@@ -75,7 +74,7 @@ describe("runSync", () => {
       process.exit = origExit;
     }
     assert.equal(exitCode, 1);
-    assert.ok(errors.some((e) => e.includes("multi-machine mode")));
+    assert.ok(errors.some((e) => e.includes("metrics_repo")));
   });
 
   it("errors when metrics dir is missing and auto-clone fails", async () => {
