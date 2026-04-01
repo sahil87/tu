@@ -237,7 +237,7 @@ export function runStatus(
 export function runUpdate(): void {
   if (!_pkgDir.includes("/Cellar/tu/")) {
     console.log(`tu v${PKG_VERSION} was not installed via Homebrew.`);
-    console.log("Update manually, or reinstall with: brew install wvrdz/tap/tu");
+    console.log("Update manually, or reinstall with: brew install sahil87/tap/tu");
     return;
   }
 

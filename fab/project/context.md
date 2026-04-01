@@ -7,8 +7,8 @@
 - **Bundler**: esbuild (single-file ESM bundle to `dist/tu.mjs`)
 - **Test runner**: Node.js built-in (`npx tsx --test`)
 - **Task runner**: justfile
-- **Distribution**: Homebrew tap (`wvrdz/tap`), binary name `tu`
-- **License**: PolyForm Internal Use 1.0.0
+- **Distribution**: Homebrew tap (`sahil87/tap`), binary name `tu`
+- **License**: MIT
 
 ## Architecture
 

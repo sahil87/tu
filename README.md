@@ -8,10 +8,8 @@ Track your token usage in style!
 
 ## Install
 
-Requires SSH access to the wvrdz GitHub org:
-
 ```bash
-brew tap wvrdz/tap git@github.com:wvrdz/homebrew-tap.git
+brew tap sahil87/tap
 brew install tu
 ```
 

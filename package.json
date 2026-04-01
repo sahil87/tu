@@ -13,10 +13,9 @@
   },
   "files": [
     "dist/",
-    "tu.default.conf",
-    "tu.default.weaver.conf"
+    "tu.default.conf"
   ],
-  "license": "PolyForm-Internal-Use-1.0.0",
+  "license": "MIT",
   "engines": {
     "node": ">=18"
   },
