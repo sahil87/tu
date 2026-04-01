@@ -1,6 +1,10 @@
 # tu
 
 AI coding assistant cost tracking CLI.
+Track your token usage in style!
+
+<img width="1025" height="675" alt="image" src="https://github.com/user-attachments/assets/d6d1c930-8230-4910-ba1b-985e7df17e7c" />
+
 
 ## Install
 
