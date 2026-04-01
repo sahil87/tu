@@ -22,14 +22,18 @@ _mark("tsx loaded, imports done");
 
 const __cli_dirname = dirname(fileURLToPath(import.meta.url));
 
-// Walk up to project root (where package.json lives) — works from both
-// src/node/core/ (dev/test) and dist/ (bundled)
-let _pkgDir = __cli_dirname;
-while (_pkgDir !== dirname(_pkgDir)) {
-  if (existsSync(join(_pkgDir, "package.json"))) break;
-  _pkgDir = dirname(_pkgDir);
-}
-const PKG_VERSION = JSON.parse(readFileSync(join(_pkgDir, "package.json"), "utf-8")).version as string;
+// Version injected at build time by esbuild --define; falls back to package.json for dev
+declare const __PKG_VERSION__: string | undefined;
+const PKG_VERSION: string = (() => {
+  if (typeof __PKG_VERSION__ !== "undefined") return __PKG_VERSION__;
+  let dir = __cli_dirname;
+  while (dir !== dirname(dir)) {
+    const p = join(dir, "package.json");
+    if (existsSync(p)) return JSON.parse(readFileSync(p, "utf-8")).version as string;
+    dir = dirname(dir);
+  }
+  return "0.0.0";
+})();
 
 function tildefy(p: string): string {
   const home = homedir();

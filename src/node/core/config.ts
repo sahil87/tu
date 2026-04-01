@@ -21,14 +21,23 @@ export const CONFIG_PATH = resolve(homedir(), ".tu.conf");
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Walk up to project root (where package.json lives) — works from both
-// src/node/core/ (dev/test) and dist/ (bundled)
-let _rootDir = __dirname;
-while (_rootDir !== dirname(_rootDir)) {
-  try { readFileSync(resolve(_rootDir, "package.json")); break; } catch { _rootDir = dirname(_rootDir); }
+// Locate tu.default.conf: check alongside the running script first (bundled),
+// then walk up to project root (dev/test)
+function findDefaultConf(): string {
+  // Bundled: tu.default.conf next to tu.mjs
+  const beside = resolve(__dirname, "tu.default.conf");
+  try { readFileSync(beside); return beside; } catch {}
+  // Dev: walk up to package.json root
+  let dir = __dirname;
+  while (dir !== dirname(dir)) {
+    const candidate = resolve(dir, "tu.default.conf");
+    try { readFileSync(candidate); return candidate; } catch {}
+    dir = dirname(dir);
+  }
+  return beside; // fallback — readConfFile handles missing gracefully
 }
 
-export const DEFAULT_CONFIG_PATH = resolve(_rootDir, "tu.default.conf");
+export const DEFAULT_CONFIG_PATH = findDefaultConf();
 
 function parseConf(raw: string): Record<string, string> {
   const fields: Record<string, string> = {};
