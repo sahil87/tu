@@ -1,41 +1,19 @@
-project:
-  name: "tu"
-  description: "AI coding assistant cost tracking CLI"
-  # linear_workspace: "your-workspace"  # optional — enables Linear issue links in PRs
-
-# Directories containing implementation code (relative to repo root).
-source_paths:
-  - src/
-
-# Project-specific categories appended to default checklist categories.
-# Defaults: functional_completeness, behavioral_correctness, scenario_coverage, edge_cases, security
-checklist:
-  extra_categories: []
-
-# Per-stage directives for artifact generation.
-# Each stage key accepts a list of instructions the agent follows during generation.
-stage_directives:
-  intake: []
-  spec:
-    - Use GIVEN/WHEN/THEN for scenarios
-    - "Mark ambiguities with [NEEDS CLARIFICATION]"
-  tasks: []
-  apply: []
-  review: []
-  hydrate: []
-
-# Pre/post shell commands per pipeline stage.
-# Pre hooks run before a stage starts — failure blocks the stage.
-# Post hooks run after a stage completes — failure fails the stage.
-# Commands execute via sh -c with the repo root as working directory.
-# Supports shell commands and script paths.
-# stage_hooks:
-#   review:
-#     pre: "npm test"
-#   apply:
-#     post: "npx tsc --noEmit"
-
 agent:
-  # Base command for spawning agent sessions in scripts and operators.
-  # Shell expansions (e.g., $(basename "$(pwd)")) expand at invocation time.
-  spawn_command: 'claude --dangerously-skip-permissions --effort max -n "$(basename "$(pwd)")"'
+    spawn_command: claude --dangerously-skip-permissions --effort max -n "$(basename "$(pwd)")"
+checklist:
+    extra_categories: []
+fab_version: 1.0.0
+project:
+    description: AI coding assistant cost tracking CLI
+    name: tu
+source_paths:
+    - src/
+stage_directives:
+    apply: []
+    hydrate: []
+    intake: []
+    review: []
+    spec:
+        - Use GIVEN/WHEN/THEN for scenarios
+        - Mark ambiguities with [NEEDS CLARIFICATION]
+    tasks: []
