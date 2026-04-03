@@ -4,8 +4,6 @@ dist/
 
 .fab-status.yaml
 
-fab/changes/**/.pr-done
-
 /.agents
 
 /.claude
@@ -17,8 +15,6 @@ fab/changes/**/.pr-done
 /.codex
 
 /.gemini
-
-/.ralph
 
 .fab-*
 
