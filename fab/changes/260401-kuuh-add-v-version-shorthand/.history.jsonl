@@ -1,0 +1,16 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-04-01T10:41:36Z"}
+{"args":"Make tu -v the same as --version","cmd":"fab-new","event":"command","ts":"2026-04-01T10:41:36Z"}
+{"delta":"+5.0","event":"confidence","score":5,"trigger":"calc-score","ts":"2026-04-01T10:41:55Z"}
+{"delta":"-2.0","event":"confidence","score":3,"trigger":"calc-score","ts":"2026-04-01T10:42:08Z"}
+{"cmd":"fab-switch","event":"command","ts":"2026-04-01T10:42:39Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-04-01T10:43:51Z"}
+{"delta":"-0.1","event":"confidence","score":2.9,"trigger":"calc-score","ts":"2026-04-01T10:44:27Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"spec","ts":"2026-04-01T10:44:31Z"}
+{"delta":"+2.1","event":"confidence","score":5,"trigger":"calc-score","ts":"2026-04-01T10:45:02Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"tasks","ts":"2026-04-01T10:45:31Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-04-01T10:45:35Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-04-01T10:46:14Z"}
+{"action":"enter","driver":"fab-continue","event":"stage-transition","stage":"hydrate","ts":"2026-04-01T10:47:08Z"}
+{"event":"review","result":"passed","ts":"2026-04-01T10:47:08Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-04-01T10:48:11Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-04-01T10:49:51Z"}

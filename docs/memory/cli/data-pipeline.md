@@ -12,7 +12,7 @@ Entry point: `src/node/core/cli.ts`. Data types: `src/node/core/types.ts`. Data 
 - Sources MUST include: `cc` (Claude Code), `codex`/`co` (Codex), `oc` (OpenCode), `all` (default)
 - Periods MUST include: `d`/`daily` (default), `m`/`monthly`; combined shorthands `dh`, `mh`
 - Display MUST include: bare (snapshot, default), `h`/`history`
-- Global flags: `--json`, `--sync`, `--fresh`/`-f`, `--watch`/`-w`, `--interval`/`-i <s>`, `--user`/`-u <user>`, `--by-machine`, `--no-color`, `--no-rain`
+- Global flags: `--json`, `--sync`, `--fresh`/`-f`, `--watch`/`-w`, `--interval`/`-i <s>`, `--user`/`-u <user>`, `--by-machine`, `--no-color`, `--no-rain`, `--version`/`-V`/`-v`
 - `--by-machine` MUST show per-machine cost breakdown columns in tables; works with snapshot and single-tool history; incompatible with all-tools history pivot (warn on stderr and ignore); compatible with `--watch`, `--json`, and `-u`; in single mode, shows one machine (hostname); uses `fetchToolMergedWithMachines` which returns `{ entries, machineMap }` where machineMap is `Map<string, UsageEntry[]>` (machine → entries)
 - `--user`/`-u` MUST set a target user for data display (multi mode only); in single mode, warn on stderr and ignore; when targeting a different user, display only metrics repo data (no local ccusage data); when targeting the same user as `config.user`, behave identically to the default (no `-u`) path — perform a local fetch (using cache unless `--fresh`/`-f` is provided), write to the metrics repo, then merge with other machines
 - `--watch` and `--json` MUST be mutually exclusive
@@ -44,3 +44,4 @@ Entry point: `src/node/core/cli.ts`. Data types: `src/node/core/types.ts`. Data 
 | 2026-03-07 | Added `tu update` self-update command (Homebrew detection, brew update/info/upgrade flow) |
 | 2026-03-07 | Fixed `-u` same-user path to fetch fresh local data instead of reading stale metrics repo |
 | 2026-03-07 | Added `--by-machine` flag for per-machine cost distribution columns (letter-coded A/B/C with legend) |
+| 2026-04-01 | Added `-v` (lowercase) as version flag alias alongside `--version` and `-V` (260401-kuuh) |
