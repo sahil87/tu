@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@ccusage/codex": "^18.0.8",
+    "@ccusage/copilot": "^18.0.8",
     "@ccusage/opencode": "^18.0.8",
     "@types/node": "^25.2.2",
     "ccusage": "^18.0.8",

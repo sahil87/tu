@@ -2,14 +2,14 @@
 
 ## Overview
 
-`tu` is a Node.js CLI tool (binary name: `tu`) that tracks AI coding assistant costs across Claude Code, Codex, and OpenCode. It parses positional arguments into a `{source, period, display}` grammar and dispatches to data-fetching and formatting pipelines.
+`tu` is a Node.js CLI tool (binary name: `tu`) that tracks AI coding assistant costs across Claude Code, Codex, OpenCode, and Copilot. It parses positional arguments into a `{source, period, display}` grammar and dispatches to data-fetching and formatting pipelines.
 
 Entry point: `src/node/core/cli.ts`. Data types: `src/node/core/types.ts`. Data fetching: `src/node/core/fetcher.ts`. Config: `src/node/core/config.ts`.
 
 ## Requirements
 
 - The CLI MUST support positional argument grammar: `tu [source] [period] [display]`
-- Sources MUST include: `cc` (Claude Code), `codex`/`co` (Codex), `oc` (OpenCode), `all` (default)
+- Sources MUST include: `cc` (Claude Code), `codex`/`co` (Codex), `oc` (OpenCode), `cp` (Copilot), `all` (default)
 - Periods MUST include: `d`/`daily` (default), `m`/`monthly`; combined shorthands `dh`, `mh`
 - Display MUST include: bare (snapshot, default), `h`/`history`
 - Global flags: `--json`, `--sync`, `--fresh`/`-f`, `--watch`/`-w`, `--interval`/`-i <s>`, `--user`/`-u <user>`, `--by-machine`, `--no-color`, `--no-rain`
@@ -19,10 +19,10 @@ Entry point: `src/node/core/cli.ts`. Data types: `src/node/core/types.ts`. Data 
 - `--interval` range: 5-3600 seconds, default 10
 - Non-data commands (`init-conf`, `init-metrics`, `sync`, `status`, `update`, `help`) MUST be dispatched before grammar parsing
 - `tu update` MUST detect Homebrew installation via `_pkgDir.includes("/Cellar/tu/")`, show a helpful message for non-brew installs (exit 0), and run `brew update` → `brew info` → `brew upgrade` for brew installs with specific error messages per failure
-- Data fetching MUST use `ccusage` family binaries (`ccusage`, `ccusage-codex`, `ccusage-opencode`) via child process `exec`
+- Data fetching MUST use `ccusage` family binaries (`ccusage`, `ccusage-codex`, `ccusage-opencode`, `ccusage-copilot`) via child process `exec`
 - Fetch results MUST be cached in `~/.tu/cache/` with 60-second TTL; `--fresh` bypasses cache
 - The `TOOLS` registry maps tool keys to `ToolConfig` objects with `name`, `command`, and `needsFilter` fields
-- `needsFilter` tools (Codex, OpenCode) require stripping lines starting with `[` before JSON parsing
+- `needsFilter` tools (Codex, OpenCode, Copilot) require stripping lines starting with `[` before JSON parsing
 - Date labels MUST be normalized from human-readable (`"Feb 14, 2026"`) to ISO (`"2026-02-14"`)
 - Monthly aggregation MUST be computed client-side from daily entries (slice label to `YYYY-MM`, sum tokens/cost)
 
@@ -44,3 +44,4 @@ Entry point: `src/node/core/cli.ts`. Data types: `src/node/core/types.ts`. Data 
 | 2026-03-07 | Added `tu update` self-update command (Homebrew detection, brew update/info/upgrade flow) |
 | 2026-03-07 | Fixed `-u` same-user path to fetch fresh local data instead of reading stale metrics repo |
 | 2026-03-07 | Added `--by-machine` flag for per-machine cost distribution columns (letter-coded A/B/C with legend) |
+| 2026-04-03 | Added Copilot (`cp`) as fourth data source via `ccusage-copilot` binary with `needsFilter: true` |

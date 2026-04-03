@@ -27,6 +27,13 @@ describe("parseDataArgs", () => {
       assert.equal(result.source, "oc");
     });
 
+    it("recognizes cp as source", () => {
+      const result = parseDataArgs(["cp"]);
+      assert.equal(result.source, "cp");
+      assert.equal(result.period, "daily");
+      assert.equal(result.display, "snapshot");
+    });
+
     it("recognizes all as explicit source", () => {
       const result = parseDataArgs(["all", "mh"]);
       assert.equal(result.source, "all");

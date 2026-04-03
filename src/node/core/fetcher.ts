@@ -58,6 +58,7 @@ export const TOOLS: Record<string, ToolConfig> = {
   cc: { name: "Claude Code", command: useVendor ? `node ${BIN}/ccusage/index.js` : `${BIN}/ccusage`, needsFilter: false },
   codex: { name: "Codex", command: useVendor ? `node ${BIN}/ccusage-codex/index.js` : `${BIN}/ccusage-codex`, needsFilter: true },
   oc: { name: "OpenCode", command: useVendor ? `node ${BIN}/ccusage-opencode/index.js` : `${BIN}/ccusage-opencode`, needsFilter: true },
+  cp: { name: "Copilot", command: useVendor ? `node ${BIN}/ccusage-copilot/index.js` : `${BIN}/ccusage-copilot`, needsFilter: true },
 };
 
 export const EMPTY: UsageTotals = {

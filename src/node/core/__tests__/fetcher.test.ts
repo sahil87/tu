@@ -294,19 +294,21 @@ describe("pickCurrentEntry", () => {
 // TOOLS registry
 // ---------------------------------------------------------------------------
 describe("TOOLS", () => {
-  it("has entries for cc, codex, and oc", () => {
+  it("has entries for cc, codex, oc, and cp", () => {
     assert.ok(TOOLS.cc);
     assert.ok(TOOLS.codex);
     assert.ok(TOOLS.oc);
+    assert.ok(TOOLS.cp);
   });
 
   it("cc does not need filtering", () => {
     assert.equal(TOOLS.cc.needsFilter, false);
   });
 
-  it("codex and oc need filtering", () => {
+  it("codex, oc, and cp need filtering", () => {
     assert.equal(TOOLS.codex.needsFilter, true);
     assert.equal(TOOLS.oc.needsFilter, true);
+    assert.equal(TOOLS.cp.needsFilter, true);
   });
 });
 
