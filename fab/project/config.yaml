@@ -2,12 +2,16 @@ agent:
     spawn_command: claude --dangerously-skip-permissions --effort max -n "$(basename "$(pwd)")"
 checklist:
     extra_categories: []
-fab_version: 1.0.0
+fab_version: 1.2.4
 project:
     description: AI coding assistant cost tracking CLI
     name: tu
 source_paths:
     - src/
+review_tools:
+    copilot: true
+    codex: true
+    claude: true
 stage_directives:
     apply: []
     hydrate: []
