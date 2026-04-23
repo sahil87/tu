@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - uses: extractions/setup-just@dd310ad5a97d8e7b41793f8ef055398d51ad4de6 # v2
+
+      - name: Generate release notes
+        run: just release-notes "${{ github.ref_name }}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "tu ${{ github.ref_name }}" \
+            --notes-file dist/release-notes.md
+
+      - name: Update Homebrew tap
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          version="${{ github.ref_name }}"
+          version="${version#v}"
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/sahil87/homebrew-tap.git" /tmp/tap
+          sed -i "s|tag: \"v.*\"|tag: \"v${version}\"|" /tmp/tap/Formula/tu.rb
+          cd /tmp/tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/tu.rb
+          git commit -m "tu ${version}"
+          git push
