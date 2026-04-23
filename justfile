@@ -11,8 +11,10 @@ run *ARGS:
 build:
     scripts/build.sh
 
-deploy: build
-    npm publish
-
+# Bump version, commit, tag, and push (CI handles the rest)
 release bump="patch":
     scripts/release.sh {{bump}}
+
+# Generate release notes for the current tag into dist/release-notes.md
+release-notes tag="":
+    scripts/release-notes.sh {{tag}}

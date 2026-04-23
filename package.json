@@ -8,8 +8,7 @@
   },
   "scripts": {
     "build": "scripts/build.sh",
-    "test": "npx tsx --test 'src/node/**/__tests__/*.test.ts'",
-    "prepublishOnly": "npm run build"
+    "test": "npx tsx --test 'src/node/**/__tests__/*.test.ts'"
   },
   "files": [
     "dist/",
