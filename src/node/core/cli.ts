@@ -1,10 +1,11 @@
 import { TOOLS, EMPTY, fetchHistory, fetchAllTotals, fetchAllHistory, aggregateMonthly, mergeEntries, currentLabel } from "./fetcher.js";
-import { printHistory, printTotal, printTotalHistory, renderHistory, renderTotal, renderTotalHistory } from "../tui/formatter.js";
+import { printHistory, printTotal, printTotalHistory, renderHistory, renderTotal, renderTotalHistory, emitCsv, emitMarkdown } from "../tui/formatter.js";
 import type { FormatOptions } from "../tui/formatter.js";
 import { readConfig, CONFIG_PATH, TU_HOME, THREE_HOURS_MS, resolveHome, DEFAULT_CONFIG_PATH } from "./config.js";
 import { writeMetrics, readRemoteEntries, readRemoteEntriesByMachine, fullSync } from "../sync/sync.js";
 import { runWatch } from "../tui/watch.js";
 import { setNoColor } from "../tui/colors.js";
+import { BASH_COMPLETION, ZSH_COMPLETION, FISH_COMPLETION } from "./completions.js";
 import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { execSync, execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -69,11 +70,14 @@ Setup:
   tu sync              Push/pull metrics manually
   tu status            Show config and sync state
   tu update            Update tu to latest version
+  tu completions <sh>  Emit shell completion script (bash/zsh/fish)
 
 Help: tu help | tu -h | tu --help
 
 Flags:
   --json               Output data as JSON (data commands only)
+  --csv                Output data as CSV (data commands only)
+  --md                 Output data as Markdown (data commands only)
   --sync               Sync metrics before fetching (multi mode)
   --fresh / -f         Bypass cache, fetch fresh data (data commands only)
   --watch / -w         Persistent polling mode with live display (data commands only)
@@ -236,6 +240,34 @@ export function runStatus(
   console.log(`Metrics:     ${metricsLine}`);
   console.log(`Last sync:   ${formatLastSync(tuHome, now)}`);
   console.log(`Auto-sync:   ${config.autoSync ? "on" : "off"}`);
+}
+
+const COMPLETIONS_USAGE = `Usage: tu completions <bash|zsh|fish>
+
+Install:
+  bash: echo 'source <(tu completions bash)' >> ~/.bashrc
+  zsh:  tu completions zsh > "\${fpath[1]}/_tu"
+  fish: tu completions fish > ~/.config/fish/completions/tu.fish`;
+
+export function runCompletions(shell: string | undefined): void {
+  if (shell === undefined) {
+    console.log(COMPLETIONS_USAGE);
+    return;
+  }
+  switch (shell) {
+    case "bash":
+      process.stdout.write(BASH_COMPLETION);
+      return;
+    case "zsh":
+      process.stdout.write(ZSH_COMPLETION);
+      return;
+    case "fish":
+      process.stdout.write(FISH_COMPLETION);
+      return;
+    default:
+      console.error(`Unknown shell: ${shell}. Supported: bash, zsh, fish`);
+      process.exit(1);
+  }
 }
 
 export function runUpdate(): void {
@@ -462,7 +494,11 @@ let _lastRenderCost = 0;
 let _lastRenderCostMap = new Map<string, number>();
 let _lastRenderTotalTokens = 0;
 
+export type OutputFormat = "table" | "json" | "csv" | "md";
+
 export interface GlobalFlags {
+  outputFormat: OutputFormat;
+  // jsonFlag retained for downstream callers and test compatibility during transition.
   jsonFlag: boolean;
   syncFlag: boolean;
   freshFlag: boolean;
@@ -477,6 +513,8 @@ export interface GlobalFlags {
 
 export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   const jsonFlag = rawArgs.includes("--json");
+  const csvFlag = rawArgs.includes("--csv");
+  const mdFlag = rawArgs.includes("--md");
   const syncFlag = rawArgs.includes("--sync");
   const freshFlag = rawArgs.includes("--fresh") || rawArgs.includes("-f");
   const watchFlag = rawArgs.includes("--watch") || rawArgs.includes("-w");
@@ -492,7 +530,7 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   const filteredArgs: string[] = [];
   for (let i = 0; i < rawArgs.length; i++) {
     const a = rawArgs[i];
-    if (a === "--json" || a === "--sync" || a === "--fresh" || a === "-f" || a === "--watch" || a === "-w" || a === "--no-color" || a === "--no-rain" || a === "--by-machine") continue;
+    if (a === "--json" || a === "--csv" || a === "--md" || a === "--sync" || a === "--fresh" || a === "-f" || a === "--watch" || a === "-w" || a === "--no-color" || a === "--no-rain" || a === "--by-machine") continue;
     if (a === "--interval" || a === "-i") {
       hasIntervalFlag = true;
       const next = rawArgs[i + 1];
@@ -531,8 +569,30 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
     watchInterval = num;
   }
 
+  // Output-format flags are mutually exclusive. Existing --watch + --json rejection
+  // keeps its original wording; --watch + --csv/--md follow the same pattern.
   if (watchFlag && jsonFlag) {
     console.error("Error: --watch and --json are incompatible");
+    process.exit(1);
+  }
+  if (jsonFlag && csvFlag) {
+    console.error("Error: --json and --csv are incompatible");
+    process.exit(1);
+  }
+  if (jsonFlag && mdFlag) {
+    console.error("Error: --json and --md are incompatible");
+    process.exit(1);
+  }
+  if (csvFlag && mdFlag) {
+    console.error("Error: --csv and --md are incompatible");
+    process.exit(1);
+  }
+  if (watchFlag && csvFlag) {
+    console.error("Error: --watch and --csv are incompatible");
+    process.exit(1);
+  }
+  if (watchFlag && mdFlag) {
+    console.error("Error: --watch and --md are incompatible");
     process.exit(1);
   }
 
@@ -541,7 +601,12 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
     process.exit(1);
   }
 
-  return { jsonFlag, syncFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, filteredArgs };
+  let outputFormat: OutputFormat = "table";
+  if (jsonFlag) outputFormat = "json";
+  else if (csvFlag) outputFormat = "csv";
+  else if (mdFlag) outputFormat = "md";
+
+  return { outputFormat, jsonFlag, syncFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, filteredArgs };
 }
 
 const KNOWN_SOURCES = new Set(["cc", "codex", "co", "oc", "all"]);
@@ -585,7 +650,21 @@ export function parseDataArgs(args: string[]): DataArgs {
   return { source, period, display };
 }
 
-async function dispatchAllHistory(config: TuConfig, period: string, jsonFlag: boolean, skipCache = false, fmtOpts?: FormatOptions, targetUser?: string): Promise<void> {
+function renderTotalHistoryByFormat(
+  outputFormat: OutputFormat,
+  period: string,
+  data: Map<string, UsageEntry[]>,
+  fmtOpts?: FormatOptions,
+): void {
+  switch (outputFormat) {
+    case "json": emitJson(data); break;
+    case "csv": emitCsv(data, "total-history", { period }); break;
+    case "md": emitMarkdown(data, "total-history", { period }); break;
+    default: printTotalHistory(period, data, undefined, fmtOpts);
+  }
+}
+
+async function dispatchAllHistory(config: TuConfig, period: string, outputFormat: OutputFormat, skipCache = false, fmtOpts?: FormatOptions, targetUser?: string): Promise<void> {
   if (config.mode === "multi") {
     const toolKeys = Object.keys(TOOLS);
     const allMerged = await Promise.all(toolKeys.map((k) => fetchToolMerged(config, k, period, [], skipCache, targetUser)));
@@ -593,8 +672,7 @@ async function dispatchAllHistory(config: TuConfig, period: string, jsonFlag: bo
     for (let i = 0; i < toolKeys.length; i++) {
       mergedMap.set(TOOLS[toolKeys[i]].name, allMerged[i]);
     }
-    if (jsonFlag) { emitJson(mergedMap); }
-    else { printTotalHistory(period, mergedMap, undefined, fmtOpts); }
+    renderTotalHistoryByFormat(outputFormat, period, mergedMap, fmtOpts);
     _lastRenderCost = sumAllToolCosts(mergedMap);
     _lastRenderCostMap = buildCostMap(mergedMap);
   } else {
@@ -604,20 +682,34 @@ async function dispatchAllHistory(config: TuConfig, period: string, jsonFlag: bo
       for (const [name, entries] of results) {
         aggregated.set(name, aggregateMonthly(entries));
       }
-      if (jsonFlag) { emitJson(aggregated); }
-      else { printTotalHistory(period, aggregated, undefined, fmtOpts); }
+      renderTotalHistoryByFormat(outputFormat, period, aggregated, fmtOpts);
       _lastRenderCost = sumAllToolCosts(aggregated);
       _lastRenderCostMap = buildCostMap(aggregated);
     } else {
-      if (jsonFlag) { emitJson(results); }
-      else { printTotalHistory(period, results, undefined, fmtOpts); }
+      renderTotalHistoryByFormat(outputFormat, period, results, fmtOpts);
       _lastRenderCost = sumAllToolCosts(results);
       _lastRenderCostMap = buildCostMap(results);
     }
   }
 }
 
-async function dispatchAllSnapshot(config: TuConfig, period: string, jsonFlag: boolean, skipCache = false, fmtOpts?: FormatOptions, targetUser?: string, byMachine = false): Promise<void> {
+function renderSnapshotByFormat(
+  outputFormat: OutputFormat,
+  period: string,
+  data: Map<string, UsageTotals>,
+  fmtOpts?: FormatOptions,
+  machineCosts?: Map<string, Map<string, number>>,
+): void {
+  const opts: FormatOptions = machineCosts ? { ...fmtOpts, machineCosts } : (fmtOpts ?? {});
+  switch (outputFormat) {
+    case "json": emitJson(machineCosts ? attachMachinesJson(data, machineCosts) : data); break;
+    case "csv": emitCsv(data, "snapshot", { period, machineCosts }); break;
+    case "md": emitMarkdown(data, "snapshot", { period, machineCosts }); break;
+    default: printTotal(period, data, opts);
+  }
+}
+
+async function dispatchAllSnapshot(config: TuConfig, period: string, outputFormat: OutputFormat, skipCache = false, fmtOpts?: FormatOptions, targetUser?: string, byMachine = false): Promise<void> {
   if (byMachine) {
     const toolKeys = Object.keys(TOOLS);
     const allResults = await Promise.all(toolKeys.map((k) => fetchToolMergedWithMachines(config, k, period, [], skipCache, targetUser)));
@@ -627,8 +719,7 @@ async function dispatchAllSnapshot(config: TuConfig, period: string, jsonFlag: b
       result.set(TOOLS[toolKeys[i]].name, current ?? { ...EMPTY });
     }
     const machineCosts = buildSnapshotMachineCosts(toolKeys, allResults, period);
-    if (jsonFlag) { emitJson(attachMachinesJson(result, machineCosts)); }
-    else { printTotal(period, result, { ...fmtOpts, machineCosts }); }
+    renderSnapshotByFormat(outputFormat, period, result, fmtOpts, machineCosts);
     _lastRenderCost = sumToolTotalsCost(result);
     _lastRenderCostMap = buildCostMap(result);
     return;
@@ -642,8 +733,7 @@ async function dispatchAllSnapshot(config: TuConfig, period: string, jsonFlag: b
       const current = allMerged[i].find((e) => e.label === currentLabel(period));
       result.set(TOOLS[toolKeys[i]].name, current ?? { ...EMPTY });
     }
-    if (jsonFlag) { emitJson(result); }
-    else { printTotal(period, result, fmtOpts); }
+    renderSnapshotByFormat(outputFormat, period, result, fmtOpts);
     _lastRenderCost = sumToolTotalsCost(result);
     _lastRenderCostMap = buildCostMap(result);
   } else {
@@ -657,22 +747,37 @@ async function dispatchAllSnapshot(config: TuConfig, period: string, jsonFlag: b
         const match = monthly.find((m) => m.label === target);
         result.set(TOOLS[toolKeys[i]].name, match ?? { ...EMPTY });
       }
-      if (jsonFlag) { emitJson(result); }
-      else { printTotal(period, result, fmtOpts); }
+      renderSnapshotByFormat(outputFormat, period, result, fmtOpts);
       _lastRenderCost = sumToolTotalsCost(result);
       _lastRenderCostMap = buildCostMap(result);
     } else {
       const results = await fetchAllTotals([]);
-      if (jsonFlag) { emitJson(results); }
-      else { printTotal(period, results, fmtOpts); }
+      renderSnapshotByFormat(outputFormat, period, results, fmtOpts);
       _lastRenderCost = sumToolTotalsCost(results);
       _lastRenderCostMap = buildCostMap(results);
     }
   }
 }
 
+function renderHistoryByFormat(
+  outputFormat: OutputFormat,
+  toolName: string,
+  period: string,
+  entries: UsageEntry[],
+  fmtOpts?: FormatOptions,
+  machineCosts?: Map<string, Map<string, number>>,
+): void {
+  const opts: FormatOptions = machineCosts ? { ...fmtOpts, machineCosts } : (fmtOpts ?? {});
+  switch (outputFormat) {
+    case "json": emitJson(machineCosts ? attachMachinesJson(entries, machineCosts) : entries); break;
+    case "csv": emitCsv({ toolName, entries }, "history", { period, machineCosts }); break;
+    case "md": emitMarkdown({ toolName, entries }, "history", { period, machineCosts }); break;
+    default: printHistory(toolName, period, entries, undefined, opts);
+  }
+}
+
 async function dispatchSingleTool(
-  config: TuConfig, toolKey: string, period: string, display: string, jsonFlag: boolean, skipCache = false, fmtOpts?: FormatOptions, targetUser?: string, byMachine = false,
+  config: TuConfig, toolKey: string, period: string, display: string, outputFormat: OutputFormat, skipCache = false, fmtOpts?: FormatOptions, targetUser?: string, byMachine = false,
 ): Promise<void> {
   const toolCfg = TOOLS[toolKey];
   if (!toolCfg) {
@@ -689,8 +794,7 @@ async function dispatchSingleTool(
 
     if (display === "history") {
       const machineCosts = buildHistoryMachineCosts(merged.machineMap);
-      if (jsonFlag) { emitJson(attachMachinesJson(merged.entries, machineCosts)); }
-      else { printHistory(toolCfg.name, period, merged.entries, undefined, { ...fmtOpts, machineCosts }); }
+      renderHistoryByFormat(outputFormat, toolCfg.name, period, merged.entries, fmtOpts, machineCosts);
       _lastRenderCost = merged.entries.reduce((sum, e) => sum + e.totalCost, 0);
       _lastRenderCostMap = buildCostMap(merged.entries, toolCfg.name);
     } else {
@@ -705,8 +809,7 @@ async function dispatchSingleTool(
         toolMachines.set(machine, match ? match.totalCost : 0);
       }
       machineCosts.set(toolCfg.name, toolMachines);
-      if (jsonFlag) { emitJson(attachMachinesJson(result, machineCosts)); }
-      else { printTotal(period, result, { ...fmtOpts, machineCosts }); }
+      renderSnapshotByFormat(outputFormat, period, result, fmtOpts, machineCosts);
       _lastRenderCost = sumToolTotalsCost(result);
       _lastRenderCostMap = buildCostMap(result);
     }
@@ -724,8 +827,7 @@ async function dispatchSingleTool(
   _mark("fetch done");
 
   if (display === "history") {
-    if (jsonFlag) { emitJson(entries); }
-    else { printHistory(toolCfg.name, period, entries, undefined, fmtOpts); }
+    renderHistoryByFormat(outputFormat, toolCfg.name, period, entries, fmtOpts);
     _lastRenderCost = entries.reduce((sum, e) => sum + e.totalCost, 0);
     _lastRenderCostMap = buildCostMap(entries, toolCfg.name);
   } else {
@@ -733,8 +835,7 @@ async function dispatchSingleTool(
     const current = entries.find((e) => e.label === target);
     const result = new Map<string, UsageTotals>();
     result.set(toolCfg.name, current ?? { ...EMPTY });
-    if (jsonFlag) { emitJson(result); }
-    else { printTotal(period, result, fmtOpts); }
+    renderSnapshotByFormat(outputFormat, period, result, fmtOpts);
     _lastRenderCost = sumToolTotalsCost(result);
     _lastRenderCostMap = buildCostMap(result);
   }
@@ -1011,7 +1112,7 @@ function sumToolTotalsTokens(m: Map<string, UsageTotals>): number {
 async function main() {
   _mark("main() entered");
   const rawArgs = process.argv.slice(2);
-  let { jsonFlag, syncFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, filteredArgs } = parseGlobalFlags(rawArgs);
+  let { outputFormat, syncFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, filteredArgs } = parseGlobalFlags(rawArgs);
 
   if (noColorFlag) setNoColor(true);
 
@@ -1034,6 +1135,7 @@ async function main() {
     if (cmd === "sync") { await runSync(); return; }
     if (cmd === "status") { runStatus(); return; }
     if (cmd === "update") { runUpdate(); return; }
+    if (cmd === "completions") { runCompletions(filteredArgs[1]); return; }
   }
 
   // Parse positional data args (source, period, display)
@@ -1091,10 +1193,10 @@ async function main() {
     });
   } else {
     if (source === "all") {
-      if (display === "history") { await dispatchAllHistory(config, period, jsonFlag, freshFlag, undefined, userFlag); }
-      else { await dispatchAllSnapshot(config, period, jsonFlag, freshFlag, undefined, userFlag, byMachineFlag); }
+      if (display === "history") { await dispatchAllHistory(config, period, outputFormat, freshFlag, undefined, userFlag); }
+      else { await dispatchAllSnapshot(config, period, outputFormat, freshFlag, undefined, userFlag, byMachineFlag); }
     } else {
-      await dispatchSingleTool(config, source, period, display, jsonFlag, freshFlag, undefined, userFlag, byMachineFlag);
+      await dispatchSingleTool(config, source, period, display, outputFormat, freshFlag, undefined, userFlag, byMachineFlag);
     }
   }
 }

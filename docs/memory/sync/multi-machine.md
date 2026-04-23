@@ -13,7 +13,7 @@ Multi-machine sync (`src/node/sync/sync.ts`) enables aggregating AI usage costs 
 - `readRemoteEntriesByMachine(metricsDir, targetUser, excludeMachine, toolKey)` MUST return `Map<string, UsageEntry[]>` grouped by machine directory name; when `excludeMachine` is non-null, that machine is excluded from the map
 - `readRemoteEntries(metricsDir, targetUser, excludeMachine, toolKey)` MUST delegate to `readRemoteEntriesByMachine` and flatten the result into a single `UsageEntry[]`; signature and behavior unchanged from callers' perspective
 - `mergeEntries()` MUST sum token counts and costs for entries with matching labels [INFERRED]
-- `syncMetrics()` MUST: (1) git add user dir, (2) commit if changes, (3) pull --rebase, (4) push (with one retry)
+- `syncMetrics()` MUST: (1) git add user dir, (2) commit if changes, (3) pull --rebase, (4) push (with one retry). All git commands MUST be invoked via `execFile("git", [...argv])` (no shell subprocess) — the internal `git` helper is `(args: string[]) => execFileAsync("git", ["-C", metricsDir, ...args])`. Argv entries (including `metricsDir`) are passed as literal strings; no quote parsing is performed. Interrupted-rebase recovery (`execFile("git", ["-C", metricsDir, "rebase", "--abort"])`) and single-retry push preserve their pre-change semantics
 - `fullSync()` MUST: fetch all tools locally, write metrics, sync via git, touch `.last-sync` timestamp
 - `isStale()` MUST return true if `.last-sync` is older than 3 hours or missing
 - `--sync` flag MUST trigger sync before data fetch (inline, not auto-triggered)
@@ -39,3 +39,4 @@ Multi-machine sync (`src/node/sync/sync.ts`) enables aggregating AI usage costs 
 | 2026-03-07 | readRemoteEntries scoped to single target user; excludeMachine parameter replaces user+machine skip; supports `-u` flag for viewing other users' data |
 | 2026-03-07 | Fixed `-u` same-user: falls through to fresh-fetch path instead of reading stale repo data |
 | 2026-03-07 | Added `readRemoteEntriesByMachine` returning grouped `Map<string, UsageEntry[]>`; refactored `readRemoteEntries` to delegate and flatten |
+| 2026-04-23 | Migrated git invocations from `exec("git -C ... ...")` to `execFile("git", [...argv])` — no shell fork, paths with spaces/quotes pass through as literal argv entries (260423-lx0g) |

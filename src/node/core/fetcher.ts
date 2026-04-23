@@ -1,4 +1,4 @@
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
@@ -55,9 +55,24 @@ function writeCache(toolKey: string, entries: UsageEntry[]): void {
 }
 
 export const TOOLS: Record<string, ToolConfig> = {
-  cc: { name: "Claude Code", command: useVendor ? `node ${BIN}/ccusage/index.js` : `${BIN}/ccusage`, needsFilter: false },
-  codex: { name: "Codex", command: useVendor ? `node ${BIN}/ccusage-codex/index.js` : `${BIN}/ccusage-codex`, needsFilter: true },
-  oc: { name: "OpenCode", command: useVendor ? `node ${BIN}/ccusage-opencode/index.js` : `${BIN}/ccusage-opencode`, needsFilter: true },
+  cc: {
+    name: "Claude Code",
+    binary: useVendor ? "node" : `${BIN}/ccusage`,
+    prefixArgs: useVendor ? [`${BIN}/ccusage/index.js`] : [],
+    needsFilter: false,
+  },
+  codex: {
+    name: "Codex",
+    binary: useVendor ? "node" : `${BIN}/ccusage-codex`,
+    prefixArgs: useVendor ? [`${BIN}/ccusage-codex/index.js`] : [],
+    needsFilter: true,
+  },
+  oc: {
+    name: "OpenCode",
+    binary: useVendor ? "node" : `${BIN}/ccusage-opencode`,
+    prefixArgs: useVendor ? [`${BIN}/ccusage-opencode/index.js`] : [],
+    needsFilter: true,
+  },
 };
 
 export const EMPTY: UsageTotals = {
@@ -76,9 +91,9 @@ export function stripNoise(output: string): string {
     .join("\n");
 }
 
-function execAsync(cmd: string, toolName: string): Promise<string> {
+function execFileAsync(file: string, args: string[], toolName: string): Promise<string> {
   return new Promise((resolve) => {
-    exec(cmd, { encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 }, (error, stdout) => {
+    execFile(file, args, { encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 }, (error, stdout) => {
       if (error) {
         console.warn(`warning: ${toolName} fetch failed (${error.message}), showing zero data`);
         resolve("");
@@ -164,8 +179,8 @@ export function parseJson(raw: string, needsFilter: boolean): Record<string, unk
 async function runTool(toolKey: string, period: string, extraArgs: string[] = []): Promise<string> {
   const tool = TOOLS[toolKey];
   if (!tool) throw new Error(`Unknown tool: ${toolKey}`);
-  const args = [period, "--json", ...extraArgs].join(" ");
-  return execAsync(`${tool.command} ${args}`, tool.name);
+  const args = [...tool.prefixArgs, period, "--json", ...extraArgs];
+  return execFileAsync(tool.binary, args, tool.name);
 }
 
 // --- Single-value fetchers (used by tu total daily / tu total monthly) ---
