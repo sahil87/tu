@@ -1,7 +1,18 @@
-import { describe, it } from "node:test";
+import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseDataArgs } from "../cli.js";
+import { parseDataArgs, parseGlobalFlags } from "../cli.js";
+
+function captureExit(): { code: number | null; errors: string[] } {
+  const state = { code: null as number | null, errors: [] as string[] };
+  mock.method(process, "exit", ((code: number) => { state.code = code; }) as never);
+  mock.method(console, "error", ((...args: unknown[]) => { state.errors.push(args.map(String).join(" ")); }) as never);
+  return state;
+}
+
+function restoreMocks() {
+  mock.restoreAll();
+}
 
 describe("parseDataArgs", () => {
   describe("source detection", () => {
@@ -161,5 +172,99 @@ describe("parseDataArgs", () => {
     it("throws on unknown arg after valid source", () => {
       assert.throws(() => parseDataArgs(["cc", "xyz"]), /Unknown argument: xyz/);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseGlobalFlags: --csv / --md parsing + conflict matrix
+// ---------------------------------------------------------------------------
+
+describe("parseGlobalFlags: --csv / --md extraction", () => {
+  it("extracts --csv and reports outputFormat: csv", () => {
+    const r = parseGlobalFlags(["cc", "--csv"]);
+    assert.equal(r.outputFormat, "csv");
+    assert.deepEqual(r.filteredArgs, ["cc"]);
+  });
+
+  it("extracts --md and reports outputFormat: md", () => {
+    const r = parseGlobalFlags(["m", "--md"]);
+    assert.equal(r.outputFormat, "md");
+    assert.deepEqual(r.filteredArgs, ["m"]);
+  });
+
+  it("--json is preserved as outputFormat: json", () => {
+    const r = parseGlobalFlags(["cc", "--json"]);
+    assert.equal(r.outputFormat, "json");
+  });
+
+  it("default outputFormat is table", () => {
+    const r = parseGlobalFlags(["cc"]);
+    assert.equal(r.outputFormat, "table");
+  });
+});
+
+describe("parseGlobalFlags: format-flag conflicts", () => {
+  it("--json + --csv is rejected", (t) => {
+    t.after(restoreMocks);
+    const s = captureExit();
+    parseGlobalFlags(["cc", "--json", "--csv"]);
+    assert.equal(s.code, 1);
+    assert.ok(s.errors.some((e) => e.includes("--json and --csv are incompatible")), `got errors: ${s.errors.join("; ")}`);
+  });
+
+  it("--csv + --md is rejected", (t) => {
+    t.after(restoreMocks);
+    const s = captureExit();
+    parseGlobalFlags(["cc", "--csv", "--md"]);
+    assert.equal(s.code, 1);
+    assert.ok(s.errors.some((e) => e.includes("--csv and --md are incompatible")));
+  });
+
+  it("--json + --md is rejected", (t) => {
+    t.after(restoreMocks);
+    const s = captureExit();
+    parseGlobalFlags(["cc", "--json", "--md"]);
+    assert.equal(s.code, 1);
+    assert.ok(s.errors.some((e) => e.includes("--json and --md are incompatible")));
+  });
+
+  it("--csv + --watch is rejected", (t) => {
+    t.after(restoreMocks);
+    const s = captureExit();
+    parseGlobalFlags(["cc", "--csv", "--watch"]);
+    assert.equal(s.code, 1);
+    assert.ok(s.errors.some((e) => e.includes("--watch and --csv are incompatible")));
+  });
+
+  it("--md + --watch is rejected", (t) => {
+    t.after(restoreMocks);
+    const s = captureExit();
+    parseGlobalFlags(["cc", "--md", "--watch"]);
+    assert.equal(s.code, 1);
+    assert.ok(s.errors.some((e) => e.includes("--watch and --md are incompatible")));
+  });
+
+  it("--csv + -w (short form) is rejected", (t) => {
+    t.after(restoreMocks);
+    const s = captureExit();
+    parseGlobalFlags(["cc", "--csv", "-w"]);
+    assert.equal(s.code, 1);
+    assert.ok(s.errors.some((e) => e.includes("--watch and --csv are incompatible")));
+  });
+
+  it("--md + -w (short form) is rejected", (t) => {
+    t.after(restoreMocks);
+    const s = captureExit();
+    parseGlobalFlags(["cc", "--md", "-w"]);
+    assert.equal(s.code, 1);
+    assert.ok(s.errors.some((e) => e.includes("--watch and --md are incompatible")));
+  });
+
+  it("existing --watch + --json error preserved with original wording", (t) => {
+    t.after(restoreMocks);
+    const s = captureExit();
+    parseGlobalFlags(["cc", "--watch", "--json"]);
+    assert.equal(s.code, 1);
+    assert.ok(s.errors.some((e) => e.includes("--watch and --json are incompatible")));
   });
 });

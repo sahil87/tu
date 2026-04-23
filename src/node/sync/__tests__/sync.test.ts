@@ -397,4 +397,30 @@ exit 1
       console.error = origError;
     }
   });
+
+  // --- Post-exec-migration: metricsDir with spaces must still work ---
+  // execFile takes each argv entry as a literal string, so paths with spaces
+  // no longer need quoting. This would have broken under the previous exec(cmd)
+  // implementation because shell-word-splitting would split on the space.
+  it("handles metricsDir with spaces (execFile literal argv)", async () => {
+    const opts = { stdio: "pipe" as const };
+    const spacedBare = join(GIT_DIR, "bare with space.git");
+    const spacedClone = join(GIT_DIR, "My Data", "clone with space");
+    execSync(`git init --bare "${spacedBare}"`, opts);
+    mkdirSync(join(GIT_DIR, "My Data"), { recursive: true });
+    execSync(`git clone "${spacedBare}" "${spacedClone}"`, opts);
+    execSync(`git -C "${spacedClone}" config user.email "test@test.com"`, opts);
+    execSync(`git -C "${spacedClone}" config user.name "Test"`, opts);
+    writeFileSync(join(spacedClone, ".gitkeep"), "");
+    execSync(`git -C "${spacedClone}" add .gitkeep`, opts);
+    execSync(`git -C "${spacedClone}" commit -m "init"`, opts);
+    execSync(`git -C "${spacedClone}" push`, opts);
+
+    writeMetrics(spacedClone, "sahil", "macbook", "cc", [entry("2026-02-22", 1.5)]);
+    const result = await syncMetrics(spacedClone, "sahil");
+    assert.equal(result, true, "expected sync to succeed with spaces in metricsDir");
+
+    const log = execSync(`git -C "${spacedBare}" log --oneline`, { encoding: "utf-8" });
+    assert.ok(log.includes("# sahil: update"), "expected sahil commit in bare repo log");
+  });
 });
