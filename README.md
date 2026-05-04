@@ -1,5 +1,7 @@
 # tu
 
+> Part of [@sahil87's open source toolkit](https://ai.shll.in) — see all projects there.
+
 AI coding assistant cost tracking CLI.
 Track your token usage in style!
 
