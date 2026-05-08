@@ -1,4 +1,4 @@
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { UsageEntry } from "../core/types.js";
@@ -6,11 +6,12 @@ import { TU_HOME, THREE_HOURS_MS } from "../core/config.js";
 import type { TuConfig } from "../core/config.js";
 import { TOOLS, fetchHistory } from "../core/fetcher.js";
 
-function execAsync(cmd: string): Promise<string> {
+function execFileAsync(file: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    exec(cmd, { encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 }, (error, stdout) => {
+    execFile(file, args, { encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 }, (error, stdout) => {
       if (error) {
-        reject(new Error(`${cmd.split(" ").slice(0, 3).join(" ")}... failed: ${error.message}`));
+        const summary = [file, ...args.slice(0, 2)].join(" ");
+        reject(new Error(`${summary}... failed: ${error.message}`));
       } else {
         resolve(stdout);
       }
@@ -35,7 +36,7 @@ export function writeMetrics(
 }
 
 export async function syncMetrics(metricsDir: string, user: string): Promise<boolean> {
-  const git = (args: string) => execAsync(`git -C "${metricsDir}" ${args}`);
+  const git = (args: string[]) => execFileAsync("git", ["-C", metricsDir, ...args]);
 
   // Recover from interrupted rebase left by a previous failed sync
   try {
@@ -43,35 +44,35 @@ export async function syncMetrics(metricsDir: string, user: string): Promise<boo
     const rebaseApply = join(metricsDir, ".git", "rebase-apply");
     if (existsSync(rebaseMerge) || existsSync(rebaseApply)) {
       console.error("Warning: recovering from interrupted rebase");
-      await git("rebase --abort");
+      await git(["rebase", "--abort"]);
     }
   } catch {
     // rebase --abort failed — try to continue anyway
   }
 
   try {
-    await git(`add "${user}/"`);
-    const status = await git(`status --porcelain "${user}/"`);
+    await git(["add", `${user}/`]);
+    const status = await git(["status", "--porcelain", `${user}/`]);
     if (status.trim()) {
       const date = new Date().toISOString().slice(0, 10);
-      await git(`commit -m "# ${user}: update ${date}"`);
+      await git(["commit", "-m", `# ${user}: update ${date}`]);
     }
   } catch {
     return false;
   }
   try {
-    await git("pull --rebase origin main");
+    await git(["pull", "--rebase", "origin", "main"]);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     console.error(`Warning: sync pull failed — ${reason}`);
-    try { await git("rebase --abort"); } catch { /* already clean */ }
+    try { await git(["rebase", "--abort"]); } catch { /* already clean */ }
     return false;
   }
   try {
-    await git("push");
+    await git(["push"]);
   } catch {
     try {
-      await git("push");
+      await git(["push"]);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       console.error(`Warning: sync push failed after retry — ${reason}`);

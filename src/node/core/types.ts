@@ -13,6 +13,7 @@ export interface UsageEntry extends UsageTotals {
 
 export interface ToolConfig {
   name: string;
-  command: string;
+  binary: string;
+  prefixArgs: string[];
   needsFilter: boolean;
 }

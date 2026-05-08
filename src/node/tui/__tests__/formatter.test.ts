@@ -1,7 +1,7 @@
 import { describe, it, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 
-import { fmtNum, fmtCost, renderBar, printHistory, printTotal, printTotalHistory, renderHistory, renderTotal, renderTotalHistory } from "../formatter.js";
+import { fmtNum, fmtCost, renderBar, printHistory, printTotal, printTotalHistory, renderHistory, renderTotal, renderTotalHistory, emitCsv, emitMarkdown } from "../formatter.js";
 import { setNoColor } from "../colors.js";
 import type { UsageTotals, UsageEntry } from "../../core/types.js";
 
@@ -591,5 +591,370 @@ describe("renderTotalHistory", () => {
     assert.ok(Array.isArray(lines));
     const text = lines.join("\n");
     assert.match(text, /Combined Cost History.*daily/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// emitCsv / emitMarkdown stdout capture helpers
+// ---------------------------------------------------------------------------
+let stdoutChunks: string[];
+
+function captureStdout() {
+  stdoutChunks = [];
+  mock.method(process.stdout, "write", ((chunk: string | Uint8Array) => {
+    stdoutChunks.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8"));
+    return true;
+  }) as never);
+}
+
+function restoreStdout() {
+  mock.restoreAll();
+}
+
+function stdoutText(): string {
+  return stdoutChunks.join("");
+}
+
+// ---------------------------------------------------------------------------
+// emitCsv
+// ---------------------------------------------------------------------------
+describe("emitCsv", () => {
+  describe("snapshot kind", () => {
+    it("emits tool,tokens,input,output,cost header with data rows and Total", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const totals = new Map<string, UsageTotals>([
+        ["Claude Code", { totalCost: 12.34, inputTokens: 800000, outputTokens: 400000, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1234567 }],
+        ["Codex", { totalCost: 2.45, inputTokens: 150000, outputTokens: 80000, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 234567 }],
+      ]);
+      emitCsv(totals, "snapshot", { period: "daily" });
+      const out = stdoutText();
+      const lines = out.split("\n");
+      assert.equal(lines[0], "tool,tokens,input,output,cost", "header row must exactly match");
+      assert.ok(lines.some((l) => l.startsWith("Claude Code,")), "Claude Code row present");
+      assert.ok(lines.some((l) => l.startsWith("Codex,")), "Codex row present");
+      assert.ok(lines.some((l) => l.startsWith("Total,")), "Total row present when >1 tool visible");
+    });
+
+    it("omits Total row when only one tool has data", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const totals = new Map<string, UsageTotals>([
+        ["Claude Code", { totalCost: 12.34, inputTokens: 800, outputTokens: 400, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1200 }],
+      ]);
+      emitCsv(totals, "snapshot", { period: "daily" });
+      const lines = stdoutText().split("\n");
+      assert.ok(!lines.some((l) => l.startsWith("Total,")), "Total row omitted when one tool visible");
+    });
+
+    it("cost has two decimals and no $ sign", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const totals = new Map<string, UsageTotals>([
+        ["Tool A", { totalCost: 3.5, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150 }],
+      ]);
+      emitCsv(totals, "snapshot", { period: "daily" });
+      const out = stdoutText();
+      assert.ok(out.includes(",3.50"), "cost should be formatted with two decimals");
+      assert.ok(!out.includes("$"), "no $ sign in CSV output");
+    });
+
+    it("numeric fields have no thousands separators", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const totals = new Map<string, UsageTotals>([
+        ["Tool", { totalCost: 1, inputTokens: 1234567, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1234667 }],
+      ]);
+      emitCsv(totals, "snapshot", { period: "daily" });
+      const out = stdoutText();
+      assert.ok(out.includes("1234567"), "raw integer (no commas) expected");
+      assert.ok(!out.includes("1,234,567"), "no thousands separators in CSV");
+    });
+  });
+
+  describe("history kind", () => {
+    it("emits date,input,output,cache_write,cache_read,total,cost header", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const entries: UsageEntry[] = [
+        { label: "2026-04-21", totalCost: 2.34, inputTokens: 80000, outputTokens: 40000, cacheCreationTokens: 20000, cacheReadTokens: 5000, totalTokens: 145000 },
+        { label: "2026-04-22", totalCost: 2.89, inputTokens: 90000, outputTokens: 50000, cacheCreationTokens: 25000, cacheReadTokens: 6000, totalTokens: 171000 },
+      ];
+      emitCsv({ toolName: "Claude Code", entries }, "history", { period: "daily" });
+      const lines = stdoutText().split("\n");
+      assert.equal(lines[0], "date,input,output,cache_write,cache_read,total,cost", "exact header");
+      assert.ok(lines[1].startsWith("2026-04-21,"), "ISO date label");
+      assert.ok(lines[2].startsWith("2026-04-22,"), "ISO date label");
+    });
+
+    it("ISO month labels pass through for monthly period", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const entries: UsageEntry[] = [
+        { label: "2026-04", totalCost: 10, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150 },
+      ];
+      emitCsv({ toolName: "Claude Code", entries }, "history", { period: "monthly" });
+      const lines = stdoutText().split("\n");
+      assert.ok(lines[1].startsWith("2026-04,"), "monthly ISO label");
+    });
+  });
+
+  describe("total-history kind", () => {
+    it("emits date,{tool1},{tool2},total header and rows sorted ascending", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const data = new Map<string, UsageEntry[]>([
+        ["Claude Code", [
+          { label: "2026-04-22", totalCost: 2.89, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 },
+          { label: "2026-04-21", totalCost: 2.34, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 },
+        ]],
+        ["Codex", [
+          { label: "2026-04-21", totalCost: 0.5, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 },
+          { label: "2026-04-22", totalCost: 0.6, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 },
+        ]],
+      ]);
+      emitCsv(data, "total-history", { period: "daily" });
+      const lines = stdoutText().split("\n");
+      assert.equal(lines[0], "date,Claude Code,Codex,total");
+      assert.ok(lines[1].startsWith("2026-04-21,"), "first data row ascending");
+      assert.ok(lines[2].startsWith("2026-04-22,"), "second data row ascending");
+    });
+  });
+
+  describe("machine columns", () => {
+    it("appends machine_{name}_cost columns sorted alphabetically", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const totals = new Map<string, UsageTotals>([
+        ["Claude Code", { totalCost: 5, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150 }],
+      ]);
+      const machineCosts = new Map<string, Map<string, number>>([
+        ["Claude Code", new Map([["zebra", 1.5], ["alpha", 3.5]])],
+      ]);
+      emitCsv(totals, "snapshot", { period: "daily", machineCosts });
+      const lines = stdoutText().split("\n");
+      assert.equal(lines[0], "tool,tokens,input,output,cost,machine_alpha_cost,machine_zebra_cost", "alphabetical machine columns");
+      assert.ok(lines[1].endsWith("3.50,1.50"), "alpha=3.50, zebra=1.50");
+    });
+  });
+
+  describe("RFC 4180 quoting", () => {
+    it("quotes fields containing commas", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const totals = new Map<string, UsageTotals>([
+        ["A, B", { totalCost: 1.0, inputTokens: 10, outputTokens: 5, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 15 }],
+      ]);
+      emitCsv(totals, "snapshot", { period: "daily" });
+      const out = stdoutText();
+      assert.ok(out.includes('"A, B"'), "comma-containing field should be quoted");
+    });
+
+    it("quotes fields with double-quotes and doubles internal quotes", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const totals = new Map<string, UsageTotals>([
+        ['A"B', { totalCost: 1.0, inputTokens: 10, outputTokens: 5, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 15 }],
+      ]);
+      emitCsv(totals, "snapshot", { period: "daily" });
+      const out = stdoutText();
+      assert.ok(out.includes('"A""B"'), "internal quotes should be doubled");
+    });
+  });
+
+  describe("file format", () => {
+    it("uses LF line endings (no CRLF)", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const totals = new Map<string, UsageTotals>([
+        ["Tool", { totalCost: 1, inputTokens: 10, outputTokens: 5, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 15 }],
+      ]);
+      emitCsv(totals, "snapshot", { period: "daily" });
+      const out = stdoutText();
+      assert.ok(!out.includes("\r"), "no carriage returns");
+      assert.ok(out.includes("\n"), "LF line terminators expected");
+    });
+
+    it("does not start with a BOM", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const totals = new Map<string, UsageTotals>([
+        ["Tool", { totalCost: 1, inputTokens: 10, outputTokens: 5, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 15 }],
+      ]);
+      emitCsv(totals, "snapshot", { period: "daily" });
+      const out = stdoutText();
+      assert.ok(!out.startsWith("﻿"), "no BOM");
+    });
+
+    it("emits no ANSI escape codes", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const totals = new Map<string, UsageTotals>([
+        ["Claude Code", { totalCost: 5, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150 }],
+        ["Codex", { totalCost: 3, inputTokens: 80, outputTokens: 40, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 120 }],
+      ]);
+      emitCsv(totals, "snapshot", { period: "daily" });
+      assert.ok(!/\x1b\[/.test(stdoutText()), "no ANSI escape sequences");
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// emitMarkdown
+// ---------------------------------------------------------------------------
+describe("emitMarkdown", () => {
+  describe("snapshot kind", () => {
+    it("begins with ## Combined Usage ({period}) heading", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const totals = new Map<string, UsageTotals>([
+        ["Claude Code", { totalCost: 12.34, inputTokens: 800, outputTokens: 400, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1234 }],
+        ["Codex", { totalCost: 2.45, inputTokens: 150, outputTokens: 80, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 234 }],
+      ]);
+      emitMarkdown(totals, "snapshot", { period: "monthly" });
+      const lines = stdoutText().split("\n");
+      assert.equal(lines[0], "## Combined Usage (monthly)", "heading must match ANSI renderer title");
+      assert.equal(lines[1], "", "blank line after heading");
+      assert.equal(lines[2], "| Tool | Tokens | Input | Output | Cost |", "GFM header row");
+      assert.equal(lines[3], "| :--- | ---: | ---: | ---: | ---: |", "alignment row — string left, numeric right");
+    });
+
+    it("bolds the Total row when >1 tool visible", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const totals = new Map<string, UsageTotals>([
+        ["A", { totalCost: 1.0, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150 }],
+        ["B", { totalCost: 2.0, inputTokens: 200, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 300 }],
+      ]);
+      emitMarkdown(totals, "snapshot", { period: "daily" });
+      const out = stdoutText();
+      assert.ok(out.includes("**Total**"), "Total cell bolded");
+      assert.ok(out.includes("**$3.00**"), "Total cost bolded");
+    });
+
+    it("omits Total row when only one tool visible (mirrors visibleCount > 1 guard)", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const totals = new Map<string, UsageTotals>([
+        ["Only", { totalCost: 1, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150 }],
+      ]);
+      emitMarkdown(totals, "snapshot", { period: "daily" });
+      assert.ok(!stdoutText().includes("**Total**"), "no Total row with single visible tool");
+    });
+
+    it("numeric values include comma thousands separators", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const totals = new Map<string, UsageTotals>([
+        ["Big", { totalCost: 10, inputTokens: 1234567, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1234667 }],
+      ]);
+      emitMarkdown(totals, "snapshot", { period: "daily" });
+      assert.ok(stdoutText().includes("1,234,567"), "comma thousands in MD");
+    });
+
+    it("cost values carry $ prefix", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const totals = new Map<string, UsageTotals>([
+        ["Tool", { totalCost: 12.34, inputTokens: 10, outputTokens: 5, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 15 }],
+      ]);
+      emitMarkdown(totals, "snapshot", { period: "daily" });
+      assert.ok(stdoutText().includes("$12.34"), "$ prefix present");
+    });
+
+    it("ends with a trailing blank line", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const totals = new Map<string, UsageTotals>([
+        ["A", { totalCost: 1, inputTokens: 10, outputTokens: 5, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 15 }],
+      ]);
+      emitMarkdown(totals, "snapshot", { period: "daily" });
+      const out = stdoutText();
+      assert.ok(out.endsWith("\n"), "trailing newline present");
+    });
+  });
+
+  describe("history kind", () => {
+    it("begins with ## {toolName} ({period}) heading", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const entries: UsageEntry[] = [
+        { label: "2026-04-21", totalCost: 2.34, inputTokens: 80, outputTokens: 40, cacheCreationTokens: 20, cacheReadTokens: 5, totalTokens: 145 },
+      ];
+      emitMarkdown({ toolName: "Claude Code", entries }, "history", { period: "daily" });
+      const lines = stdoutText().split("\n");
+      assert.equal(lines[0], "## Claude Code (daily)");
+    });
+
+    it("date column is left-aligned, numeric columns right-aligned", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const entries: UsageEntry[] = [
+        { label: "2026-04-21", totalCost: 2.34, inputTokens: 80, outputTokens: 40, cacheCreationTokens: 20, cacheReadTokens: 5, totalTokens: 145 },
+      ];
+      emitMarkdown({ toolName: "Claude Code", entries }, "history", { period: "daily" });
+      const lines = stdoutText().split("\n");
+      // Heading, blank, header row, alignment row
+      assert.equal(lines[3], "| :--- | ---: | ---: | ---: | ---: | ---: | ---: |");
+    });
+  });
+
+  describe("total-history kind", () => {
+    it("begins with ## Combined Cost History ({period}) heading", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const data = new Map<string, UsageEntry[]>([
+        ["Claude Code", [
+          { label: "2026-04-21", totalCost: 2, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 },
+        ]],
+      ]);
+      emitMarkdown(data, "total-history", { period: "daily" });
+      assert.equal(stdoutText().split("\n")[0], "## Combined Cost History (daily)");
+    });
+  });
+
+  describe("machine columns", () => {
+    it("uses machine names directly (no A/B/C letter codes, no legend line)", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const totals = new Map<string, UsageTotals>([
+        ["Claude Code", { totalCost: 5, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150 }],
+      ]);
+      const machineCosts = new Map<string, Map<string, number>>([
+        ["Claude Code", new Map([["macbook", 3], ["workstation", 2]])],
+      ]);
+      emitMarkdown(totals, "snapshot", { period: "daily", machineCosts });
+      const out = stdoutText();
+      assert.ok(out.includes("| macbook |"), "machine name appears as column header");
+      assert.ok(out.includes("| workstation |"), "machine name appears as column header");
+      assert.ok(!out.toLowerCase().includes("machines: a = "), "no legend line");
+    });
+  });
+
+  describe("no ANSI, no bars, no delta arrows", () => {
+    it("emits no ANSI escape sequences", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const totals = new Map<string, UsageTotals>([
+        ["A", { totalCost: 1, inputTokens: 10, outputTokens: 5, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 15 }],
+        ["B", { totalCost: 2, inputTokens: 20, outputTokens: 10, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 30 }],
+      ]);
+      emitMarkdown(totals, "snapshot", { period: "daily" });
+      assert.ok(!/\x1b\[/.test(stdoutText()), "no ANSI in Markdown output");
+    });
+
+    it("emits no inline bar characters or delta arrows", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const totals = new Map<string, UsageTotals>([
+        ["A", { totalCost: 1, inputTokens: 10, outputTokens: 5, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 15 }],
+        ["B", { totalCost: 2, inputTokens: 20, outputTokens: 10, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 30 }],
+      ]);
+      emitMarkdown(totals, "snapshot", { period: "daily" });
+      const out = stdoutText();
+      assert.ok(!out.includes("█"), "no full-block bar chars");
+      assert.ok(!out.includes("↑"), "no up-arrow delta");
+      assert.ok(!out.includes("↓"), "no down-arrow delta");
+    });
   });
 });

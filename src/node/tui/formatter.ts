@@ -456,3 +456,400 @@ function renderCompactTotalHistory(labels: string[], costMap: Map<string, number
   lines.push("");
   return lines;
 }
+
+// ---------------------------------------------------------------------------
+// CSV + Markdown renderers
+//
+// These produce paste-/pipeline-friendly output for the three data kinds
+// (snapshot, history, total-history). They share strip rules — no ANSI,
+// no inline bars, no delta arrows — but differ in numeric conventions:
+//
+//   CSV:      raw numbers (no thousands separators), cost without `$`,
+//             RFC 4180 quoting, LF line endings, no BOM.
+//   Markdown: human-readable numbers (comma thousands), cost with `$`,
+//             GFM tables, leading `## {title}` heading, trailing blank line.
+// ---------------------------------------------------------------------------
+
+export type EmitKind = "snapshot" | "history" | "total-history";
+
+export type EmitData =
+  | Map<string, UsageTotals>
+  | Map<string, UsageEntry[]>
+  | { toolName: string; entries: UsageEntry[] };
+
+export interface EmitOptions {
+  period: string;
+  machineCosts?: Map<string, Map<string, number>>;
+}
+
+// --- CSV primitives ---
+
+// RFC 4180 field quoting. Quote fields containing comma, double-quote, or newline;
+// double internal double-quotes.
+function csvQuote(value: string): string {
+  if (value.includes(",") || value.includes('"') || value.includes("\n") || value.includes("\r")) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+function csvRow(cells: string[]): string {
+  return cells.map(csvQuote).join(",");
+}
+
+// Raw numeric (no thousands separators)
+function csvNum(n: number): string {
+  return String(n);
+}
+
+// Raw cost (two decimals, no `$`)
+function csvCost(n: number): string {
+  return n.toFixed(2);
+}
+
+// Sort machine names alphabetically for deterministic CSV column ordering.
+function collectMachineNames(machineCosts?: Map<string, Map<string, number>>): string[] {
+  if (!machineCosts || machineCosts.size === 0) return [];
+  const names = new Set<string>();
+  for (const perMachine of machineCosts.values()) {
+    for (const name of perMachine.keys()) names.add(name);
+  }
+  return [...names].sort();
+}
+
+function emitCsvSnapshot(toolTotals: Map<string, UsageTotals>, opts: EmitOptions): string {
+  const machines = collectMachineNames(opts.machineCosts);
+  const header = ["tool", "tokens", "input", "output", "cost", ...machines.map((m) => `machine_${m}_cost`)];
+  const rows: string[] = [csvRow(header)];
+
+  let grandInput = 0;
+  let grandOutput = 0;
+  let grandTotal = 0;
+  let grandCost = 0;
+  const machineSums = new Map<string, number>(machines.map((m) => [m, 0]));
+
+  for (const [name, t] of toolTotals) {
+    if (t.totalTokens > 0) {
+      const toolMachines = opts.machineCosts?.get(name);
+      const machineCells = machines.map((m) => {
+        const c = toolMachines?.get(m) ?? 0;
+        machineSums.set(m, (machineSums.get(m) ?? 0) + c);
+        return csvCost(c);
+      });
+      rows.push(csvRow([name, csvNum(t.totalTokens), csvNum(t.inputTokens), csvNum(t.outputTokens), csvCost(t.totalCost), ...machineCells]));
+    }
+    grandInput += t.inputTokens;
+    grandOutput += t.outputTokens;
+    grandTotal += t.totalTokens;
+    grandCost += t.totalCost;
+  }
+
+  const visibleCount = [...toolTotals.values()].filter((t) => t.totalTokens > 0).length;
+  if (visibleCount > 1) {
+    const totalMachines = machines.map((m) => csvCost(machineSums.get(m) ?? 0));
+    rows.push(csvRow(["Total", csvNum(grandTotal), csvNum(grandInput), csvNum(grandOutput), csvCost(grandCost), ...totalMachines]));
+  }
+
+  return rows.join("\n") + "\n";
+}
+
+function emitCsvHistory(entries: UsageEntry[], opts: EmitOptions): string {
+  const machines = collectMachineNames(opts.machineCosts);
+  const header = ["date", "input", "output", "cache_write", "cache_read", "total", "cost", ...machines.map((m) => `machine_${m}_cost`)];
+  const rows: string[] = [csvRow(header)];
+
+  for (const e of entries) {
+    const labelMachines = opts.machineCosts?.get(e.label);
+    const machineCells = machines.map((m) => csvCost(labelMachines?.get(m) ?? 0));
+    rows.push(csvRow([
+      e.label,
+      csvNum(e.inputTokens),
+      csvNum(e.outputTokens),
+      csvNum(e.cacheCreationTokens),
+      csvNum(e.cacheReadTokens),
+      csvNum(e.totalTokens),
+      csvCost(e.totalCost),
+      ...machineCells,
+    ]));
+  }
+
+  return rows.join("\n") + "\n";
+}
+
+function emitCsvTotalHistory(allToolEntries: Map<string, UsageEntry[]>, opts: EmitOptions): string {
+  const toolNames = [...allToolEntries.keys()];
+
+  const labelSet = new Set<string>();
+  for (const entries of allToolEntries.values()) {
+    for (const e of entries) labelSet.add(e.label);
+  }
+  const labels = [...labelSet].sort();
+
+  const costMap = new Map<string, Map<string, number>>();
+  for (const [tool, entries] of allToolEntries) {
+    const m = new Map<string, number>();
+    for (const e of entries) m.set(e.label, e.totalCost);
+    costMap.set(tool, m);
+  }
+
+  const machines = collectMachineNames(opts.machineCosts);
+  const header = ["date", ...toolNames, "total", ...machines.map((m) => `machine_${m}_cost`)];
+  const rows: string[] = [csvRow(header)];
+
+  for (const label of labels) {
+    const cells: string[] = [label];
+    let rowTotal = 0;
+    for (const tool of toolNames) {
+      const cost = costMap.get(tool)?.get(label) ?? 0;
+      cells.push(csvCost(cost));
+      rowTotal += cost;
+    }
+    cells.push(csvCost(rowTotal));
+    const labelMachines = opts.machineCosts?.get(label);
+    for (const m of machines) cells.push(csvCost(labelMachines?.get(m) ?? 0));
+    rows.push(csvRow(cells));
+  }
+
+  return rows.join("\n") + "\n";
+}
+
+export function emitCsv(data: EmitData, kind: EmitKind, opts: EmitOptions): void {
+  let output: string;
+  switch (kind) {
+    case "snapshot":
+      output = emitCsvSnapshot(data as Map<string, UsageTotals>, opts);
+      break;
+    case "history": {
+      const { entries } = data as { toolName: string; entries: UsageEntry[] };
+      output = emitCsvHistory(entries, opts);
+      break;
+    }
+    case "total-history":
+      output = emitCsvTotalHistory(data as Map<string, UsageEntry[]>, opts);
+      break;
+  }
+  process.stdout.write(output);
+}
+
+// --- Markdown primitives ---
+
+// Markdown numeric values keep thousands separators for readability (targets
+// paste into PRs/Slack/docs rather than awk pipelines).
+function mdNum(n: number): string {
+  return fmtNum(n);
+}
+
+function mdCost(n: number): string {
+  return fmtCost(n);
+}
+
+function mdRow(cells: string[]): string {
+  return `| ${cells.join(" | ")} |`;
+}
+
+// GFM alignment markers — `:---` left, `---:` right.
+function mdAlignRow(aligns: Array<"left" | "right">): string {
+  return `| ${aligns.map((a) => (a === "left" ? ":---" : "---:")).join(" | ")} |`;
+}
+
+function titleForSnapshot(period: string): string {
+  return `Combined Usage (${period})`;
+}
+
+function titleForHistory(toolName: string, period: string): string {
+  return `${toolName} (${period})`;
+}
+
+function titleForTotalHistory(period: string): string {
+  return `Combined Cost History (${period})`;
+}
+
+function emitMarkdownSnapshot(toolTotals: Map<string, UsageTotals>, opts: EmitOptions): string {
+  const machines = collectMachineNames(opts.machineCosts);
+  const aligns: Array<"left" | "right"> = ["left", "right", "right", "right", "right", ...machines.map((_) => "right" as const)];
+  const header = ["Tool", "Tokens", "Input", "Output", "Cost", ...machines];
+
+  const lines: string[] = [];
+  lines.push(`## ${titleForSnapshot(opts.period)}`);
+  lines.push("");
+  lines.push(mdRow(header));
+  lines.push(mdAlignRow(aligns));
+
+  let grandInput = 0;
+  let grandOutput = 0;
+  let grandTotal = 0;
+  let grandCost = 0;
+  const machineSums = new Map<string, number>(machines.map((m) => [m, 0]));
+
+  for (const [name, t] of toolTotals) {
+    if (t.totalTokens > 0) {
+      const toolMachines = opts.machineCosts?.get(name);
+      const machineCells = machines.map((m) => {
+        const c = toolMachines?.get(m) ?? 0;
+        machineSums.set(m, (machineSums.get(m) ?? 0) + c);
+        return mdCost(c);
+      });
+      lines.push(mdRow([name, mdNum(t.totalTokens), mdNum(t.inputTokens), mdNum(t.outputTokens), mdCost(t.totalCost), ...machineCells]));
+    }
+    grandInput += t.inputTokens;
+    grandOutput += t.outputTokens;
+    grandTotal += t.totalTokens;
+    grandCost += t.totalCost;
+  }
+
+  const visibleCount = [...toolTotals.values()].filter((t) => t.totalTokens > 0).length;
+  if (visibleCount > 1) {
+    const totalMachines = machines.map((m) => `**${mdCost(machineSums.get(m) ?? 0)}**`);
+    lines.push(mdRow(["**Total**", `**${mdNum(grandTotal)}**`, `**${mdNum(grandInput)}**`, `**${mdNum(grandOutput)}**`, `**${mdCost(grandCost)}**`, ...totalMachines]));
+  }
+
+  lines.push("");
+  return lines.join("\n");
+}
+
+function emitMarkdownHistory(toolName: string, entries: UsageEntry[], opts: EmitOptions): string {
+  const machines = collectMachineNames(opts.machineCosts);
+  const aligns: Array<"left" | "right"> = ["left", "right", "right", "right", "right", "right", "right", ...machines.map((_) => "right" as const)];
+  const header = ["Date", "Input", "Output", "Cache Write", "Cache Read", "Total", "Cost", ...machines];
+
+  const lines: string[] = [];
+  lines.push(`## ${titleForHistory(toolName, opts.period)}`);
+  lines.push("");
+  lines.push(mdRow(header));
+  lines.push(mdAlignRow(aligns));
+
+  let sumInput = 0;
+  let sumOutput = 0;
+  let sumCacheW = 0;
+  let sumCacheR = 0;
+  let sumTotal = 0;
+  let sumCost = 0;
+  const machineSums = new Map<string, number>(machines.map((m) => [m, 0]));
+
+  for (const e of entries) {
+    const labelMachines = opts.machineCosts?.get(e.label);
+    const machineCells = machines.map((m) => {
+      const c = labelMachines?.get(m) ?? 0;
+      machineSums.set(m, (machineSums.get(m) ?? 0) + c);
+      return mdCost(c);
+    });
+    lines.push(mdRow([
+      e.label,
+      mdNum(e.inputTokens),
+      mdNum(e.outputTokens),
+      mdNum(e.cacheCreationTokens),
+      mdNum(e.cacheReadTokens),
+      mdNum(e.totalTokens),
+      mdCost(e.totalCost),
+      ...machineCells,
+    ]));
+    sumInput += e.inputTokens;
+    sumOutput += e.outputTokens;
+    sumCacheW += e.cacheCreationTokens;
+    sumCacheR += e.cacheReadTokens;
+    sumTotal += e.totalTokens;
+    sumCost += e.totalCost;
+  }
+
+  if (entries.length > 1) {
+    const totalMachines = machines.map((m) => `**${mdCost(machineSums.get(m) ?? 0)}**`);
+    lines.push(mdRow([
+      "**Total**",
+      `**${mdNum(sumInput)}**`,
+      `**${mdNum(sumOutput)}**`,
+      `**${mdNum(sumCacheW)}**`,
+      `**${mdNum(sumCacheR)}**`,
+      `**${mdNum(sumTotal)}**`,
+      `**${mdCost(sumCost)}**`,
+      ...totalMachines,
+    ]));
+  }
+
+  lines.push("");
+  return lines.join("\n");
+}
+
+function emitMarkdownTotalHistory(allToolEntries: Map<string, UsageEntry[]>, opts: EmitOptions): string {
+  const toolNames = [...allToolEntries.keys()];
+
+  const labelSet = new Set<string>();
+  for (const entries of allToolEntries.values()) {
+    for (const e of entries) labelSet.add(e.label);
+  }
+  const labels = [...labelSet].sort();
+
+  const costMap = new Map<string, Map<string, number>>();
+  for (const [tool, entries] of allToolEntries) {
+    const m = new Map<string, number>();
+    for (const e of entries) m.set(e.label, e.totalCost);
+    costMap.set(tool, m);
+  }
+
+  const machines = collectMachineNames(opts.machineCosts);
+  const aligns: Array<"left" | "right"> = [
+    "left",
+    ...toolNames.map((_) => "right" as const),
+    "right",
+    ...machines.map((_) => "right" as const),
+  ];
+  const header = ["Date", ...toolNames, "Cost", ...machines];
+
+  const lines: string[] = [];
+  lines.push(`## ${titleForTotalHistory(opts.period)}`);
+  lines.push("");
+  lines.push(mdRow(header));
+  lines.push(mdAlignRow(aligns));
+
+  const toolSums = new Map<string, number>(toolNames.map((t) => [t, 0]));
+  const machineSums = new Map<string, number>(machines.map((m) => [m, 0]));
+  let grandTotal = 0;
+
+  for (const label of labels) {
+    const cells: string[] = [label];
+    let rowTotal = 0;
+    for (const tool of toolNames) {
+      const cost = costMap.get(tool)?.get(label) ?? 0;
+      cells.push(mdCost(cost));
+      toolSums.set(tool, (toolSums.get(tool) ?? 0) + cost);
+      rowTotal += cost;
+    }
+    cells.push(mdCost(rowTotal));
+    grandTotal += rowTotal;
+    const labelMachines = opts.machineCosts?.get(label);
+    for (const m of machines) {
+      const c = labelMachines?.get(m) ?? 0;
+      machineSums.set(m, (machineSums.get(m) ?? 0) + c);
+      cells.push(mdCost(c));
+    }
+    lines.push(mdRow(cells));
+  }
+
+  if (labels.length > 1) {
+    const totalCells: string[] = ["**Total**"];
+    for (const tool of toolNames) totalCells.push(`**${mdCost(toolSums.get(tool) ?? 0)}**`);
+    totalCells.push(`**${mdCost(grandTotal)}**`);
+    for (const m of machines) totalCells.push(`**${mdCost(machineSums.get(m) ?? 0)}**`);
+    lines.push(mdRow(totalCells));
+  }
+
+  lines.push("");
+  return lines.join("\n");
+}
+
+export function emitMarkdown(data: EmitData, kind: EmitKind, opts: EmitOptions): void {
+  let output: string;
+  switch (kind) {
+    case "snapshot":
+      output = emitMarkdownSnapshot(data as Map<string, UsageTotals>, opts);
+      break;
+    case "history": {
+      const { toolName, entries } = data as { toolName: string; entries: UsageEntry[] };
+      output = emitMarkdownHistory(toolName, entries, opts);
+      break;
+    }
+    case "total-history":
+      output = emitMarkdownTotalHistory(data as Map<string, UsageEntry[]>, opts);
+      break;
+  }
+  process.stdout.write(output + "\n");
+}
