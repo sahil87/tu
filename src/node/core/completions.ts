@@ -59,10 +59,13 @@ _tu_complete() {
 complete -F _tu_complete tu
 `;
 
-export const ZSH_COMPLETION = `#compdef tu
-# tu(1) zsh completion
+export const ZSH_COMPLETION = `# tu(1) zsh completion
 # Install:
 #   echo 'eval "$(tu shell-init zsh)"' >> ~/.zshrc
+#
+# This snippet is intended for \`eval\`, not for autoload via \$fpath. It defines
+# the _tu function and registers it with \`compdef\`. compinit is loaded lazily
+# if the user hasn't already done so, since \`compdef\` is unavailable until then.
 
 _tu() {
   local -a non_data_subcommands sources periods display long_flags short_flags shells
@@ -122,7 +125,11 @@ _tu() {
   esac
 }
 
-_tu "$@"
+# Lazy-load compinit if the user hasn't already initialised the completion
+# system — \`compdef\` is provided by compinit and is required to register _tu
+# against the \`tu\` command at eval time.
+(( \$+functions[compdef] )) || { autoload -Uz compinit && compinit -i }
+compdef _tu tu
 `;
 
 export const FISH_COMPLETION = `# tu(1) fish completion

@@ -83,12 +83,14 @@ describe("runShellInit: bash", () => {
 });
 
 describe("runShellInit: zsh", () => {
-  it("writes the zsh script to stdout with #compdef tu", (t) => {
+  it("emits an eval-able snippet that registers _tu via compdef and does not auto-invoke", (t) => {
     t.after(restore);
     const cap = captureIo();
     runShellInit("zsh");
     const out = cap.stdout.join("");
-    assert.ok(out.includes("#compdef tu"), "zsh script should begin with #compdef tu");
+    assert.ok(out.includes("compdef _tu tu"), "zsh script must register _tu against tu via compdef");
+    assert.ok(!/^#compdef\s+tu/m.test(out), "zsh script must NOT use #compdef autoload magic — it would silently no-op under eval");
+    assert.ok(!/\n_tu\s+"\$@"/m.test(out), "zsh script must NOT auto-invoke _tu at load time — that would run completion code at shell startup");
     assert.notEqual(cap.exitCode, 1);
   });
 });
