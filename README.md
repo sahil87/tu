@@ -17,6 +17,19 @@ brew tap sahil87/tap
 brew install tu
 ```
 
+### Shell completions
+
+```bash
+# bash
+echo 'eval "$(tu shell-init bash)"' >> ~/.bashrc
+
+# zsh
+echo 'eval "$(tu shell-init zsh)"' >> ~/.zshrc
+
+# fish
+tu shell-init fish > ~/.config/fish/completions/tu.fish
+```
+
 ## Update
 
 ```bash

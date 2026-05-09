@@ -1,12 +1,12 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 
-import { runCompletions } from "../cli.js";
+import { runShellInit } from "../cli.js";
 import { BASH_COMPLETION, ZSH_COMPLETION, FISH_COMPLETION } from "../completions.js";
 
 // ---------------------------------------------------------------------------
-// Helpers: capture stdout, stderr, and process.exit for `runCompletions`.
-// runCompletions writes the script to process.stdout.write (not console.log)
+// Helpers: capture stdout, stderr, and process.exit for `runShellInit`.
+// runShellInit writes the script to process.stdout.write (not console.log)
 // for bash/zsh/fish, prints usage via console.log for the no-arg case, and
 // prints the error to console.error + calls process.exit(1) for unknown shells.
 // ---------------------------------------------------------------------------
@@ -64,53 +64,53 @@ const NON_DATA_SUBCOMMANDS = [
   "sync",
   "status",
   "update",
-  "completions",
+  "shell-init",
 ];
 
 // ---------------------------------------------------------------------------
-// runCompletions: per-shell dispatch
+// runShellInit: per-shell dispatch
 // ---------------------------------------------------------------------------
 
-describe("runCompletions: bash", () => {
+describe("runShellInit: bash", () => {
   it("writes the bash script to stdout and does not exit with failure", (t) => {
     t.after(restore);
     const cap = captureIo();
-    runCompletions("bash");
+    runShellInit("bash");
     const out = cap.stdout.join("");
     assert.ok(out.includes("complete -F _tu_complete tu"), "bash script should register completion via `complete`");
     assert.notEqual(cap.exitCode, 1);
   });
 });
 
-describe("runCompletions: zsh", () => {
+describe("runShellInit: zsh", () => {
   it("writes the zsh script to stdout with #compdef tu", (t) => {
     t.after(restore);
     const cap = captureIo();
-    runCompletions("zsh");
+    runShellInit("zsh");
     const out = cap.stdout.join("");
     assert.ok(out.includes("#compdef tu"), "zsh script should begin with #compdef tu");
     assert.notEqual(cap.exitCode, 1);
   });
 });
 
-describe("runCompletions: fish", () => {
+describe("runShellInit: fish", () => {
   it("writes the fish script to stdout with complete -c tu directives", (t) => {
     t.after(restore);
     const cap = captureIo();
-    runCompletions("fish");
+    runShellInit("fish");
     const out = cap.stdout.join("");
     assert.ok(out.includes("complete -c tu"), "fish script should use `complete -c tu`");
     assert.notEqual(cap.exitCode, 1);
   });
 });
 
-describe("runCompletions: no argument", () => {
+describe("runShellInit: no argument", () => {
   it("prints usage + install examples and does not exit with failure", (t) => {
     t.after(restore);
     const cap = captureIo();
-    runCompletions(undefined);
+    runShellInit(undefined);
     const out = cap.logs.join("\n");
-    assert.ok(out.includes("Usage: tu completions <bash|zsh|fish>"), "usage heading");
+    assert.ok(out.includes("Usage: tu shell-init <bash|zsh|fish>"), "usage heading");
     assert.ok(out.includes("bash"), "mentions bash install");
     assert.ok(out.includes("zsh"), "mentions zsh install");
     assert.ok(out.includes("fish"), "mentions fish install");
@@ -118,11 +118,11 @@ describe("runCompletions: no argument", () => {
   });
 });
 
-describe("runCompletions: unknown shell", () => {
+describe("runShellInit: unknown shell", () => {
   it("emits stderr message and exits 1", (t) => {
     t.after(restore);
     const cap = captureIo();
-    runCompletions("powershell");
+    runShellInit("powershell");
     assert.equal(cap.exitCode, 1);
     assert.ok(
       cap.errors.some((e) => e.includes("Unknown shell: powershell. Supported: bash, zsh, fish")),
@@ -170,7 +170,7 @@ describe("completion script coverage — non-data subcommands", () => {
   }
 });
 
-describe("completion script coverage — sources, periods, display, completion args", () => {
+describe("completion script coverage — sources, periods, display, shell-init args", () => {
   const TOKENS = [
     // Sources
     "cc", "codex", "co", "oc", "all",
@@ -178,7 +178,7 @@ describe("completion script coverage — sources, periods, display, completion a
     "d", "m", "daily", "monthly",
     // Display
     "h", "history", "dh", "mh",
-    // `completions` args
+    // `shell-init` args
     "bash", "zsh", "fish",
   ];
 
