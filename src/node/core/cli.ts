@@ -70,7 +70,7 @@ Setup:
   tu sync              Push/pull metrics manually
   tu status            Show config and sync state
   tu update            Update tu to latest version
-  tu completions <sh>  Emit shell completion script (bash/zsh/fish)
+  tu shell-init <sh>   Emit shell init script (bash/zsh/fish)
 
 Help: tu help | tu -h | tu --help
 
@@ -242,16 +242,16 @@ export function runStatus(
   console.log(`Auto-sync:   ${config.autoSync ? "on" : "off"}`);
 }
 
-const COMPLETIONS_USAGE = `Usage: tu completions <bash|zsh|fish>
+const SHELL_INIT_USAGE = `Usage: tu shell-init <bash|zsh|fish>
 
 Install:
-  bash: echo 'source <(tu completions bash)' >> ~/.bashrc
-  zsh:  tu completions zsh > "\${fpath[1]}/_tu"
-  fish: tu completions fish > ~/.config/fish/completions/tu.fish`;
+  bash: echo 'eval "$(tu shell-init bash)"' >> ~/.bashrc
+  zsh:  echo 'eval "$(tu shell-init zsh)"' >> ~/.zshrc
+  fish: tu shell-init fish > ~/.config/fish/completions/tu.fish`;
 
-export function runCompletions(shell: string | undefined): void {
+export function runShellInit(shell: string | undefined): void {
   if (shell === undefined) {
-    console.log(COMPLETIONS_USAGE);
+    console.log(SHELL_INIT_USAGE);
     return;
   }
   switch (shell) {
@@ -1136,7 +1136,7 @@ async function main() {
     if (cmd === "sync") { await runSync(); return; }
     if (cmd === "status") { runStatus(); return; }
     if (cmd === "update") { runUpdate(); return; }
-    if (cmd === "completions") { runCompletions(filteredArgs[1]); return; }
+    if (cmd === "shell-init") { runShellInit(filteredArgs[1]); return; }
   }
 
   // Parse positional data args (source, period, display)

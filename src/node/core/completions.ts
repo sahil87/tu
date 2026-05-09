@@ -1,6 +1,6 @@
-// Static shell completion scripts for `tu completions <shell>`.
+// Static shell completion scripts for `tu shell-init <shell>`.
 //
-// These strings are emitted verbatim to stdout by the `completions` subcommand.
+// These strings are emitted verbatim to stdout by the `shell-init` subcommand.
 // Completion is done statically (no shell-out to `tu`) to keep tab-press
 // latency near zero and to avoid coupling completion to the running binary.
 // When the grammar changes, these scripts must be updated and the bundle
@@ -8,7 +8,7 @@
 
 export const BASH_COMPLETION = `# tu(1) bash completion
 # Install:
-#   echo 'source <(tu completions bash)' >> ~/.bashrc
+#   echo 'eval "$(tu shell-init bash)"' >> ~/.bashrc
 
 _tu_complete() {
   local cur prev words cword
@@ -16,7 +16,7 @@ _tu_complete() {
   cur="\${COMP_WORDS[COMP_CWORD]}"
   prev="\${COMP_WORDS[COMP_CWORD-1]}"
 
-  local non_data_subcommands="help init-conf init-metrics sync status update completions"
+  local non_data_subcommands="help init-conf init-metrics sync status update shell-init"
   local sources="cc codex co oc all"
   local periods="d m daily monthly"
   local display="h history dh mh"
@@ -29,7 +29,7 @@ _tu_complete() {
     --interval|-i|--user|-u)
       return 0
       ;;
-    completions)
+    shell-init)
       COMPREPLY=( $(compgen -W "\${shells}" -- "\${cur}") )
       return 0
       ;;
@@ -59,16 +59,18 @@ _tu_complete() {
 complete -F _tu_complete tu
 `;
 
-export const ZSH_COMPLETION = `#compdef tu
-# tu(1) zsh completion
+export const ZSH_COMPLETION = `# tu(1) zsh completion
 # Install:
-#   tu completions zsh > "\${fpath[1]}/_tu"
-#   autoload -Uz compinit && compinit
+#   echo 'eval "$(tu shell-init zsh)"' >> ~/.zshrc
+#
+# This snippet is intended for \`eval\`, not for autoload via \$fpath. It defines
+# the _tu function and registers it with \`compdef\`. compinit is loaded lazily
+# if the user hasn't already done so, since \`compdef\` is unavailable until then.
 
 _tu() {
   local -a non_data_subcommands sources periods display long_flags short_flags shells
 
-  non_data_subcommands=(help init-conf init-metrics sync status update completions)
+  non_data_subcommands=(help init-conf init-metrics sync status update shell-init)
   sources=(cc codex co oc all)
   periods=(d m daily monthly)
   display=(h history dh mh)
@@ -112,7 +114,7 @@ _tu() {
         \${display}
       ;;
     rest)
-      if [[ "\${words[2]}" == "completions" ]]; then
+      if [[ "\${words[2]}" == "shell-init" ]]; then
         _values 'shell' \${shells}
       else
         _values 'token' \\
@@ -123,12 +125,16 @@ _tu() {
   esac
 }
 
-_tu "$@"
+# Lazy-load compinit if the user hasn't already initialised the completion
+# system — \`compdef\` is provided by compinit and is required to register _tu
+# against the \`tu\` command at eval time.
+(( \$+functions[compdef] )) || { autoload -Uz compinit && compinit -i }
+compdef _tu tu
 `;
 
 export const FISH_COMPLETION = `# tu(1) fish completion
 # Install:
-#   tu completions fish > ~/.config/fish/completions/tu.fish
+#   tu shell-init fish > ~/.config/fish/completions/tu.fish
 
 # Non-data subcommands (first positional only)
 complete -c tu -n '__fish_use_subcommand' -a 'help' -d 'show full help'
@@ -137,7 +143,7 @@ complete -c tu -n '__fish_use_subcommand' -a 'init-metrics' -d 'clone metrics re
 complete -c tu -n '__fish_use_subcommand' -a 'sync' -d 'push/pull metrics'
 complete -c tu -n '__fish_use_subcommand' -a 'status' -d 'show config and sync state'
 complete -c tu -n '__fish_use_subcommand' -a 'update' -d 'update tu via Homebrew'
-complete -c tu -n '__fish_use_subcommand' -a 'completions' -d 'emit shell completion script'
+complete -c tu -n '__fish_use_subcommand' -a 'shell-init' -d 'emit shell init script'
 
 # Sources (first positional only)
 complete -c tu -n '__fish_use_subcommand' -a 'cc' -d 'Claude Code'
@@ -158,10 +164,10 @@ complete -c tu -n '__fish_use_subcommand' -a 'mh' -d 'monthly history'
 
 complete -c tu -n 'not __fish_use_subcommand' -a 'd m daily monthly h history dh mh'
 
-# Shells (only after 'completions')
-complete -c tu -n '__fish_seen_subcommand_from completions' -a 'bash' -d 'emit bash completion'
-complete -c tu -n '__fish_seen_subcommand_from completions' -a 'zsh' -d 'emit zsh completion'
-complete -c tu -n '__fish_seen_subcommand_from completions' -a 'fish' -d 'emit fish completion'
+# Shells (only after 'shell-init')
+complete -c tu -n '__fish_seen_subcommand_from shell-init' -a 'bash' -d 'emit bash completion'
+complete -c tu -n '__fish_seen_subcommand_from shell-init' -a 'zsh' -d 'emit zsh completion'
+complete -c tu -n '__fish_seen_subcommand_from shell-init' -a 'fish' -d 'emit fish completion'
 
 # Long flags
 complete -c tu -l json -d 'emit JSON'
