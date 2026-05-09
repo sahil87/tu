@@ -1117,7 +1117,8 @@ async function main() {
   if (noColorFlag) setNoColor(true);
 
   if (rawArgs.includes("--version") || rawArgs.includes("-V") || rawArgs.includes("-v")) {
-    console.log(PKG_VERSION);
+    const v = PKG_VERSION.startsWith("v") ? PKG_VERSION : `v${PKG_VERSION}`;
+    console.log(`tu version ${v}`);
     return;
   }
 
