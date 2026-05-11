@@ -30,6 +30,8 @@ echo 'eval "$(tu shell-init zsh)"' >> ~/.zshrc
 tu shell-init fish > ~/.config/fish/completions/tu.fish
 ```
 
+> 💡 Have other sahil87 tools? [`shll shell-install`](https://github.com/sahil87/shll#shll-shell-install--wire-the-rc-file-recommended) handles all of their shell integrations and autocompletions at once.
+
 ## Update
 
 ```bash
