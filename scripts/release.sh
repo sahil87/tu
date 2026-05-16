@@ -30,9 +30,9 @@ for arg in "$@"; do
   case "$arg" in
     patch|minor|major)
       if [ -n "$bump_type" ]; then
-        echo "ERROR: Multiple bump types specified: '$bump_type' and '$arg'."
-        echo ""
-        usage
+        echo "ERROR: Multiple bump types specified: '$bump_type' and '$arg'." >&2
+        echo "" >&2
+        usage >&2
         exit 1
       fi
       bump_type="$arg"
@@ -42,9 +42,9 @@ for arg in "$@"; do
       exit 0
       ;;
     *)
-      echo "ERROR: Unknown argument '$arg'. Use: patch, minor, or major."
-      echo ""
-      usage
+      echo "ERROR: Unknown argument '$arg'. Use: patch, minor, or major." >&2
+      echo "" >&2
+      usage >&2
       exit 1
       ;;
   esac
@@ -61,13 +61,13 @@ fi
 # ── Pre-flight ───────────────────────────────────────────────────────
 
 if [ -n "$(git -C "$repo_root" status --porcelain)" ]; then
-  echo "ERROR: Working tree not clean. Commit or stash changes first."
+  echo "ERROR: Working tree not clean. Commit or stash changes first." >&2
   exit 1
 fi
 
 branch=$(git -C "$repo_root" branch --show-current)
 if [ -z "$branch" ]; then
-  echo "ERROR: Not on a branch (detached HEAD). Check out a branch before releasing."
+  echo "ERROR: Not on a branch (detached HEAD). Check out a branch before releasing." >&2
   exit 1
 fi
 
@@ -81,7 +81,7 @@ echo "Bumping version → $version ($bump_type)"
 # ── Commit, tag, and push ───────────────────────────────────────────
 
 git -C "$repo_root" add package.json package-lock.json
-git -C "$repo_root" commit -m "$tag"
+git -C "$repo_root" commit -m "release: $tag"
 git -C "$repo_root" tag "$tag"
 git -C "$repo_root" push origin HEAD:"$branch" "$tag"
 
