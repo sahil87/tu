@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { parseGlobalFlags } from "../cli.js";
 
 // ---------------------------------------------------------------------------
 // --skip-brew-update flag: gate around the internal `brew update` refresh
@@ -72,5 +73,45 @@ describe("--skip-brew-update flag: raw-argv detection idiom", () => {
 
   it("returns false when --skip-brew-update is absent", () => {
     assert.equal(["update"].includes("--skip-brew-update"), false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// --skip-brew-update flag: stripped from filteredArgs by parseGlobalFlags
+//
+// The flag is detected at the `update` dispatch via process.argv, but it MUST
+// also be stripped from filteredArgs so that (a) `tu --skip-brew-update update`
+// still resolves `update` as filteredArgs[0], and (b) the flag never reaches
+// parseDataArgs (which throws `Unknown argument` on unrecognized tokens) for
+// non-update commands. It is intentionally NOT surfaced on GlobalFlags — it is
+// a command-specific flag for `update`, which ignores positional args.
+// (Exercises the real parseGlobalFlags, not a mirror.)
+// ---------------------------------------------------------------------------
+
+describe("--skip-brew-update flag: parseGlobalFlags filtering", () => {
+  it("strips --skip-brew-update from filteredArgs (trailing)", () => {
+    const result = parseGlobalFlags(["update", "--skip-brew-update"]);
+    assert.deepEqual(result.filteredArgs, ["update"]);
+  });
+
+  it("strips --skip-brew-update when it precedes the command (order-independent dispatch)", () => {
+    const result = parseGlobalFlags(["--skip-brew-update", "update"]);
+    assert.deepEqual(result.filteredArgs, ["update"]);
+  });
+
+  it("strips --skip-brew-update from a data-command invocation so parseDataArgs never sees it", () => {
+    const result = parseGlobalFlags(["cc", "daily", "--skip-brew-update"]);
+    assert.deepEqual(result.filteredArgs, ["cc", "daily"]);
+  });
+
+  it("does not surface --skip-brew-update on the GlobalFlags object", () => {
+    const result = parseGlobalFlags(["update", "--skip-brew-update"]);
+    assert.equal((result as Record<string, unknown>).skipBrewUpdate, undefined);
+    assert.equal((result as Record<string, unknown>)["--skip-brew-update"], undefined);
+  });
+
+  it("leaves filteredArgs unchanged when the flag is absent", () => {
+    const result = parseGlobalFlags(["update"]);
+    assert.deepEqual(result.filteredArgs, ["update"]);
   });
 });
