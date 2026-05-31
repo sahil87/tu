@@ -11,13 +11,13 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 checklist:
     generated: true
     path: checklist.md
     completed: 21
-    total: 0
+    total: 21
 confidence:
     certain: 3
     confident: 5
@@ -37,6 +37,8 @@ stage_metrics:
     apply: {started_at: "2026-05-31T05:24:28Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-31T05:31:03Z"}
     review: {started_at: "2026-05-31T05:31:03Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-31T05:32:59Z"}
     hydrate: {started_at: "2026-05-31T05:32:59Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-31T05:35:19Z"}
-    ship: {started_at: "2026-05-31T05:35:19Z", driver: fab-fff, iterations: 1}
-prs: []
-last_updated: 2026-05-31T05:35:19Z
+    ship: {started_at: "2026-05-31T05:35:19Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-31T05:40:35Z"}
+    review-pr: {started_at: "2026-05-31T05:40:35Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/tu/pull/24
+last_updated: 2026-05-31T05:40:35Z
