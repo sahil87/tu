@@ -85,7 +85,8 @@ Flags:
   --user / -u <user>   Show usage for a specific user (multi mode only)
   --by-machine         Show per-machine cost breakdown (data commands only)
   --no-color           Disable ANSI color output
-  --no-rain            Disable matrix rain animation in watch mode`;
+  --no-rain            Disable matrix rain animation in watch mode
+  --skip-brew-update   Skip 'brew update' during 'tu update' (still upgrades)`;
 
 
 const FIELD_BLOCKS: Record<string, string> = {
@@ -270,25 +271,44 @@ export function runShellInit(shell: string | undefined): void {
   }
 }
 
-export function runUpdate(): void {
-  if (!__cli_dirname.includes("/Cellar/tu/")) {
-    console.log(`tu v${PKG_VERSION} was not installed via Homebrew.`);
+// Seam for tests: lets the brew subprocess calls, install detection, and
+// version be injected. Defaults preserve the real Homebrew behavior exactly.
+export interface UpdateDeps {
+  pkgDir: string;
+  version: string;
+  runBrew: (cmd: string, opts: { timeout: number }) => Buffer;
+}
+
+const DEFAULT_UPDATE_DEPS: UpdateDeps = {
+  pkgDir: __cli_dirname,
+  version: PKG_VERSION,
+  // brew output routing is intentional: `brew update`/`brew info` use stdio: "pipe"
+  // (silent capture), `brew upgrade` uses stdio: "inherit" (stream to user).
+  runBrew: (cmd, opts) => execSync(cmd, { stdio: cmd.startsWith("brew upgrade") ? "inherit" : "pipe", timeout: opts.timeout }) as Buffer,
+};
+
+export function runUpdate(skipBrewUpdate = false, deps: UpdateDeps = DEFAULT_UPDATE_DEPS): void {
+  const { pkgDir, version, runBrew } = deps;
+  if (!pkgDir.includes("/Cellar/tu/")) {
+    console.log(`tu v${version} was not installed via Homebrew.`);
     console.log("Update manually, or reinstall with: brew install sahil87/tap/tu");
     return;
   }
 
-  console.log(`Current version: v${PKG_VERSION}`);
+  console.log(`Current version: v${version}`);
 
-  try {
-    execSync("brew update --quiet", { stdio: "pipe", timeout: 30_000 });
-  } catch {
-    console.error("Error: could not check for updates (brew update failed). Check your network connection.");
-    process.exit(1);
+  if (!skipBrewUpdate) {
+    try {
+      runBrew("brew update --quiet", { timeout: 30_000 });
+    } catch {
+      console.error("Error: could not check for updates (brew update failed). Check your network connection.");
+      process.exit(1);
+    }
   }
 
   let latest: string;
   try {
-    const infoRaw = execSync("brew info --json=v2 tu", { stdio: "pipe", timeout: 10_000 });
+    const infoRaw = runBrew("brew info --json=v2 tu", { timeout: 10_000 });
     const info = JSON.parse(infoRaw.toString());
     const stable = info?.formulae?.[0]?.versions?.stable;
     if (typeof stable !== "string" || stable.trim() === "") {
@@ -300,15 +320,15 @@ export function runUpdate(): void {
     process.exit(1);
   }
 
-  if (latest === PKG_VERSION) {
-    console.log(`Already up to date (v${PKG_VERSION}).`);
+  if (latest === version) {
+    console.log(`Already up to date (v${version}).`);
     return;
   }
 
-  console.log(`Updating v${PKG_VERSION} → v${latest}...`);
+  console.log(`Updating v${version} → v${latest}...`);
 
   try {
-    execSync("brew upgrade tu", { stdio: "inherit", timeout: 120_000 });
+    runBrew("brew upgrade tu", { timeout: 120_000 });
   } catch {
     console.error("Error: brew upgrade failed.");
     process.exit(1);
@@ -1135,7 +1155,7 @@ async function main() {
     if (cmd === "init-metrics") { runInitMetrics(); return; }
     if (cmd === "sync") { await runSync(); return; }
     if (cmd === "status") { runStatus(); return; }
-    if (cmd === "update") { runUpdate(); return; }
+    if (cmd === "update") { runUpdate(rawArgs.includes("--skip-brew-update")); return; }
     if (cmd === "shell-init") { runShellInit(filteredArgs[1]); return; }
   }
 
