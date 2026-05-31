@@ -1,0 +1,44 @@
+id: e96v
+name: 260531-e96v-skip-brew-update-flag
+created: 2026-05-31T05:16:00Z
+created_by: sahil87
+change_type: feat
+issues: []
+progress:
+  intake: done
+  spec: done
+  tasks: done
+  apply: done
+  review: done
+  hydrate: done
+  ship: done
+  review-pr: done
+checklist:
+  generated: true
+  path: checklist.md
+  completed: 21
+  total: 21
+confidence:
+  certain: 3
+  confident: 5
+  tentative: 0
+  unresolved: 0
+  score: 3.5
+  fuzzy: true
+  dimensions:
+    signal: 94.0
+    reversibility: 85.0
+    competence: 94.4
+    disambiguation: 91.6
+stage_metrics:
+  intake: {started_at: "2026-05-31T05:16:00Z", driver: fab-new, iterations: 1, completed_at: "2026-05-31T05:20:56Z"}
+  spec: {started_at: "2026-05-31T05:20:56Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-31T05:24:28Z"}
+  tasks: {started_at: "2026-05-31T05:24:28Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-31T05:24:28Z"}
+  apply: {started_at: "2026-05-31T05:24:28Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-31T05:31:03Z"}
+  review: {started_at: "2026-05-31T05:31:03Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-31T05:32:59Z"}
+  hydrate: {started_at: "2026-05-31T05:32:59Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-31T05:35:19Z"}
+  ship: {started_at: "2026-05-31T05:35:19Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-31T05:40:35Z"}
+  review-pr: {started_at: "2026-05-31T05:40:35Z", driver: git-pr, iterations: 1, completed_at: "2026-05-31T05:41:52Z", phase: pushed, reviewer: '@Copilot'}
+prs:
+  - https://github.com/sahil87/tu/pull/24
+last_updated: 2026-05-31T05:41:52Z

@@ -51,6 +51,7 @@ const LONG_FLAGS = [
   "--interval",
   "--user",
   "--by-machine",
+  "--skip-brew-update",
   "--no-color",
   "--no-rain",
   "--version",
