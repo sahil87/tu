@@ -12,7 +12,7 @@ progress:
     review: done
     hydrate: done
     ship: done
-    review-pr: active
+    review-pr: done
 checklist:
     generated: true
     path: checklist.md
@@ -38,7 +38,7 @@ stage_metrics:
     review: {started_at: "2026-05-31T05:31:03Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-31T05:32:59Z"}
     hydrate: {started_at: "2026-05-31T05:32:59Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-31T05:35:19Z"}
     ship: {started_at: "2026-05-31T05:35:19Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-31T05:40:35Z"}
-    review-pr: {started_at: "2026-05-31T05:40:35Z", driver: git-pr, iterations: 1}
+    review-pr: {started_at: "2026-05-31T05:40:35Z", driver: git-pr, iterations: 1, completed_at: "2026-05-31T05:41:52Z"}
 prs:
     - https://github.com/sahil87/tu/pull/24
-last_updated: 2026-05-31T05:40:35Z
+last_updated: 2026-05-31T05:41:52Z
