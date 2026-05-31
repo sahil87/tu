@@ -84,6 +84,7 @@ Flags:
   --interval / -i <s>  Poll interval in seconds (default: 10, range: 5-3600)
   --user / -u <user>   Show usage for a specific user (multi mode only)
   --by-machine         Show per-machine cost breakdown (data commands only)
+  --skip-brew-update   Skip 'brew update' tap refresh during 'tu update'
   --no-color           Disable ANSI color output
   --no-rain            Disable matrix rain animation in watch mode`;
 
@@ -270,7 +271,7 @@ export function runShellInit(shell: string | undefined): void {
   }
 }
 
-export function runUpdate(): void {
+export function runUpdate(skipBrewUpdate = false): void {
   if (!__cli_dirname.includes("/Cellar/tu/")) {
     console.log(`tu v${PKG_VERSION} was not installed via Homebrew.`);
     console.log("Update manually, or reinstall with: brew install sahil87/tap/tu");
@@ -279,11 +280,13 @@ export function runUpdate(): void {
 
   console.log(`Current version: v${PKG_VERSION}`);
 
-  try {
-    execSync("brew update --quiet", { stdio: "pipe", timeout: 30_000 });
-  } catch {
-    console.error("Error: could not check for updates (brew update failed). Check your network connection.");
-    process.exit(1);
+  if (!skipBrewUpdate) {
+    try {
+      execSync("brew update --quiet", { stdio: "pipe", timeout: 30_000 });
+    } catch {
+      console.error("Error: could not check for updates (brew update failed). Check your network connection.");
+      process.exit(1);
+    }
   }
 
   let latest: string;
@@ -1135,7 +1138,7 @@ async function main() {
     if (cmd === "init-metrics") { runInitMetrics(); return; }
     if (cmd === "sync") { await runSync(); return; }
     if (cmd === "status") { runStatus(); return; }
-    if (cmd === "update") { runUpdate(); return; }
+    if (cmd === "update") { runUpdate(process.argv.includes("--skip-brew-update")); return; }
     if (cmd === "shell-init") { runShellInit(filteredArgs[1]); return; }
   }
 
