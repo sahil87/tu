@@ -20,7 +20,7 @@ _tu_complete() {
   local sources="cc codex co oc all"
   local periods="d m daily monthly"
   local display="h history dh mh"
-  local long_flags="--json --csv --md --sync --fresh --watch --interval --user --by-machine --no-color --no-rain --version --help"
+  local long_flags="--json --csv --md --sync --fresh --watch --interval --user --by-machine --no-color --no-rain --skip-brew-update --version --help"
   local short_flags="-f -w -i -u -v -V -h"
   local shells="bash zsh fish"
 
@@ -74,7 +74,7 @@ _tu() {
   sources=(cc codex co oc all)
   periods=(d m daily monthly)
   display=(h history dh mh)
-  long_flags=(--json --csv --md --sync --fresh --watch --interval --user --by-machine --no-color --no-rain --version --help)
+  long_flags=(--json --csv --md --sync --fresh --watch --interval --user --by-machine --no-color --no-rain --skip-brew-update --version --help)
   short_flags=(-f -w -i -u -v -V -h)
   shells=(bash zsh fish)
 
@@ -99,6 +99,7 @@ _tu() {
     '--by-machine[per-machine cost breakdown]' \\
     '--no-color[disable ANSI colors]' \\
     '--no-rain[disable matrix rain]' \\
+    '--skip-brew-update[skip brew tap refresh (tu update only)]' \\
     '--version[print version]' \\
     '-v[print version]' \\
     '-V[print version]' \\
@@ -181,6 +182,7 @@ complete -c tu -l user -r -d 'show usage for a specific user'
 complete -c tu -l by-machine -d 'per-machine cost breakdown'
 complete -c tu -l no-color -d 'disable ANSI colors'
 complete -c tu -l no-rain -d 'disable matrix rain'
+complete -c tu -n '__fish_seen_subcommand_from update' -l skip-brew-update -d 'skip brew tap refresh'
 complete -c tu -l version -d 'print version'
 complete -c tu -l help -d 'show help'
 

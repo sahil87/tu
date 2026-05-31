@@ -70,6 +70,7 @@ Setup:
   tu sync              Push/pull metrics manually
   tu status            Show config and sync state
   tu update            Update tu to latest version
+                       (--skip-brew-update skips the brew tap refresh)
   tu shell-init <sh>   Emit shell init script (bash/zsh/fish)
 
 Help: tu help | tu -h | tu --help
@@ -85,7 +86,8 @@ Flags:
   --user / -u <user>   Show usage for a specific user (multi mode only)
   --by-machine         Show per-machine cost breakdown (data commands only)
   --no-color           Disable ANSI color output
-  --no-rain            Disable matrix rain animation in watch mode`;
+  --no-rain            Disable matrix rain animation in watch mode
+  --skip-brew-update   Skip 'brew update' tap refresh (tu update only)`;
 
 
 const FIELD_BLOCKS: Record<string, string> = {
@@ -270,8 +272,25 @@ export function runShellInit(shell: string | undefined): void {
   }
 }
 
-export function runUpdate(): void {
-  if (!__cli_dirname.includes("/Cellar/tu/")) {
+export interface UpdateOptions {
+  // Skip ONLY the `brew update --quiet` tap-metadata refresh. The `brew info`
+  // version check, the "already up to date" short-circuit, and `brew upgrade`
+  // all still run. Cross-toolkit contract flag: --skip-brew-update.
+  skipBrewUpdate?: boolean;
+  // Injectable exec for testing; defaults to the module's execSync.
+  exec?: typeof execSync;
+  // Injectable Homebrew-install guard for testing; defaults to the real check.
+  isHomebrew?: () => boolean;
+}
+
+export function runUpdate(options: UpdateOptions = {}): void {
+  const {
+    skipBrewUpdate = false,
+    exec = execSync,
+    isHomebrew = () => __cli_dirname.includes("/Cellar/tu/"),
+  } = options;
+
+  if (!isHomebrew()) {
     console.log(`tu v${PKG_VERSION} was not installed via Homebrew.`);
     console.log("Update manually, or reinstall with: brew install sahil87/tap/tu");
     return;
@@ -279,16 +298,18 @@ export function runUpdate(): void {
 
   console.log(`Current version: v${PKG_VERSION}`);
 
-  try {
-    execSync("brew update --quiet", { stdio: "pipe", timeout: 30_000 });
-  } catch {
-    console.error("Error: could not check for updates (brew update failed). Check your network connection.");
-    process.exit(1);
+  if (!skipBrewUpdate) {
+    try {
+      exec("brew update --quiet", { stdio: "pipe", timeout: 30_000 });
+    } catch {
+      console.error("Error: could not check for updates (brew update failed). Check your network connection.");
+      process.exit(1);
+    }
   }
 
   let latest: string;
   try {
-    const infoRaw = execSync("brew info --json=v2 tu", { stdio: "pipe", timeout: 10_000 });
+    const infoRaw = exec("brew info --json=v2 tu", { stdio: "pipe", timeout: 10_000 });
     const info = JSON.parse(infoRaw.toString());
     const stable = info?.formulae?.[0]?.versions?.stable;
     if (typeof stable !== "string" || stable.trim() === "") {
@@ -308,7 +329,7 @@ export function runUpdate(): void {
   console.log(`Updating v${PKG_VERSION} → v${latest}...`);
 
   try {
-    execSync("brew upgrade tu", { stdio: "inherit", timeout: 120_000 });
+    exec("brew upgrade tu", { stdio: "inherit", timeout: 120_000 });
   } catch {
     console.error("Error: brew upgrade failed.");
     process.exit(1);
@@ -1135,7 +1156,7 @@ async function main() {
     if (cmd === "init-metrics") { runInitMetrics(); return; }
     if (cmd === "sync") { await runSync(); return; }
     if (cmd === "status") { runStatus(); return; }
-    if (cmd === "update") { runUpdate(); return; }
+    if (cmd === "update") { runUpdate({ skipBrewUpdate: rawArgs.includes("--skip-brew-update") }); return; }
     if (cmd === "shell-init") { runShellInit(filteredArgs[1]); return; }
   }
 

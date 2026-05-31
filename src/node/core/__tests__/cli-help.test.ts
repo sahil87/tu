@@ -79,6 +79,10 @@ describe("FULL_HELP", () => {
     assert.ok(FULL_HELP.includes("-f"));
   });
 
+  it("documents the --skip-brew-update flag", () => {
+    assert.ok(FULL_HELP.includes("--skip-brew-update"));
+  });
+
   it("contains Examples using new grammar", () => {
     assert.ok(FULL_HELP.includes("Examples:"));
     assert.ok(FULL_HELP.includes("tu cc"));
