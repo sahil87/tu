@@ -1,8 +1,8 @@
 _agents:
-    0e194edf-c5bf-4291-9c7c-018273da9cbd:
-        idle_since: 1780392888
-        pid: 4120772
-        tmux_pane: '%39'
+    4c71dad7-ae61-4567-b972-058f6ee4f2d1:
+        change: 260602-v76l-help-dump-shll-ai
+        pid: 639500
+        tmux_pane: '%244'
         tmux_server: utils
-        transcript_path: /home/sahil/.claude/projects/-home-sahil-code-sahil87-tu/0e194edf-c5bf-4291-9c7c-018273da9cbd.jsonl
-last_run_gc: 1780392888
+        transcript_path: /home/sahil/.claude/projects/-home-sahil-code-sahil87-tu-worktrees-v76l/4c71dad7-ae61-4567-b972-058f6ee4f2d1.jsonl
+last_run_gc: 1780427306

@@ -3,6 +3,17 @@ name: Release
 on:
   push:
     tags: ['v*']
+    # Release-PR-merge entry point: a release-labeled PR merging to main is
+    # detected by the `tag-on-release-merge` job. That job creates+pushes a v*
+    # tag (the durable version anchor the Homebrew tap and history depend on)
+    # AND exposes an `is_release` output so the `release` job runs in THIS SAME
+    # workflow run. We do NOT rely on the tag push re-triggering `release`:
+    # GitHub deliberately suppresses workflow runs from pushes authenticated
+    # with the default GITHUB_TOKEN (documented loop-prevention), so a
+    # GITHUB_TOKEN-authored tag push would never fire a second `release` run.
+    # Running via job dependency (needs/outputs) is what makes the release-merge
+    # path actually execute the pipeline.
+    branches: [main]
   workflow_dispatch:
     inputs:
       bump:
@@ -16,25 +27,105 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
-  release:
-    # workflow_dispatch must run from main; tag-push is allowed from any ref.
-    if: github.event_name == 'push' || github.ref == 'refs/heads/main'
+  # ── Entry point: tag on release-PR merge ─────────────────────────────
+  # Runs only on a push to main. Detects whether the merge corresponds to a
+  # release-labeled PR; if so, tags the (already-bumped) package.json version
+  # and pushes the tag, then exposes is_release/tag/version as outputs so the
+  # `release` job below runs in the same workflow run. A non-release push to
+  # main resolves is_release=false and the `release` job no-ops (skips its
+  # heavy steps). On a tag-push or workflow_dispatch event this job's `if` is
+  # false, so it is SKIPPED — the `release` job tolerates that via always().
+  tag-on-release-merge:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    outputs:
+      is_release: ${{ steps.detect.outputs.is_release }}
+      tag: ${{ steps.detect.outputs.tag }}
+      version: ${{ steps.detect.outputs.version }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
 
-      # Needed by scripts/release.sh on manual dispatch (uses `npm version`).
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        if: github.event_name == 'workflow_dispatch'
+        with:
+          node-version: 20
+
+      # Detect a release: the PR associated with this merge commit must carry
+      # the `release` label. (Decoupled from commit-message parsing — explicit
+      # and low-false-positive. The release PR is expected to have bumped
+      # package.json already, so we tag that version rather than bumping again.)
+      # Emits is_release plus the resolved tag/version so the `release` job can
+      # run off these outputs without re-parsing github.ref (which is `main`).
+      - name: Detect release PR
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          is_release=$(gh pr list --state merged --search "${{ github.sha }}" \
+            --json labels --jq 'any(.[]; any(.labels[]; .name == "release"))' || echo "false")
+          version=$(node -p 'require("./package.json").version')
+          echo "is_release=$is_release" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag
+        if: steps.detect.outputs.is_release == 'true'
+        run: |
+          tag="${{ steps.detect.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # If the tag already exists, do nothing (idempotent re-runs). The tag
+          # is the durable version anchor; the release pipeline still runs in
+          # this workflow run via the `release` job's needs/outputs (NOT via a
+          # re-trigger from this GITHUB_TOKEN-authored push, which is suppressed).
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            echo "Tag $tag already exists — skipping push."
+          else
+            git tag "$tag"
+            git push origin "$tag"
+          fi
+
+  # ── Release pipeline (tag-push + manual dispatch + release-merge) ─────
+  # Runs in three cases, each exactly once:
+  #   1. a real v* tag push        → startsWith(github.ref, 'refs/tags/v')
+  #   2. workflow_dispatch         → manual bump-and-tag in-place
+  #   3. a release-merge to main   → tag-on-release-merge resolved is_release=true
+  # `needs: tag-on-release-merge` lets us read that job's outputs, but a needed
+  # job that is SKIPPED would normally skip this job too — so we gate with
+  # always() and tolerate `needs.tag-on-release-merge.result == 'skipped'`
+  # (which is exactly what happens on the tag-push and dispatch paths). The
+  # explicit per-case conditions ensure a non-release push to main, or a failed/
+  # cancelled upstream, does NOT run the heavy pipeline.
+  release:
+    needs: tag-on-release-merge
+    if: |
+      always() && (
+        startsWith(github.ref, 'refs/tags/v') ||
+        github.event_name == 'workflow_dispatch' ||
+        (needs.tag-on-release-merge.result == 'success' &&
+         needs.tag-on-release-merge.outputs.is_release == 'true')
+      )
+    runs-on: ubuntu-latest
+    steps:
+      # Check out the right ref for each path:
+      #   - tag push   → the tag (github.ref) — the canonical version anchor
+      #   - dispatch   → main (release.sh bumps + tags from here)
+      #   - merge      → the just-created tag from tag-on-release-merge, which
+      #                  points at the merge commit carrying the bumped package.json
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || (startsWith(github.ref, 'refs/tags/v') && github.ref || needs.tag-on-release-merge.outputs.tag) }}
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
 
@@ -49,13 +140,20 @@ jobs:
           ./scripts/release.sh "${{ inputs.bump }}"
           echo "tag=$(git tag --sort=-v:refname | head -1)" >> "$GITHUB_OUTPUT"
 
+      # Resolve the release tag/version for all three event shapes:
+      #   - tag push   → github.ref_name (e.g. v0.4.15)
+      #   - dispatch   → the tag scripts/release.sh just created
+      #   - merge      → tag-on-release-merge's output (falls back to package.json)
       - name: Resolve release tag
         id: version
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             tag="${{ steps.create_tag.outputs.tag }}"
-          else
+          elif [ "${{ startsWith(github.ref, 'refs/tags/v') }}" = "true" ]; then
             tag="${{ github.ref_name }}"
+          else
+            tag="${{ needs.tag-on-release-merge.outputs.tag }}"
+            [ -n "$tag" ] || tag="v$(node -p 'require("./package.json").version')"
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
@@ -86,3 +184,57 @@ jobs:
           git add Formula/tu.rb
           git commit -m "tu ${version}"
           git push
+
+      # ── help-dump → shll.ai ───────────────────────────────────────────
+      # Build the bundle, capture tu's --help into help/tu.json, validate it,
+      # then PR it into sahil87/shll.ai with auto-merge. PR (never a direct
+      # push to main) serializes the 7-tool concurrent writes through GitHub.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build bundle
+        run: npm run build
+
+      - name: Generate help/tu.json
+        # The producer fails non-zero on capture error, empty output, or a
+        # failed self-validation — failing the job before any PR is opened.
+        run: npm run help-dump
+
+      - name: PR help/tu.json into shll.ai
+        env:
+          # GITHUB_TOKEN cannot cross repos — SHLLAI_TOKEN authorizes both the
+          # git push (via the clone URL) and the gh PR/auto-merge calls against
+          # sahil87/shll.ai.
+          SHLLAI_TOKEN: ${{ secrets.SHLLAI_TOKEN }}
+          GH_TOKEN: ${{ secrets.SHLLAI_TOKEN }}
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          branch="tu-help-dump-v${version}"
+          workdir="$(mktemp -d)"
+
+          git clone "https://x-access-token:${SHLLAI_TOKEN}@github.com/sahil87/shll.ai.git" "$workdir"
+          mkdir -p "$workdir/help"
+          cp help/tu.json "$workdir/help/tu.json"
+
+          cd "$workdir"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add help/tu.json
+
+          # Skip cleanly if the artifact is byte-identical to what's on main.
+          if git diff --cached --quiet; then
+            echo "help/tu.json unchanged — nothing to PR."
+            exit 0
+          fi
+
+          git commit -m "tu help-dump v${version}"
+          git push --force-with-lease origin "$branch"
+
+          # Open the PR (idempotent) and enable auto-merge with squash.
+          gh pr create \
+            --title "tu help-dump v${version}" \
+            --body "Automated CLI help reference update for tu v${version}." \
+            --base main \
+            --head "$branch" || echo "PR already exists for $branch."
+          gh pr merge --auto --squash "$branch"

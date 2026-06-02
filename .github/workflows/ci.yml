@@ -1,0 +1,31 @@
+name: CI
+
+# Build verification + tests on every push to main. This is intentionally
+# separate from release.yml: it does NOT run the help-dump→shll.ai step (that
+# lives on release.yml's tag-push path).
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      # SHAs pinned to match release.yml exactly.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build bundle
+        run: npm run build
+
+      - name: Run tests
+        run: npm test
