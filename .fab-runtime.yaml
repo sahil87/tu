@@ -1,15 +1,8 @@
-260306-5hu8-fix-watch-mode-display-bugs:
-    agent:
-        idle_since: 1772803463
-260306-mxla-redesign-watch-layout:
-    agent:
-        idle_since: 1772806886
-260306-x861-reorganize-src-node-namespace:
-    agent:
-        idle_since: 1772799732
-260307-9mfs-add-update-command:
-    agent:
-        idle_since: 1772893939
-260307-v2bu-filter-usage-by-user:
-    agent:
-        idle_since: 1772891060
+_agents:
+    0e194edf-c5bf-4291-9c7c-018273da9cbd:
+        idle_since: 1780392888
+        pid: 4120772
+        tmux_pane: '%39'
+        tmux_server: utils
+        transcript_path: /home/sahil/.claude/projects/-home-sahil-code-sahil87-tu/0e194edf-c5bf-4291-9c7c-018273da9cbd.jsonl
+last_run_gc: 1780392888

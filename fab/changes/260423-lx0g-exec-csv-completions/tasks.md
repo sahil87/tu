@@ -51,3 +51,5 @@
 **Within Phase 3**: All test tasks are `[P]` and can run in parallel — they extend/create different test files.
 
 **Phase 4 is sequential**: T017 (tests + build) before T018 (smoke tests against the bundle).
+
+<!-- Migrated to plan.md on 2026-06-02 — safe to delete. -->

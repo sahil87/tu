@@ -157,3 +157,5 @@ uses for the `--sync` guard) and assert the command sequence under each flag val
 | 8 | Confident | Test mirrors the gate's command-selection logic inline (per `cli-sync-flag.test.ts`); no `execSync` mock, no `runUpdate` refactor | Confirmed from intake #8 (user-resolved) — matches existing precedent; see Design Decision 3 | S:90 R:80 A:90 D:90 |
 
 8 assumptions (3 certain, 5 confident, 0 tentative, 0 unresolved).
+
+<!-- Merged into plan.md ## Requirements on 2026-06-02 — safe to delete. -->

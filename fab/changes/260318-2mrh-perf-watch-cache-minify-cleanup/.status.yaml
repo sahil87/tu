@@ -6,7 +6,6 @@ change_type: refactor
 issues: []
 progress:
     intake: ready
-    spec: pending
     tasks: pending
     apply: pending
     review: pending

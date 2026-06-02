@@ -31,3 +31,5 @@
 - T005 depends on T004 (TOOLS depends on the new BIN/useVendor variables)
 - T006 depends on T002, T003 (build scripts must be updated)
 - T007 depends on T004, T005 (fetcher changes must be in place)
+
+<!-- Migrated to plan.md on 2026-06-02 — safe to delete. -->

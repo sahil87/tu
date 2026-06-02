@@ -45,3 +45,5 @@ The CLI SHALL accept `-v` (lowercase) as an alias for `--version`, printing the 
 | 7 | Certain | No test changes needed for this flag | Existing test suite does not unit-test `-V`; `-v` follows same pattern | S:85 R:90 A:90 D:90 |
 
 7 assumptions (7 certain, 0 confident, 0 tentative, 0 unresolved).
+
+<!-- Merged into plan.md ## Requirements on 2026-06-02 — safe to delete. -->

@@ -33,3 +33,5 @@
 - T001 → T002 → T003 are edits to the same file (`cli.ts`); do them in sequence to avoid overlapping edits. T002 depends conceptually on T001's new signature.
 - T004 (new test file) is independent of the `cli.ts` edits and may be written in parallel `[P]`, but its assertions mirror the gate logic from T001 — author it consistent with the final T001 behavior.
 - T005 (build + test) is the final gate and depends on T001–T004 all being complete.
+
+<!-- Migrated to plan.md on 2026-06-02 — safe to delete. -->

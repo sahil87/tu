@@ -6,18 +6,16 @@ change_type: feat
 issues: []
 progress:
     intake: done
-    spec: done
-    tasks: done
     apply: done
     review: done
     hydrate: done
     ship: done
     review-pr: active
-checklist:
+plan:
     generated: true
-    path: checklist.md
-    completed: 7
-    total: 7
+    task_count: 1
+    acceptance_count: 7
+    acceptance_completed: 7
 confidence:
     certain: 7
     confident: 0
@@ -32,8 +30,6 @@ confidence:
         disambiguation: 94.3
 stage_metrics:
     intake: {started_at: "2026-04-01T10:41:36Z", driver: fab-new, iterations: 1, completed_at: "2026-04-01T10:44:31Z"}
-    spec: {started_at: "2026-04-01T10:44:31Z", driver: fab-fff, iterations: 1, completed_at: "2026-04-01T10:45:31Z"}
-    tasks: {started_at: "2026-04-01T10:45:31Z", driver: fab-fff, iterations: 1, completed_at: "2026-04-01T10:45:35Z"}
     apply: {started_at: "2026-04-01T10:45:35Z", driver: fab-fff, iterations: 1, completed_at: "2026-04-01T10:46:14Z"}
     review: {started_at: "2026-04-01T10:46:14Z", driver: fab-fff, iterations: 1, completed_at: "2026-04-01T10:47:08Z"}
     hydrate: {started_at: "2026-04-01T10:47:08Z", driver: fab-continue, iterations: 1, completed_at: "2026-04-01T10:48:11Z"}
@@ -41,4 +37,4 @@ stage_metrics:
     review-pr: {started_at: "2026-04-01T10:49:51Z", driver: git-pr, iterations: 1}
 prs:
     - https://github.com/sahil87/tu/pull/12
-last_updated: 2026-04-01T10:49:51Z
+last_updated: 2026-06-02T09:31:37Z

@@ -13,3 +13,5 @@
 ## Execution Order
 
 No dependencies — single task.
+
+<!-- Migrated to plan.md on 2026-06-02 — safe to delete. -->

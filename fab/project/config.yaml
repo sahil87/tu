@@ -2,22 +2,21 @@ agent:
     spawn_command: claude --dangerously-skip-permissions --effort max -n "$(basename "$(pwd)")"
 checklist:
     extra_categories: []
-fab_version: 1.2.4
+fab_version: 2.0.1
 project:
     description: AI coding assistant cost tracking CLI
     name: tu
+review_tools:
+    claude: true
+    codex: true
+    copilot: true
 source_paths:
     - src/
-review_tools:
-    copilot: true
-    codex: true
-    claude: true
+true_impact_exclude: [fab/, docs/]
 stage_directives:
-    apply: []
+    apply:
+        - Use GIVEN/WHEN/THEN for scenarios
+        - Mark ambiguities with [NEEDS CLARIFICATION]
     hydrate: []
     intake: []
     review: []
-    spec:
-        - Use GIVEN/WHEN/THEN for scenarios
-        - Mark ambiguities with [NEEDS CLARIFICATION]
-    tasks: []

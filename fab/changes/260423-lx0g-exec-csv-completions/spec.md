@@ -390,3 +390,5 @@ The interrupted-rebase recovery path and the single-retry push path MUST preserv
 | 26 | Confident | Completion scripts live in a new `src/node/core/completions.ts` module | Isolated string constants; keeps `cli.ts` (already 1105 lines) from growing further. Pure data module | S:65 R:95 A:80 D:75 |
 
 26 assumptions (22 certain, 4 confident, 0 tentative, 0 unresolved).
+
+<!-- Merged into plan.md ## Requirements on 2026-06-02 — safe to delete. -->
