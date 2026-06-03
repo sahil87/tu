@@ -206,6 +206,18 @@ function gitSetup() {
   mkdirSync(GIT_DIR, { recursive: true });
   const opts = { stdio: "pipe" as const };
   execSync(`git init --bare "${BARE_DIR}"`, opts);
+  // syncMetrics() pulls/pushes `origin main` (see sync.ts), so the whole fixture
+  // MUST be anchored on `main`. `git init` uses the runner's init.defaultBranch
+  // (often `master` in CI / older git), so we pin it explicitly rather than
+  // depend on the developer's global config. Two things are required:
+  //   1. the bare repo's HEAD must advertise `main`, so every `git clone` of it
+  //      (including the sub-clone in the upstream-integration test) checks out
+  //      `main` rather than an empty `master`;
+  //   2. the working clone's branch must be renamed to `main` before pushing.
+  // Without (1), a fresh clone lands on `master` with no commits and the sync's
+  // `pull --rebase origin main` / `push` fail ("current branch master has no
+  // commits yet").
+  execSync(`git -C "${BARE_DIR}" symbolic-ref HEAD refs/heads/main`, opts);
   execSync(`git clone "${BARE_DIR}" "${CLONE_DIR}"`, opts);
   // Initial commit so the repo has a branch
   execSync(`git -C "${CLONE_DIR}" config user.email "test@test.com"`, opts);
@@ -214,7 +226,8 @@ function gitSetup() {
   writeFileSync(initFile, "");
   execSync(`git -C "${CLONE_DIR}" add .gitkeep`, opts);
   execSync(`git -C "${CLONE_DIR}" commit -m "init"`, opts);
-  execSync(`git -C "${CLONE_DIR}" push`, opts);
+  execSync(`git -C "${CLONE_DIR}" branch -M main`, opts);
+  execSync(`git -C "${CLONE_DIR}" push -u origin main`, opts);
 }
 
 function gitTeardown() {
@@ -407,6 +420,9 @@ exit 1
     const spacedBare = join(GIT_DIR, "bare with space.git");
     const spacedClone = join(GIT_DIR, "My Data", "clone with space");
     execSync(`git init --bare "${spacedBare}"`, opts);
+    // Anchor on `main` to match syncMetrics()'s hardcoded `origin main` (see the
+    // gitSetup() note) — git init.defaultBranch may be `master` on the runner.
+    execSync(`git -C "${spacedBare}" symbolic-ref HEAD refs/heads/main`, opts);
     mkdirSync(join(GIT_DIR, "My Data"), { recursive: true });
     execSync(`git clone "${spacedBare}" "${spacedClone}"`, opts);
     execSync(`git -C "${spacedClone}" config user.email "test@test.com"`, opts);
@@ -414,7 +430,8 @@ exit 1
     writeFileSync(join(spacedClone, ".gitkeep"), "");
     execSync(`git -C "${spacedClone}" add .gitkeep`, opts);
     execSync(`git -C "${spacedClone}" commit -m "init"`, opts);
-    execSync(`git -C "${spacedClone}" push`, opts);
+    execSync(`git -C "${spacedClone}" branch -M main`, opts);
+    execSync(`git -C "${spacedClone}" push -u origin main`, opts);
 
     writeMetrics(spacedClone, "sahil", "macbook", "cc", [entry("2026-02-22", 1.5)]);
     const result = await syncMetrics(spacedClone, "sahil");

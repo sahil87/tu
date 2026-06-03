@@ -111,6 +111,10 @@ describe("runSync", () => {
     const opts = { stdio: "pipe" as const };
     mkdirSync(tuHome, { recursive: true });
     execSync(`git init --bare "${bareDir}"`, opts);
+    // runSync pulls/pushes `origin main` — anchor the bare repo HEAD + clone
+    // branch on `main` so the fixture doesn't depend on the runner's
+    // init.defaultBranch (often `master` in CI). See sync.test.ts gitSetup().
+    execSync(`git -C "${bareDir}" symbolic-ref HEAD refs/heads/main`, opts);
     execSync(`git clone "${bareDir}" "${metricsDir}"`, opts);
     execSync(`git -C "${metricsDir}" config user.email "test@test.com"`, opts);
     execSync(`git -C "${metricsDir}" config user.name "test"`, opts);
@@ -118,7 +122,8 @@ describe("runSync", () => {
     writeFileSync(join(metricsDir, ".gitkeep"), "");
     execSync(`git -C "${metricsDir}" add .gitkeep`, opts);
     execSync(`git -C "${metricsDir}" commit -m "init"`, opts);
-    execSync(`git -C "${metricsDir}" push`, opts);
+    execSync(`git -C "${metricsDir}" branch -M main`, opts);
+    execSync(`git -C "${metricsDir}" push -u origin main`, opts);
 
     const path = writeConf(
       `mode = multi\nmetrics_repo = git@example.com:repo.git\nmetrics_dir = ${metricsDir}\nmachine = testbox\nuser = testuser\n`,
