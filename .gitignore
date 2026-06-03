@@ -2,6 +2,10 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Transient help-dump artifact — generated in CI and PR'd into sahil87/shll.ai
+# (shll.ai is the source of truth); never committed here. See scripts/help-dump.mjs.
+help/
+
 .fab-status.yaml
 
 /.agents
