@@ -69,8 +69,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          is_release=$(gh pr list --state merged --search "${{ github.sha }}" \
-            --json labels --jq 'any(.[]; any(.labels[]; .name == "release"))' || echo "false")
+          # Resolve the PR(s) for this merge commit via the commit→PR association
+          # API, which is the reliable source — `gh pr list --search <sha>` relies
+          # on the search index, which does not dependably index commits by SHA
+          # (and lags), so it can spuriously yield is_release=false.
+          is_release=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" \
+            --jq 'any(.[]; any(.labels[]; .name == "release"))' || echo "false")
           version=$(node -p 'require("./package.json").version')
           echo "is_release=$is_release" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -160,6 +164,22 @@ jobs:
 
       - uses: extractions/setup-just@dd310ad5a97d8e7b41793f8ef055398d51ad4de6 # v2
 
+      # ── Fail-loud steps FIRST (before any external side effect) ──────────
+      # Install, build, and generate+validate help/tu.json up front. The
+      # producer is intentionally fail-loud (non-zero on capture error, empty
+      # output, or failed self-validation). Running these before the GitHub
+      # Release and Homebrew tap update means a generation failure aborts the
+      # run BEFORE those external side effects are applied — avoiding a
+      # partially-applied release (release/tap published but help-dump failed).
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build bundle
+        run: npm run build
+
+      - name: Generate help/tu.json
+        run: npm run help-dump
+
       - name: Generate release notes
         run: just release-notes "${{ steps.version.outputs.tag }}"
 
@@ -186,20 +206,9 @@ jobs:
           git push
 
       # ── help-dump → shll.ai ───────────────────────────────────────────
-      # Build the bundle, capture tu's --help into help/tu.json, validate it,
-      # then PR it into sahil87/shll.ai with auto-merge. PR (never a direct
+      # help/tu.json was already built + validated above; this terminal step
+      # only PRs it into sahil87/shll.ai with auto-merge. PR (never a direct
       # push to main) serializes the 7-tool concurrent writes through GitHub.
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build bundle
-        run: npm run build
-
-      - name: Generate help/tu.json
-        # The producer fails non-zero on capture error, empty output, or a
-        # failed self-validation — failing the job before any PR is opened.
-        run: npm run help-dump
-
       - name: PR help/tu.json into shll.ai
         env:
           # GITHUB_TOKEN cannot cross repos — SHLLAI_TOKEN authorizes both the
