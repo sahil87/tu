@@ -9,7 +9,7 @@
   "scripts": {
     "build": "scripts/build.sh",
     "help-dump": "node scripts/help-dump.mjs",
-    "test": "npx tsx --test 'src/node/**/__tests__/*.test.ts'"
+    "test": "find src/node -path '*/__tests__/*.test.ts' -exec npx tsx --test {} +"
   },
   "files": [
     "dist/",
