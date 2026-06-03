@@ -165,20 +165,15 @@ jobs:
       - uses: extractions/setup-just@dd310ad5a97d8e7b41793f8ef055398d51ad4de6 # v2
 
       # ── Fail-loud steps FIRST (before any external side effect) ──────────
-      # Install, build, and generate+validate help/tu.json up front. The
-      # producer is intentionally fail-loud (non-zero on capture error, empty
-      # output, or failed self-validation). Running these before the GitHub
-      # Release and Homebrew tap update means a generation failure aborts the
-      # run BEFORE those external side effects are applied — avoiding a
-      # partially-applied release (release/tap published but help-dump failed).
+      # Install and build up front. Running these before the GitHub Release and
+      # Homebrew tap update means a build failure aborts the run BEFORE those
+      # external side effects are applied — avoiding a partially-applied release
+      # (release/tap published but the bundle failed to build).
       - name: Install dependencies
         run: npm ci
 
       - name: Build bundle
         run: npm run build
-
-      - name: Generate help/tu.json
-        run: npm run help-dump
 
       - name: Generate release notes
         run: just release-notes "${{ steps.version.outputs.tag }}"
@@ -204,46 +199,3 @@ jobs:
           git add Formula/tu.rb
           git commit -m "tu ${version}"
           git push
-
-      # ── help-dump → shll.ai ───────────────────────────────────────────
-      # help/tu.json was already built + validated above; this terminal step
-      # only PRs it into sahil87/shll.ai with auto-merge. PR (never a direct
-      # push to main) serializes the 7-tool concurrent writes through GitHub.
-      - name: PR help/tu.json into shll.ai
-        env:
-          # GITHUB_TOKEN cannot cross repos — SHLLAI_TOKEN authorizes both the
-          # git push (via the clone URL) and the gh PR/auto-merge calls against
-          # sahil87/shll.ai.
-          SHLLAI_TOKEN: ${{ secrets.SHLLAI_TOKEN }}
-          GH_TOKEN: ${{ secrets.SHLLAI_TOKEN }}
-        run: |
-          version="${{ steps.version.outputs.version }}"
-          branch="tu-help-dump-v${version}"
-          workdir="$(mktemp -d)"
-
-          git clone "https://x-access-token:${SHLLAI_TOKEN}@github.com/sahil87/shll.ai.git" "$workdir"
-          mkdir -p "$workdir/help"
-          cp help/tu.json "$workdir/help/tu.json"
-
-          cd "$workdir"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$branch"
-          git add help/tu.json
-
-          # Skip cleanly if the artifact is byte-identical to what's on main.
-          if git diff --cached --quiet; then
-            echo "help/tu.json unchanged — nothing to PR."
-            exit 0
-          fi
-
-          git commit -m "tu help-dump v${version}"
-          git push --force-with-lease origin "$branch"
-
-          # Open the PR (idempotent) and enable auto-merge with squash.
-          gh pr create \
-            --title "tu help-dump v${version}" \
-            --body "Automated CLI help reference update for tu v${version}." \
-            --base main \
-            --head "$branch" || echo "PR already exists for $branch."
-          gh pr merge --auto --squash "$branch"
