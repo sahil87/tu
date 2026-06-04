@@ -51,7 +51,13 @@ export async function syncMetrics(metricsDir: string, user: string): Promise<boo
   }
 
   try {
-    await git(["add", `${user}/`]);
+    // The user dir may not exist yet (first run, or no data because all
+    // ccusage sources were unavailable). `git add <user>/` would fail with
+    // "pathspec did not match any files" — skip staging and let the pull/push
+    // below run as a clean no-op so sync still succeeds.
+    if (existsSync(join(metricsDir, user))) {
+      await git(["add", `${user}/`]);
+    }
     const status = await git(["status", "--porcelain", `${user}/`]);
     if (status.trim()) {
       const date = new Date().toISOString().slice(0, 10);
