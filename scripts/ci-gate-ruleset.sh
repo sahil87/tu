@@ -25,7 +25,20 @@ set -euo pipefail
 #   scripts/ci-gate-ruleset.sh --apply    # create/update the ruleset (needs admin)
 #   scripts/ci-gate-ruleset.sh -h         # help
 
-REPO="sahil87/tu"
+# Resolve the target repo from the local clone's `origin` remote so the ruleset
+# is never applied to the wrong repository (e.g. from a fork or a renamed
+# clone). Prefer `gh` (authoritative for the GitHub repo), fall back to parsing
+# the origin URL, and finally to the canonical default. The trailing `|| true`
+# keeps `set -e` from aborting when neither source resolves.
+REPO_DEFAULT="sahil87/tu"
+REPO="$(gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null || true)"
+if [ -z "$REPO" ]; then
+  origin_url="$(git config --get remote.origin.url 2>/dev/null || true)"
+  # Strip protocol/host and a trailing .git → owner/repo (handles git@ and https forms).
+  REPO="$(printf '%s' "$origin_url" | sed -E 's#^[^:]+://[^/]+/##; s#^[^:]+:##; s#\.git$##')"
+fi
+[ -z "$REPO" ] && REPO="$REPO_DEFAULT"
+
 RULESET_NAME="Require CI gate on main"
 CHECK_CONTEXT="ci-gate"
 TARGET_REF="refs/heads/main"
