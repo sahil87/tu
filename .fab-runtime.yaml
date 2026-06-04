@@ -1,8 +1,0 @@
-_agents:
-    5c2139d9-fba9-4bf9-a4a2-a6c8773d9697:
-        change: 260603-dmhw-remove-shll-ai-push-wiring
-        pid: 2195983
-        tmux_pane: '%19'
-        tmux_server: utils2
-        transcript_path: /home/sahil/.claude/projects/-home-sahil-code-sahil87-tu-worktrees-fleet-hornet/5c2139d9-fba9-4bf9-a4a2-a6c8773d9697.jsonl
-last_run_gc: 1780496471
