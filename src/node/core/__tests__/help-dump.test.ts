@@ -66,6 +66,15 @@ describe("buildHelpDoc", () => {
     assert.equal(d.root.short, "Usage: tu [source] [period] [display]");
   });
 
+  it("falls back to the first help line when description is empty or whitespace", () => {
+    // PKG_DESCRIPTION defaults to "" when no description is injected/found, and
+    // `"" ?? x` keeps the empty string — short must still get a useful default.
+    for (const empty of ["", "   ", "\t\n"]) {
+      const d = buildHelpDoc({ name: "tu", version: "9.9.9", description: empty, helpText: HELP_TEXT });
+      assert.equal(d.root.short, "Usage: tu [source] [period] [display]");
+    }
+  });
+
   it("produces a document that round-trips through JSON", () => {
     const round = JSON.parse(JSON.stringify(doc));
     assert.deepEqual(round, doc);

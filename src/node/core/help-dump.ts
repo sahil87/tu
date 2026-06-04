@@ -66,6 +66,11 @@ export function extractUsage(helpText: string): string {
  */
 export function buildHelpDoc({ name, version, description, helpText }: BuildHelpDocInput): HelpDoc {
   const firstNonEmpty = helpText.split("\n").find((l) => l.trim().length > 0) ?? "";
+  // Treat an empty/whitespace-only description the same as a missing one. Both
+  // the build-time --define and the dev package.json fallback default to ""
+  // when description is absent, and `"" ?? x` keeps the empty string — so guard
+  // on content, not just null/undefined, to avoid emitting `short: ""`.
+  const short = description && description.trim().length > 0 ? description : firstNonEmpty;
   return {
     tool: name ?? TOOL,
     version,
@@ -74,7 +79,7 @@ export function buildHelpDoc({ name, version, description, helpText }: BuildHelp
     root: {
       name: TOOL,
       path: TOOL,
-      short: description ?? firstNonEmpty,
+      short,
       usage: extractUsage(helpText),
       // RAW, byte-for-byte: no trimming, re-wrapping, or CRLF conversion.
       text: helpText,

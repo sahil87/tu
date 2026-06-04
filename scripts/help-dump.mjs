@@ -15,7 +15,7 @@
 // Requires a built `dist/tu.mjs` (run `npm run build` first).
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -32,25 +32,27 @@ const OUTPUT_PATH = join(REPO_ROOT, "help", "tu.json");
  * (the binary contract is stdout-only + empty stderr).
  */
 function captureHelpDump() {
-  let stdout;
-  let stderr = "";
-  try {
-    stdout = execFileSync(process.execPath, [BUILT_CLI, "help-dump"], {
-      encoding: "utf-8",
-      maxBuffer: 10 * 1024 * 1024,
-      // Capture stderr so we can assert the stdout-only contract.
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-  } catch (err) {
-    throw new Error(`failed to run \`node ${BUILT_CLI} help-dump\`: ${err.message}`);
+  // spawnSync (not execFileSync) so stdout and stderr are returned separately —
+  // execFileSync only yields stdout, which would make the empty-stderr
+  // assertion below dead code.
+  const result = spawnSync(process.execPath, [BUILT_CLI, "help-dump"], {
+    encoding: "utf-8",
+    maxBuffer: 10 * 1024 * 1024,
+  });
+
+  if (result.error) {
+    throw new Error(`failed to run \`node ${BUILT_CLI} help-dump\`: ${result.error.message}`);
   }
-  if (!stdout || stdout.length === 0) {
+  if (result.status !== 0) {
+    throw new Error(`\`node ${BUILT_CLI} help-dump\` exited ${result.status}: ${result.stderr ?? ""}`);
+  }
+  if (!result.stdout || result.stdout.length === 0) {
     throw new Error(`\`node ${BUILT_CLI} help-dump\` produced empty output`);
   }
-  if (stderr.length > 0) {
-    throw new Error(`\`node ${BUILT_CLI} help-dump\` wrote to stderr (must be empty): ${stderr}`);
+  if (result.stderr && result.stderr.length > 0) {
+    throw new Error(`\`node ${BUILT_CLI} help-dump\` wrote to stderr (must be empty): ${result.stderr}`);
   }
-  return stdout;
+  return result.stdout;
 }
 
 /**
