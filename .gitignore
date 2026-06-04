@@ -2,8 +2,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-# Transient help-dump artifact — generated in CI and PR'd into sahil87/shll.ai
-# (shll.ai is the source of truth); never committed here. See scripts/help-dump.mjs.
+# Transient help-dump artifact — `tu help-dump` emits the contract JSON; shll.ai
+# pulls it via its own cron (shll.ai is the source of truth). `npm run help-dump`
+# writes this locally for inspection; never committed here. See scripts/help-dump.mjs.
 help/
 
 .fab-status.yaml
