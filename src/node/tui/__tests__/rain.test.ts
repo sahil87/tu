@@ -96,18 +96,34 @@ describe("RainState", () => {
   });
 
   it("clears old positions with cursor-positioned space writes", () => {
-    const rain = new RainState(10, 10);
-    // Render initial frame to populate prevPositions
-    rain.render(1);
-    // Tick to move drops — positions change
-    for (let i = 0; i < 5; i++) rain.tick();
-    const output = rain.render(1);
-    // After movement, old positions should be cleared with space writes
-    assert.match(
-      output,
-      /\x1b\[\d+;\d+H /,
-      "should clear old positions using cursor-positioned space writes",
-    );
+    // Drop geometry is driven entirely by Math.random (speed, length, delay,
+    // respawn), so a single render-after-N-ticks may by chance vacate no cell
+    // and emit no clear — a real non-determinism that flaked under CI's
+    // concurrent runner. Pin Math.random to a high constant so drops advance at
+    // ~max speed and reliably vacate a previously-occupied cell, then assert
+    // over the accumulated output across several ticks. Restored in finally.
+    const originalRandom = Math.random;
+    Math.random = () => 0.9;
+    try {
+      const rain = new RainState(10, 10);
+      // Render initial frame to populate prevPositions
+      rain.render(1);
+      // Tick to move drops — positions change — and accumulate every frame so a
+      // vacated cell (and thus a space-clear write) is guaranteed to appear.
+      let output = "";
+      for (let i = 0; i < 10; i++) {
+        rain.tick();
+        output += rain.render(1);
+      }
+      // After movement, old positions should be cleared with space writes
+      assert.match(
+        output,
+        /\x1b\[\d+;\d+H /,
+        "should clear old positions using cursor-positioned space writes",
+      );
+    } finally {
+      Math.random = originalRandom;
+    }
   });
 
   it("render positions within rain zone boundaries", () => {
