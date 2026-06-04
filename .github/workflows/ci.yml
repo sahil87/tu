@@ -1,8 +1,11 @@
 name: CI
 
 # Build verification + tests on every push to main. This is intentionally
-# separate from release.yml: it does NOT run the help-dump→shll.ai step (that
-# lives on release.yml's tag-push path).
+# separate from release.yml: it does NOT publish anything (GitHub Release,
+# Homebrew tap) — those external side effects live in release.yml (whose
+# release job runs on a v* tag push, on workflow_dispatch, and on a
+# release-labeled merge to main); this workflow only verifies the build and
+# runs the test suite.
 on:
   push:
     branches: [main]

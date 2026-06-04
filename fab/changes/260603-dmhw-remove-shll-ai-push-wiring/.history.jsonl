@@ -1,0 +1,14 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-06-03T07:54:47Z"}
+{"args":"There's an update in the way we integrate with shll.ai. Read https://github.com/sahil87/shll.ai/blob/main/docs/specs/help-dump-contract.md#teardown-directive-paste-to-a-tool-repo-agent and implement the change — shll.ai now PULLS help-dump JSON itself, so remove tu's now-dead push wiring (producer CI step, PR-opening, auto-merge, SHLLAI_TOKEN) in release.yml while preserving the help-dump command.","cmd":"fab-new","event":"command","ts":"2026-06-03T07:54:47Z"}
+{"delta":"+3.2","event":"confidence","score":3.2,"trigger":"calc-score","ts":"2026-06-03T07:55:53Z"}
+{"delta":"+0.0","event":"confidence","score":3.2,"trigger":"calc-score","ts":"2026-06-03T07:55:58Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-06-03T14:21:17Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-06-03T14:21:22Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-06-03T14:22:07Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-06-03T14:27:09Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-06-03T14:27:54Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-06-03T14:31:23Z"}
+{"event":"review","result":"passed","ts":"2026-06-03T14:31:23Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-06-03T14:31:59Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-06-03T14:33:15Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-06-03T14:35:07Z"}

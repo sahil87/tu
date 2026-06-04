@@ -1,0 +1,51 @@
+id: dmhw
+name: 260603-dmhw-remove-shll-ai-push-wiring
+created: 2026-06-03T07:54:47Z
+created_by: sahil87
+change_type: ci
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: active
+plan:
+    generated: true
+    task_count: 4
+    acceptance_count: 10
+    acceptance_completed: 10
+confidence:
+    certain: 4
+    confident: 6
+    tentative: 0
+    unresolved: 0
+    score: 3.2
+    fuzzy: true
+    dimensions:
+        signal: 93.5
+        reversibility: 78.5
+        competence: 89.5
+        disambiguation: 87.2
+stage_metrics:
+    intake: {started_at: "2026-06-03T07:54:47Z", driver: fab-new, iterations: 1, completed_at: "2026-06-03T14:21:22Z"}
+    apply: {started_at: "2026-06-03T14:21:22Z", driver: fab-fff, iterations: 1, completed_at: "2026-06-03T14:27:09Z"}
+    review: {started_at: "2026-06-03T14:27:09Z", driver: fab-fff, iterations: 1, completed_at: "2026-06-03T14:31:23Z"}
+    hydrate: {started_at: "2026-06-03T14:31:23Z", driver: fab-fff, iterations: 1, completed_at: "2026-06-03T14:33:15Z"}
+    ship: {started_at: "2026-06-03T14:33:15Z", driver: fab-fff, iterations: 1, completed_at: "2026-06-03T14:35:07Z"}
+    review-pr: {started_at: "2026-06-03T14:35:07Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/tu/pull/27
+true_impact:
+    added: 0
+    deleted: 0
+    net: 0
+    excluding:
+        added: 0
+        deleted: 0
+        net: 0
+    computed_at: "2026-06-03T14:33:15Z"
+    computed_at_stage: hydrate
+# true_impact: lazily created on first apply-finish (no placeholder here).
+last_updated: 2026-06-03T14:35:07Z
