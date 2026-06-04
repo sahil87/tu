@@ -265,6 +265,19 @@ describe("syncMetrics", () => {
     assert.equal(result, false);
   });
 
+  it("returns true when the user dir does not exist (no data yet)", async () => {
+    // No writeMetrics call — the user dir is absent, as on a first run or when
+    // every ccusage source is unavailable. `git add <user>/` would otherwise
+    // fail with "pathspec did not match any files"; sync must treat this as a
+    // clean no-op and still succeed.
+    const result = await syncMetrics(CLONE_DIR, "sahil");
+    assert.equal(result, true);
+
+    // Nothing was staged, so no commit should have been created beyond init.
+    const log = execSync(`git -C "${BARE_DIR}" log --oneline`, { encoding: "utf-8" });
+    assert.ok(!log.includes("# sahil: update"), `Expected no update commit, got: ${log.trim()}`);
+  });
+
   it("returns false and warns to stderr when remote is unreachable", async () => {
     // Point remote to a nonexistent path
     execSync(`git -C "${CLONE_DIR}" remote set-url origin /nonexistent/repo.git`, {
