@@ -74,3 +74,31 @@ tu init-metrics      # Clone metrics repo
 tu sync              # Push/pull metrics
 tu status            # Show config and sync state
 ```
+
+## CI / branch protection
+
+`main` is gated by a required status check named **`ci-gate`**. The
+[`CI` workflow](.github/workflows/ci.yml) runs the build and the test suite on
+every pull request targeting `main` (and on pushes to `main`); the aggregating
+`ci-gate` job passes only when `build-and-test` succeeds. A branch ruleset on
+`main` requires `ci-gate` to be green before a PR can be merged.
+
+Reproduce CI locally before opening a PR:
+
+```bash
+npm ci && npm run build && npm test
+# or, with the task runner:
+just test
+```
+
+Applying or adjusting the ruleset is an admin action (needs a `gh` token with
+admin scope on the repo). The exact, idempotent command is captured in
+[`scripts/ci-gate-ruleset.sh`](scripts/ci-gate-ruleset.sh):
+
+```bash
+scripts/ci-gate-ruleset.sh           # dry-run: preview the ruleset payload
+scripts/ci-gate-ruleset.sh --apply   # create/update the ruleset (admin only)
+```
+
+The script degrades gracefully — if `gh` is missing, unauthenticated, or lacks
+admin scope, it prints the manual steps instead of failing.

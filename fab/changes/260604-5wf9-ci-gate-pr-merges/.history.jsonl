@@ -1,0 +1,19 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-06-04T10:20:00Z"}
+{"args":"Add ci/cd steps for every merge - that make sure the test cases pass any PR merges. We can add a ci-gate step if needed","cmd":"fab-new","event":"command","ts":"2026-06-04T10:20:00Z"}
+{"delta":"+2.1","event":"confidence","score":2.1,"trigger":"calc-score","ts":"2026-06-04T10:21:24Z"}
+{"delta":"+0.0","event":"confidence","score":2.1,"trigger":"calc-score","ts":"2026-06-04T10:21:29Z"}
+{"cmd":"fab-clarify","event":"command","ts":"2026-06-04T10:22:23Z"}
+{"delta":"+2.0","event":"confidence","score":4.1,"trigger":"calc-score","ts":"2026-06-04T10:23:02Z"}
+{"delta":"+0.0","event":"confidence","score":4.1,"trigger":"calc-score","ts":"2026-06-04T10:23:08Z"}
+{"delta":"+0.0","event":"confidence","score":4.1,"trigger":"calc-score","ts":"2026-06-04T10:23:14Z"}
+{"delta":"+0.9","event":"confidence","score":5,"trigger":"calc-score","ts":"2026-06-04T10:23:38Z"}
+{"delta":"+0.0","event":"confidence","score":5,"trigger":"calc-score","ts":"2026-06-04T10:23:42Z"}
+{"delta":"+0.0","event":"confidence","score":5,"trigger":"calc-score","ts":"2026-06-04T10:24:32Z"}
+{"delta":"+0.0","event":"confidence","score":5,"trigger":"calc-score","ts":"2026-06-04T10:24:35Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-06-04T10:24:59Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-06-04T10:25:05Z"}
+{"action":"enter","driver":"fab-continue","event":"stage-transition","stage":"review","ts":"2026-06-04T10:30:16Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-06-04T10:34:12Z"}
+{"event":"review","result":"passed","ts":"2026-06-04T10:34:12Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-06-04T10:35:22Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-06-04T10:38:01Z"}
