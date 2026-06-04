@@ -2,8 +2,11 @@
 setup:
     npm install
 
+# Run the test suite. Delegates to `npm test` so `just test` matches exactly
+# what CI's ci-gate enforces (the prior inline `**` glob did not resolve under
+# Node 20 — see package.json's find-based runner).
 test:
-    npx tsx --test 'src/node/**/__tests__/*.test.ts'
+    npm test
 
 run *ARGS:
     npx tsx src/node/core/cli.ts {{ARGS}}

@@ -1,12 +1,19 @@
 name: CI
 
-# Build verification + tests on every push to main. This is intentionally
-# separate from release.yml: it does NOT publish anything (GitHub Release,
-# Homebrew tap) — those external side effects live in release.yml (whose
-# release job runs on a v* tag push, on workflow_dispatch, and on a
-# release-labeled merge to main); this workflow only verifies the build and
-# runs the test suite.
+# Build verification + tests. This workflow runs in two contexts:
+#   - on pull requests targeting main, to GATE merges (the aggregating
+#     `ci-gate` job below is the stable required status check enforced by a
+#     branch ruleset on main — see scripts/ci-gate-ruleset.sh and README), and
+#   - on pushes to main, to verify the merge commit (including the
+#     release-merge path) after it lands.
+# This is intentionally separate from release.yml: it does NOT publish anything
+# (GitHub Release, Homebrew tap) — those external side effects live in
+# release.yml (whose release job runs on a v* tag push, on workflow_dispatch,
+# and on a release-labeled merge to main); this workflow only verifies the
+# build and runs the test suite.
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
 
@@ -32,3 +39,20 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+  # Single, stable status-check name for the branch ruleset on main to require.
+  # `if: always()` so the gate reports a definitive pass/fail even when
+  # build-and-test fails or is cancelled (a skipped required check would
+  # otherwise block/hang the PR).
+  ci-gate:
+    needs: [build-and-test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify required jobs passed
+        run: |
+          if [ "${{ needs.build-and-test.result }}" != "success" ]; then
+            echo "build-and-test did not succeed (result: ${{ needs.build-and-test.result }})"
+            exit 1
+          fi
+          echo "All required CI jobs passed."
