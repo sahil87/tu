@@ -6,6 +6,7 @@ import { writeMetrics, readRemoteEntries, readRemoteEntriesByMachine, fullSync }
 import { runWatch } from "../tui/watch.js";
 import { setNoColor } from "../tui/colors.js";
 import { BASH_COMPLETION, ZSH_COMPLETION, FISH_COMPLETION } from "./completions.js";
+import { buildHelpDoc } from "./help-dump.js";
 import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { execSync, execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -23,18 +24,38 @@ _mark("tsx loaded, imports done");
 
 const __cli_dirname = dirname(fileURLToPath(import.meta.url));
 
-// Version injected at build time by esbuild --define; falls back to package.json for dev
+// Package metadata injected at build time by esbuild --define; falls back to
+// package.json for dev. The bottle ships only dist/ (no package.json at
+// runtime), so help-dump's name/description MUST be embedded at build time —
+// hence all three are --define'd, read from one resolved package.json in dev.
 declare const __PKG_VERSION__: string | undefined;
-const PKG_VERSION: string = (() => {
-  if (typeof __PKG_VERSION__ !== "undefined") return __PKG_VERSION__;
+declare const __PKG_NAME__: string | undefined;
+declare const __PKG_DESCRIPTION__: string | undefined;
+
+// Dev fallback only: when the defines are absent (running via tsx, not the
+// bundled binary), resolve package.json once. In the bundled binary all three
+// are --define'd, so this walk never runs — preserving fast startup.
+function readDevPkg(): { version?: string; name?: string; description?: string } {
   let dir = __cli_dirname;
   while (dir !== dirname(dir)) {
     const p = join(dir, "package.json");
-    if (existsSync(p)) return JSON.parse(readFileSync(p, "utf-8")).version as string;
+    if (existsSync(p)) return JSON.parse(readFileSync(p, "utf-8"));
     dir = dirname(dir);
   }
-  return "0.0.0";
-})();
+  return {};
+}
+
+const _devPkg =
+  typeof __PKG_VERSION__ === "undefined" ||
+  typeof __PKG_NAME__ === "undefined" ||
+  typeof __PKG_DESCRIPTION__ === "undefined"
+    ? readDevPkg()
+    : {};
+
+const PKG_VERSION: string = typeof __PKG_VERSION__ !== "undefined" ? __PKG_VERSION__ : (_devPkg.version ?? "0.0.0");
+const PKG_NAME: string = typeof __PKG_NAME__ !== "undefined" ? __PKG_NAME__ : (_devPkg.name ?? "tu");
+const PKG_DESCRIPTION: string =
+  typeof __PKG_DESCRIPTION__ !== "undefined" ? __PKG_DESCRIPTION__ : (_devPkg.description ?? "");
 
 function tildefy(p: string): string {
   const home = homedir();
@@ -241,6 +262,26 @@ export function runStatus(
   console.log(`Metrics:     ${metricsLine}`);
   console.log(`Last sync:   ${formatLastSync(tuHome, now)}`);
   console.log(`Auto-sync:   ${config.autoSync ? "on" : "off"}`);
+}
+
+// `tu help-dump` — emit the frozen shll.ai contract JSON on STDOUT only.
+//
+// shll.ai's pull cron runs this against the brew-installed binary, captures
+// stdout, and treats ANY stderr on an otherwise-successful run as contract
+// drift — so this writes nothing to stderr and exits 0. The raw `--help` text
+// is FULL_HELP + "\n", byte-for-byte identical to what `tu --help` prints
+// (console.log appends the newline). name/description/version are embedded at
+// build time (the bottle ships no package.json). This is a build/interop
+// artifact, not a runtime data path, so it does not follow Constitution II
+// graceful degradation; it is deterministic and side-effect-free.
+export function runHelpDump(): void {
+  const doc = buildHelpDoc({
+    name: PKG_NAME,
+    version: PKG_VERSION,
+    description: PKG_DESCRIPTION,
+    helpText: FULL_HELP + "\n",
+  });
+  process.stdout.write(JSON.stringify(doc, null, 2) + "\n");
 }
 
 const SHELL_INIT_USAGE = `Usage: tu shell-init <bash|zsh|fish>
@@ -1140,6 +1181,7 @@ async function main() {
     if (cmd === "status") { runStatus(); return; }
     if (cmd === "update") { runUpdate(process.argv.includes("--skip-brew-update")); return; }
     if (cmd === "shell-init") { runShellInit(filteredArgs[1]); return; }
+    if (cmd === "help-dump") { runHelpDump(); return; }
   }
 
   // Parse positional data args (source, period, display)
