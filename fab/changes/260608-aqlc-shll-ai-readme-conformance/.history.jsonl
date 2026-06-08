@@ -1,0 +1,11 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-06-08T09:56:22Z"}
+{"args":"Task: conform this repo to shll.ai's README-extraction contract — restructure README head order, drop GitHub-footer sections, ensure absolute image/link URLs, render any mermaid, and add a docs/site tree (install.md, workflows.md) per the contract's Producer conformance directive. Ship as a single PR.","cmd":"fab-new","event":"command","ts":"2026-06-08T09:56:22Z"}
+{"delta":"+4.4","event":"confidence","score":4.4,"trigger":"calc-score","ts":"2026-06-08T09:57:48Z"}
+{"delta":"+0.0","event":"confidence","score":4.4,"trigger":"calc-score","ts":"2026-06-08T09:57:55Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-06-08T09:59:00Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-06-08T09:59:05Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-06-08T10:00:30Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-06-08T10:04:17Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-06-08T10:07:42Z"}
+{"event":"review","result":"passed","ts":"2026-06-08T10:07:42Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-06-08T10:09:42Z"}
