@@ -12,6 +12,8 @@ Track your token usage in style!
 
 ## Install
 
+> 📖 Full walkthrough: the [install guide](docs/site/install.md) covers install, shell completions, and multi-machine setup in depth.
+
 ```bash
 brew tap sahil87/tap
 brew install tu
@@ -32,8 +34,6 @@ tu shell-init fish > ~/.config/fish/completions/tu.fish
 
 > 💡 Have other sahil87 tools? [`shll shell-install`](https://github.com/sahil87/shll#shll-shell-install--wire-the-rc-file-recommended) handles all of their shell integrations and autocompletions at once.
 
-For the full install and multi-machine setup walkthrough, see the [install guide](docs/site/install.md).
-
 ## Update
 
 ```bash
@@ -43,6 +43,8 @@ tu update
 ```
 
 ## Usage
+
+> 📖 See [workflows](docs/site/workflows.md) for end-to-end recipes, and the full [command reference](https://shll.ai/tools/tu/commands/) for every command and flag.
 
 ```bash
 tu                   # Today's cost, all tools
