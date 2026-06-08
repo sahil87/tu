@@ -82,7 +82,7 @@ For end-to-end recipes — daily snapshots, history pivots, multi-machine sync, 
 ## CI / branch protection
 
 `main` is gated by a required status check named **`ci-gate`**. The
-[`CI` workflow](.github/workflows/ci.yml) runs the build and the test suite on
+[`CI` workflow](https://github.com/sahil87/tu/blob/main/.github/workflows/ci.yml) runs the build and the test suite on
 every pull request targeting `main` (and on pushes to `main`); the aggregating
 `ci-gate` job passes only when `build-and-test` succeeds. A branch ruleset on
 `main` requires `ci-gate` to be green before a PR can be merged.
@@ -97,7 +97,7 @@ just test
 
 Applying or adjusting the ruleset is an admin action (needs a `gh` token with
 admin scope on the repo). The exact, idempotent command is captured in
-[`scripts/ci-gate-ruleset.sh`](scripts/ci-gate-ruleset.sh):
+[`scripts/ci-gate-ruleset.sh`](https://github.com/sahil87/tu/blob/main/scripts/ci-gate-ruleset.sh):
 
 ```bash
 scripts/ci-gate-ruleset.sh           # dry-run: preview the ruleset payload
