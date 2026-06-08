@@ -7,7 +7,7 @@
 AI coding assistant cost tracking CLI.
 Track your token usage in style!
 
-<img width="1025" height="675" alt="image" src="https://github.com/user-attachments/assets/d6d1c930-8230-4910-ba1b-985e7df17e7c" />
+<img width="1025" height="675" alt="tu terminal output showing today's AI coding assistant costs across Claude Code, Codex, and OpenCode" src="https://github.com/user-attachments/assets/d6d1c930-8230-4910-ba1b-985e7df17e7c" />
 
 
 ## Install
@@ -31,6 +31,8 @@ tu shell-init fish > ~/.config/fish/completions/tu.fish
 ```
 
 > 💡 Have other sahil87 tools? [`shll shell-install`](https://github.com/sahil87/shll#shll-shell-install--wire-the-rc-file-recommended) handles all of their shell integrations and autocompletions at once.
+
+For the full install and multi-machine setup walkthrough, see the [install guide](docs/site/install.md).
 
 ## Update
 
@@ -75,10 +77,12 @@ tu sync              # Push/pull metrics
 tu status            # Show config and sync state
 ```
 
+For end-to-end recipes — daily snapshots, history pivots, multi-machine sync, and watch mode — see [workflows](docs/site/workflows.md).
+
 ## CI / branch protection
 
 `main` is gated by a required status check named **`ci-gate`**. The
-[`CI` workflow](.github/workflows/ci.yml) runs the build and the test suite on
+[`CI` workflow](https://github.com/sahil87/tu/blob/main/.github/workflows/ci.yml) runs the build and the test suite on
 every pull request targeting `main` (and on pushes to `main`); the aggregating
 `ci-gate` job passes only when `build-and-test` succeeds. A branch ruleset on
 `main` requires `ci-gate` to be green before a PR can be merged.
@@ -93,7 +97,7 @@ just test
 
 Applying or adjusting the ruleset is an admin action (needs a `gh` token with
 admin scope on the repo). The exact, idempotent command is captured in
-[`scripts/ci-gate-ruleset.sh`](scripts/ci-gate-ruleset.sh):
+[`scripts/ci-gate-ruleset.sh`](https://github.com/sahil87/tu/blob/main/scripts/ci-gate-ruleset.sh):
 
 ```bash
 scripts/ci-gate-ruleset.sh           # dry-run: preview the ruleset payload
