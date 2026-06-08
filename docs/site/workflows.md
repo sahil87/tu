@@ -80,7 +80,7 @@ tu --by-machine      # break today's cost down per machine
 
 ## Cache control
 
-`tu` caches fetched data for fast startup. To bypass the cache (data commands only):
+By default `tu` reads from cached data. To bypass the cache and fetch fresh data (data commands only):
 
 - `--fresh` / `-f` — bypass cache, fetch fresh data
 
