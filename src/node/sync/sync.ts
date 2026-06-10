@@ -19,6 +19,32 @@ function execFileAsync(file: string, args: string[]): Promise<string> {
   });
 }
 
+// Never-shrink guard: day-file snapshots are high-water marks of complete
+// data. Claude Code purges transcripts older than ~30 days, so a live fetch
+// for an old date collapses toward zero — overwriting would silently destroy
+// correct history. Skip the write (whole-entry, keeping the file an atomic
+// snapshot) when the incoming entry's totalCost is lower than the existing
+// one's. Absent/empty/unparseable files are treated as absent, matching the
+// read path's skip-silently posture; equal values still write so today's
+// file keeps refreshing as the day grows.
+function isShrinkingWrite(filePath: string, incoming: UsageEntry): boolean {
+  let raw: string;
+  try {
+    raw = readFileSync(filePath, "utf-8").trim();
+  } catch {
+    return false; // file absent or unreadable → write
+  }
+  if (!raw) return false; // empty file → treat as absent
+  try {
+    const existing = JSON.parse(raw) as Partial<UsageEntry>;
+    const existingCost = Number(existing?.totalCost);
+    if (!Number.isFinite(existingCost)) return false; // not a UsageEntry → treat as absent
+    return incoming.totalCost < existingCost;
+  } catch {
+    return false; // unparseable → treat as absent
+  }
+}
+
 export function writeMetrics(
   metricsDir: string,
   user: string,
@@ -31,6 +57,7 @@ export function writeMetrics(
     const dir = join(metricsDir, user, yyyy, machine);
     mkdirSync(dir, { recursive: true });
     const filePath = join(dir, `${toolKey}-${entry.label}.jsonl`);
+    if (isShrinkingWrite(filePath, entry)) continue;
     writeFileSync(filePath, JSON.stringify(entry) + "\n");
   }
 }

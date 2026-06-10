@@ -280,6 +280,28 @@ export function mergeEntries(
   return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
 }
 
+// --- Max-merge: per-label whole-entry high-water mark (own-machine self-view) ---
+//
+// Picks, per date label, whichever whole entry has the greater totalCost —
+// never mixing fields across entries and never summing; on ties the entry
+// from `a` wins. Used to merge a machine's live fetch (`a`) with its own
+// synced repo snapshots (`b`): once Claude Code purges old transcripts, the
+// live view of an old day collapses toward zero while the snapshot still
+// holds the full value — and summing them would double-count the surviving
+// transcripts of partially-purged days.
+export function maxMergeEntries(a: UsageEntry[], b: UsageEntry[]): UsageEntry[] {
+  const map = new Map<string, UsageEntry>();
+
+  for (const e of [...a, ...b]) {
+    const existing = map.get(e.label);
+    if (!existing || e.totalCost > existing.totalCost) {
+      map.set(e.label, { ...e });
+    }
+  }
+
+  return [...map.values()].sort((x, y) => x.label.localeCompare(y.label));
+}
+
 export async function fetchAllHistory(
   period: string,
   extraArgs: string[] = [],

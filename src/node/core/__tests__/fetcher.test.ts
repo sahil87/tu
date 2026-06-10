@@ -10,6 +10,7 @@ import {
   currentLabel,
   pickCurrentEntry,
   mergeEntries,
+  maxMergeEntries,
   aggregateMonthly,
   TOOLS,
   EMPTY,
@@ -496,6 +497,79 @@ describe("mergeEntries", () => {
     mergeEntries(local, remote);
     assert.deepEqual(local, localCopy);
     assert.deepEqual(remote, remoteCopy);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// maxMergeEntries — per-label whole-entry max (own-machine self-view merge)
+// ---------------------------------------------------------------------------
+
+describe("maxMergeEntries", () => {
+  it("picks the whole entry with the greater totalCost (no summing)", () => {
+    // Purged live view vs own repo snapshot — snapshot must resurface intact
+    const live = [mkEntry("2026-04-24", 9.46, 12)];
+    const snapshot = [mkEntry("2026-04-24", 236.0, 9999)];
+    const result = maxMergeEntries(live, snapshot);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].totalCost, 236.0);
+    assert.equal(result[0].inputTokens, 9999); // every field from the winner
+    assert.equal(result[0].totalTokens, 9999);
+  });
+
+  it("never mixes fields across entries (atomic snapshots, not per-field max)", () => {
+    const a = [{ ...mkEntry("2026-04-24", 10.0, 100), outputTokens: 1 }];
+    const b = [{ ...mkEntry("2026-04-24", 5.0, 50), outputTokens: 9999 }];
+    const result = maxMergeEntries(a, b);
+    // a wins on totalCost — b's larger outputTokens must NOT leak in
+    assert.equal(result[0].totalCost, 10.0);
+    assert.equal(result[0].outputTokens, 1);
+  });
+
+  it("keeps the first argument's entry on equal totalCost (live wins in the live window)", () => {
+    const live = [{ ...mkEntry("2026-06-10", 3.0, 100), outputTokens: 42 }];
+    const snapshot = [{ ...mkEntry("2026-06-10", 3.0, 100), outputTokens: 7 }];
+    const result = maxMergeEntries(live, snapshot);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].outputTokens, 42);
+  });
+
+  it("preserves non-overlapping entries from both sides", () => {
+    const live = [mkEntry("2026-06-10", 1.0)];
+    const snapshot = [mkEntry("2026-04-24", 236.0)];
+    const result = maxMergeEntries(live, snapshot);
+    assert.equal(result.length, 2);
+    assert.equal(result[0].label, "2026-04-24");
+    assert.equal(result[1].label, "2026-06-10");
+  });
+
+  it("handles empty inputs", () => {
+    const only = [mkEntry("2026-02-20", 1.5)];
+    assert.deepEqual(maxMergeEntries([], []), []);
+    assert.equal(maxMergeEntries(only, [])[0].totalCost, 1.5);
+    assert.equal(maxMergeEntries([], only)[0].totalCost, 1.5);
+  });
+
+  it("sorts result ascending by label", () => {
+    const a = [mkEntry("2026-02-20", 1.0)];
+    const b = [mkEntry("2026-02-18", 0.5), mkEntry("2026-02-22", 0.3)];
+    const result = maxMergeEntries(a, b);
+    assert.deepEqual(
+      result.map((e) => e.label),
+      ["2026-02-18", "2026-02-20", "2026-02-22"]
+    );
+  });
+
+  it("does not mutate input arrays and returns copies", () => {
+    const a = [mkEntry("2026-02-20", 1.0)];
+    const b = [mkEntry("2026-02-20", 2.0)];
+    const aCopy = JSON.parse(JSON.stringify(a));
+    const bCopy = JSON.parse(JSON.stringify(b));
+    const result = maxMergeEntries(a, b);
+    assert.deepEqual(a, aCopy);
+    assert.deepEqual(b, bCopy);
+    // Winner is copied, not aliased — mutating the result must not touch inputs
+    result[0].totalCost = 999;
+    assert.equal(b[0].totalCost, 2.0);
   });
 });
 

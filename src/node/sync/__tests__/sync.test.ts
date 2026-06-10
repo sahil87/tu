@@ -55,6 +55,91 @@ describe("writeMetrics", () => {
     const parsed = JSON.parse(readFileSync(filePath, "utf-8").trim());
     assert.equal(parsed.totalCost, 2.0);
   });
+
+  // --- Never-shrink guard: day-files are high-water marks. A live fetch after
+  // the transcript retention purge collapses toward zero; writeMetrics must
+  // never let that residue overwrite correct historical snapshots. ---
+
+  it("skips the write when incoming totalCost is lower than existing (shrink)", () => {
+    writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [entry("2026-04-24", 308.12)]);
+    writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [entry("2026-04-24", 9.46)]);
+    const filePath = join(TEST_DIR, "sahil", "2026", "macbook", "cc-2026-04-24.jsonl");
+    const parsed = JSON.parse(readFileSync(filePath, "utf-8").trim());
+    assert.equal(parsed.totalCost, 308.12);
+  });
+
+  it("skips shrinking writes silently (no stderr warning)", () => {
+    const errors: string[] = [];
+    const origError = console.error;
+    const origWrite = process.stderr.write;
+    console.error = (...args: unknown[]) => errors.push(String(args[0]));
+    process.stderr.write = ((chunk: string) => { errors.push(String(chunk)); return true; }) as typeof process.stderr.write;
+    try {
+      writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [entry("2026-04-24", 100.0)]);
+      writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [entry("2026-04-24", 1.0)]);
+    } finally {
+      console.error = origError;
+      process.stderr.write = origWrite;
+    }
+    assert.deepEqual(errors, []);
+  });
+
+  it("writes when incoming totalCost equals existing (idempotent refresh)", () => {
+    writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [entry("2026-02-20", 1.5)]);
+    const filePath = join(TEST_DIR, "sahil", "2026", "macbook", "cc-2026-02-20.jsonl");
+    // Equal cost but different token counts — the newer snapshot must win
+    const updated = { ...entry("2026-02-20", 1.5), totalTokens: 999 };
+    writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [updated]);
+    const parsed = JSON.parse(readFileSync(filePath, "utf-8").trim());
+    assert.equal(parsed.totalCost, 1.5);
+    assert.equal(parsed.totalTokens, 999);
+  });
+
+  it("writes when existing file is empty (treated as absent)", () => {
+    const dir = join(TEST_DIR, "sahil", "2026", "macbook");
+    mkdirSync(dir, { recursive: true });
+    const filePath = join(dir, "cc-2026-02-20.jsonl");
+    writeFileSync(filePath, "");
+    writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [entry("2026-02-20", 0.5)]);
+    const parsed = JSON.parse(readFileSync(filePath, "utf-8").trim());
+    assert.equal(parsed.totalCost, 0.5);
+  });
+
+  it("writes when existing file is not valid JSON (treated as absent)", () => {
+    const dir = join(TEST_DIR, "sahil", "2026", "macbook");
+    mkdirSync(dir, { recursive: true });
+    const filePath = join(dir, "cc-2026-02-20.jsonl");
+    writeFileSync(filePath, "not json at all\n");
+    writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [entry("2026-02-20", 0.5)]);
+    const parsed = JSON.parse(readFileSync(filePath, "utf-8").trim());
+    assert.equal(parsed.totalCost, 0.5);
+  });
+
+  it("writes when existing JSON has no numeric totalCost (not a UsageEntry)", () => {
+    const dir = join(TEST_DIR, "sahil", "2026", "macbook");
+    mkdirSync(dir, { recursive: true });
+    const filePath = join(dir, "cc-2026-02-20.jsonl");
+    writeFileSync(filePath, JSON.stringify({ label: "2026-02-20", totalCost: "junk" }) + "\n");
+    writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [entry("2026-02-20", 0.5)]);
+    const parsed = JSON.parse(readFileSync(filePath, "utf-8").trim());
+    assert.equal(parsed.totalCost, 0.5);
+  });
+
+  it("guards per entry within one batch (skips shrunk, writes grown)", () => {
+    writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [
+      entry("2026-04-24", 308.12),
+      entry("2026-04-25", 1.0),
+    ]);
+    writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [
+      entry("2026-04-24", 9.46), // shrunk → skipped
+      entry("2026-04-25", 5.0), // grown → written
+    ]);
+    const dir = join(TEST_DIR, "sahil", "2026", "macbook");
+    const day24 = JSON.parse(readFileSync(join(dir, "cc-2026-04-24.jsonl"), "utf-8").trim());
+    const day25 = JSON.parse(readFileSync(join(dir, "cc-2026-04-25.jsonl"), "utf-8").trim());
+    assert.equal(day24.totalCost, 308.12);
+    assert.equal(day25.totalCost, 5.0);
+  });
 });
 
 describe("readRemoteEntries", () => {

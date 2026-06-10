@@ -1,4 +1,4 @@
-import { TOOLS, EMPTY, fetchHistory, fetchAllTotals, fetchAllHistory, aggregateMonthly, mergeEntries, currentLabel } from "./fetcher.js";
+import { TOOLS, EMPTY, fetchHistory, fetchAllTotals, fetchAllHistory, aggregateMonthly, mergeEntries, maxMergeEntries, currentLabel } from "./fetcher.js";
 import { printHistory, printTotal, printTotalHistory, renderHistory, renderTotal, renderTotalHistory, emitCsv, emitMarkdown } from "../tui/formatter.js";
 import type { FormatOptions } from "../tui/formatter.js";
 import { readConfig, CONFIG_PATH, TU_HOME, THREE_HOURS_MS, resolveHome, DEFAULT_CONFIG_PATH } from "./config.js";
@@ -466,9 +466,20 @@ async function fetchToolMerged(
   _mark(`fetchToolMerged(${toolKey}) → fetchHistory done (${local.length} entries)`);
   writeMetrics(config.metricsDir, config.user, config.machine, toolKey, local);
   _mark(`fetchToolMerged(${toolKey}) → writeMetrics done`);
-  const remote = readRemoteEntries(config.metricsDir, config.user, config.machine, toolKey);
+  // Read ALL machines (excludeMachine = null) in one walk, then split out this
+  // machine's own snapshots: once Claude Code purges old transcripts, the live
+  // fetch under-reports old days, so the machine's own synced history must be
+  // merged back via per-day whole-entry max (sum would double-count the
+  // surviving transcripts of partially-purged days).
+  const byMachine = readRemoteEntriesByMachine(config.metricsDir, config.user, null, toolKey);
+  const ownSnapshots = byMachine.get(config.machine) ?? [];
+  const remote: UsageEntry[] = [];
+  for (const [machine, machineEntries] of byMachine) {
+    if (machine !== config.machine) remote.push(...machineEntries);
+  }
   _mark(`fetchToolMerged(${toolKey}) → readRemote done (${remote.length} entries)`);
-  const merged = mergeEntries(local, remote);
+  const effectiveLocal = maxMergeEntries(local, ownSnapshots);
+  const merged = mergeEntries(effectiveLocal, remote);
   if (period === "monthly") return aggregateMonthly(merged);
   return merged;
 }
@@ -510,8 +521,14 @@ async function fetchToolMergedWithMachines(
 
   if (config.mode === "multi") {
     writeMetrics(config.metricsDir, config.user, config.machine, toolKey, local);
-    const remoteMachines = readRemoteEntriesByMachine(config.metricsDir, config.user, config.machine, toolKey);
-    for (const [machine, mEntries] of remoteMachines) machineMap.set(machine, mEntries);
+    // Same self-view correction as fetchToolMerged: read all machines in one
+    // walk and max-merge this machine's own snapshots into its live view, so
+    // the own-machine column resurfaces purge-collapsed days.
+    const allMachines = readRemoteEntriesByMachine(config.metricsDir, config.user, null, toolKey);
+    machineMap.set(config.machine, maxMergeEntries(local, allMachines.get(config.machine) ?? []));
+    for (const [machine, mEntries] of allMachines) {
+      if (machine !== config.machine) machineMap.set(machine, mEntries);
+    }
   }
 
   const allEntries: UsageEntry[] = [];
