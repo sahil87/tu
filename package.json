@@ -24,8 +24,8 @@
     "@ccusage/opencode": "^18.0.8",
     "@types/node": "^25.2.2",
     "ccusage": "^18.0.8",
-    "esbuild": "^0.25.0",
-    "tsx": "^4.0.0",
+    "esbuild": "^0.28.1",
+    "tsx": "^4.22.4",
     "typescript": "^5.0.0"
   }
 }
