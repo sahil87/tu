@@ -1,3 +1,8 @@
+---
+type: memory
+description: INI config format, layered defaults, sentinel expansion, init-conf command
+---
+
 # Configuration System
 
 ## Overview
@@ -32,10 +37,3 @@ Configuration is managed via INI-style `.conf` files (`src/node/core/config.ts`)
 - **Sentinel expansion**: `$HOSTNAME` and `$USER` sentinels allow the same config file to work across machines without per-machine customization.
 - **Version field**: Enables future config migrations. Currently only warns on newer versions.
 - **Home directory `~/.tu/`**: All runtime state (cache, metrics, sync markers) lives under `~/.tu/`. Config file is at `~/.tu.conf` (top level, not nested).
-
-## Changelog
-
-| Date | Change |
-|------|--------|
-| 2026-04-01 | Removed WEAVER_DEV env var and tu.default.weaver.conf. Mode now derived from metrics_repo presence. Added TU_METRICS_REPO env var override. Removed mode from config file format and init-conf scaffold. |
-| 2026-03-06 | Generated from code analysis |

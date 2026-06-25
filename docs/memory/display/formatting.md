@@ -1,3 +1,8 @@
+---
+type: memory
+description: Table rendering, bar charts, delta indicators, color system
+---
+
 # Formatting & Display
 
 ## Overview
@@ -39,14 +44,3 @@ The formatting layer (`src/node/tui/formatter.ts`) renders token usage data into
 - **CSV vs. Markdown numeric conventions** (260423-lx0g): CSV targets machine consumers (spreadsheets, `awk`/`cut` pipelines) — raw numbers with no thousands separators, costs without `$`, snake_case `machine_{name}_cost` column headers sorted alphabetically. Markdown targets humans (PRs, Slack, docs) — commas in numbers, `$` prefix on costs, machine names used directly in headers, `**Total**` row bolded to match the ANSI renderer's `boldWhite` convention. Each format optimises for its paste target rather than sharing a single numeric rendering path.
 - **CSV/MD output always strips ANSI, inline bars, and delta arrows** (260423-lx0g): Bars are terminal-visual affordances, and delta arrows only have meaning in watch context. Both are useless (or actively harmful) in CSV/MD paste targets.
 - **Markdown output always includes a `## {title}` heading** (260423-lx0g): The dominant paste targets (GH PRs, GH issues, internal docs) benefit from the heading; removing it post-hoc is trivial (`tail -n +2`), adding one is more work. A `--no-heading` flag is listed as a non-goal for this change but is an easy follow-up if requested.
-
-## Changelog
-
-| Date | Change |
-|------|--------|
-| 2026-03-06 | Generated from code analysis |
-| 2026-03-06 | Updated file paths from `src/` to `src/node/tui/` for formatter and colors |
-| 2026-03-06 | Added requirement: Total row guarded by visible tool count > 1 in renderTotal and renderCompactSnapshot |
-| 2026-03-06 | Added: watch mode uses same render functions without side-by-side merge (redesign removed mergeSideBySide) |
-| 2026-03-07 | Added per-machine cost columns to `renderHistory` and `renderTotal` via `FormatOptions.machineCosts`; letter-coded headers (A/B/C), dim legend line, omitted in compact mode |
-| 2026-04-23 | Added `emitCsv` and `emitMarkdown` renderers for snapshot/history/total-history kinds, selected via a single `outputFormat` dispatch; CSV uses RFC 4180 (raw numerics, no `$`, LF, no BOM, `machine_{name}_cost` columns); Markdown uses GFM tables (commas, `$` prefix, `## {title}` heading, bolded Total row, machine names in headers) (260423-lx0g) |

@@ -1,3 +1,8 @@
+---
+type: memory
+description: CLI argument parsing, data fetching, caching, tool registry
+---
+
 # CLI & Data Pipeline
 
 ## Overview
@@ -43,18 +48,3 @@ Entry point: `src/node/core/cli.ts`. Data types: `src/node/core/types.ts`. Data 
 - **Static shell completion scripts** (260423-lx0g): Bash/zsh/fish completion scripts are hardcoded string constants in `src/node/core/completions.ts`. No dynamic lookup (the grammar is stable and runtime `tu --list-*` calls would add 50-200ms per tab-press); no `$SHELL` auto-detection (explicit arg avoids silent mismatches when `$SHELL` and the running shell diverge).
 - **`--skip-brew-update` detected via raw-argv membership, not `parseGlobalFlags`** (260531-e96v): The `update` dispatch passes `process.argv.includes("--skip-brew-update")` into `runUpdate` rather than threading the flag through `parseGlobalFlags`/`GlobalFlags`. It is command-specific to `update` (which ignores positional/data args); routing it through the shared data-flag path would broaden the blast radius and risk perturbing unrelated flag handling. Membership testing matches the existing `rawArgs.includes(...)` idiom (e.g. `--sync`). The cross-toolkit contract mandated the exact flag name `--skip-brew-update` (no alias).
 - **Own-machine snapshots max-merged into the live view** (260610-srmi): Claude Code purges transcripts older than ~30 days, so the live ccusage fetch under-reports old days; the previous pipeline excluded the machine's own repo dir from remote reads (`excludeMachine = config.machine`), leaving its own synced history invisible to itself once transcripts were purged. The multi-mode pipeline now reads all machines in one `readRemoteEntriesByMachine(..., null, ...)` walk, splits out the own machine, and applies per-day whole-entry max (`maxMergeEntries`) to the own share before the existing sum-merge with other machines. Max, not sum: a partially-purged day still yields a residual live entry, and summing residual + snapshot would double-count the surviving transcripts. Reuses the existing by-machine walk unchanged (minimum pathways) instead of adding a single-machine read helper; merged totals only ever increase relative to the pre-change pipeline. Watch mode shares the same fetch path and is corrected for free.
-
-## Changelog
-
-| Date | Change |
-|------|--------|
-| 2026-03-06 | Generated from code analysis |
-| 2026-03-06 | Updated file paths from `src/` to `src/node/core/` for cli, types, fetcher, config |
-| 2026-03-07 | Added `--user`/`-u` flag for viewing another user's usage in multi mode |
-| 2026-03-07 | Added `tu update` self-update command (Homebrew detection, brew update/info/upgrade flow) |
-| 2026-03-07 | Fixed `-u` same-user path to fetch fresh local data instead of reading stale metrics repo |
-| 2026-03-07 | Added `--by-machine` flag for per-machine cost distribution columns (letter-coded A/B/C with legend) |
-| 2026-04-01 | Added `-v` (lowercase) as version flag alias alongside `--version` and `-V` (260401-kuuh) |
-| 2026-04-23 | Migrated child process spawning from `exec` to `execFile` with argv arrays; `TOOLS` shape changed from `{name, command, needsFilter}` to `{name, binary, prefixArgs, needsFilter}`; added `--csv`/`--md` global flags and `outputFormat` enum dispatch; added `tu completions <shell>` non-data subcommand with static bash/zsh/fish scripts (260423-lx0g) |
-| 2026-05-31 | Added `--skip-brew-update` flag to `tu update` — skips only the internal `brew update --quiet` refresh; version check and `brew upgrade` unaffected (260531-e96v) |
-| 2026-06-10 | Self-view fix: added pure `maxMergeEntries` to `fetcher.ts`; multi-mode `fetchToolMerged`/`fetchToolMergedWithMachines` read all machines (`excludeMachine = null`) and max-merge own-machine snapshots into the live view before the sum-merge; single mode and `-u <other-user>` unchanged (260610-srmi) |
