@@ -1,3 +1,8 @@
+---
+type: memory
+description: esbuild bundling, Node.js test runner, TypeScript config, Homebrew distribution, help-dump producer (shll.ai pulls), CI PR-gating via `ci-gate` required check + ruleset
+---
+
 # Build & Test Toolchain
 
 ## Overview
@@ -42,16 +47,3 @@ The project uses esbuild for bundling and Node.js built-in test runner (via `tsx
 - **Bespoke Node help-dump contract (not the shared Go/Cobra producer)**: tu is a flag-based Node/TS CLI with no walkable subcommand tree, so it cannot reuse the 6 other tools' Go producer that recurses a Cobra tree; it emits a structurally-valid flat contract document (`commands: []`) instead. The pure `buildHelpDoc()` lives in `help-dump.ts` and is unit-tested directly (co-located TS test). *Historical (superseded by 260604):* the assembly originally lived in `scripts/help-dump.mjs` (`.mjs` not `.ts`, to keep a plain-`node` CI capture path free of `tsx`); when `help-dump` moved into the binary the logic moved to `.ts` (bundled, so no runtime `tsx` — Constitution III still honored) and the `.mjs` was demoted to a wrapper (260602-v76l, 260604).
 - **Release-merge drives the pipeline via `needs`/outputs, not a tag re-trigger**: a tag pushed with the default `GITHUB_TOKEN` does NOT re-trigger workflows (GitHub's documented loop-prevention), so the release-merge path runs the `release` job in the same run via `needs: tag-on-release-merge` + an `always()`-gated `if` (tolerating the upstream job being skipped on the tag-push/dispatch paths), rather than relying on the suppressed tag push to start a second run. Releases remain tag-anchored. (Caught and corrected during review.) (260602-v76l)
 - **shll.ai pull model (push wiring removed)**: tu no longer writes `help/tu.json` to `sahil87/shll.ai` at all — shll.ai inverted the contract to pull on its own daily cron (`scheduled-help-refresh.yml`, direct-commit with `GITHUB_TOKEN`), so a single trusted cron is now the only writer. *Historical (superseded):* the original design pushed via a PR + `gh pr merge --auto --squash` (never a direct push) to serialize the 7-tool concurrent writes through GitHub and avoid a multi-repo push race; with one cron writer that race is moot, so the entire push path was removed (260603-dmhw, superseding 260602-v76l).
-
-## Changelog
-
-| Date | Change |
-|------|--------|
-| 2026-03-06 | Generated from code analysis |
-| 2026-03-06 | Updated esbuild entry point to `src/node/core/cli.ts`, test glob to `src/node/**/__tests__/*.test.ts`, added `src/node/` directory structure note |
-| 2026-04-01 | Relicense MIT & migrate to sahil87: updated org refs from wvrdz to sahil87, license from PolyForm to MIT, removed SSH note, removed weaver conf from published files (260401-lomt) |
-| 2026-04-01 | Vendor ccusage binaries: moved ccusage/codex/opencode from dependencies to devDependencies, added build-time vendor copy step (clean-before-copy into dist/vendor/), added vendor-first BIN resolution with dev-mode fallback in fetcher.ts (260320-eu2i) |
-| 2026-06-03 | Build-time help-dump → shll.ai: added `scripts/help-dump.mjs` producer (frozen `help/tu.json` contract, transient/gitignored), new `ci.yml` (build+test on main), and `release.yml` help-dump→shll.ai PR step + release-PR-merge entry point (260602-v76l) |
-| 2026-06-03 | Removed tu's shll.ai push wiring (shll.ai now pulls): deleted the `Generate help/tu.json` and `PR help/tu.json into shll.ai` steps (clone + PR + `gh pr merge --auto --squash` + `SHLLAI_TOKEN` env) from `release.yml`, trimmed the stale "Fail-loud steps FIRST" comment, and updated the `ci.yml` comment. shll.ai now pulls via its own cron (`scheduled-help-refresh.yml`, direct-commit). The `help-dump` producer script, npm script, contract (`schema_version: 1`), and unit test are retained unchanged; `SHLLAI_TOKEN` secret flagged for manual deletion (260603-dmhw) |
-| 2026-06-04 | Made `help-dump` an in-binary subcommand (fixes shll.ai's `tu help-dump` → `Unknown argument` capture failure): added `src/node/core/help-dump.ts` (pure `buildHelpDoc`, bundled), wired `tu help-dump` → `runHelpDump()` in `cli.ts` (stdout-only, exit 0, empty stderr), embedded `__PKG_NAME__`/`__PKG_DESCRIPTION__` at build time via `build.sh` `--define` (bottle has no `package.json`), demoted `scripts/help-dump.mjs` to a thin wrapper that shells out to the binary, moved the unit test import to `help-dump.ts`, and added in-binary command tests (stdout-only contract, byte-for-byte `text`) (260604) |
-| 2026-06-04 | CI now gates PR merges: added a `pull_request: branches: [main]` trigger to `ci.yml` alongside the retained `push: [main]`, plus an aggregating `ci-gate` job (`needs: [build-and-test]`, `if: always()`) as the single stable required status check. Added `scripts/ci-gate-ruleset.sh` — an idempotent, dry-run-default helper that creates/updates the `main` branch ruleset requiring `ci-gate` (live mutation is an admin `--apply` action, not run by the pipeline). Added a "CI / branch protection" section to `README.md` and fixed the `justfile` `test` recipe to delegate to `npm test` so `just test` == CI (260604-5wf9) |

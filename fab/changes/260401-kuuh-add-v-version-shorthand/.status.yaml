@@ -37,4 +37,5 @@ stage_metrics:
     review-pr: {started_at: "2026-04-01T10:49:51Z", driver: git-pr, iterations: 1}
 prs:
     - https://github.com/sahil87/tu/pull/12
+summary: ""
 last_updated: 2026-06-02T09:31:37Z

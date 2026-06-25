@@ -1,3 +1,8 @@
+---
+type: memory
+description: Git-based metrics sync, JSONL high-water-mark storage (never-shrink writes, self-view max-merge), remote merging, auto-clone, repair script
+---
+
 # Multi-Machine Sync
 
 ## Overview
@@ -34,15 +39,3 @@ Multi-machine sync (`src/node/sync/sync.ts`) enables aggregating AI usage costs 
 - **One-time repair from git history, manual and working-tree only** (260610-srmi): nothing was ever deleted from the metrics repo's history — only overwritten — so `scripts/repair-metrics.mjs` restores each shrunk day-file losslessly by writing back the full blob of the commit where its `totalCost` peaked (never patching just the cost field). Dry-run by default; `--write` touches the working tree only, leaving review/commit/push to the user. Standalone unbundled script (precedent: `scripts/help-dump.mjs`) keeps Constitution III intact. Sequencing constraint: run only after the guarded binary is installed on every actively-syncing machine, otherwise an old binary re-clobbers restored values at the rolling retention edge.
 - **Graceful degradation**: If multi mode is configured but the metrics repo is unavailable, the tool falls back to single mode rather than failing. This ensures the tool always works for local data.
 - **Clone-failed marker with cooldown**: Prevents repeated clone attempts on every invocation when the repo is unreachable (e.g., no network). 3-hour cooldown matches the staleness threshold.
-
-## Changelog
-
-| Date | Change |
-|------|--------|
-| 2026-03-06 | Generated from code analysis |
-| 2026-03-06 | Updated file path from `src/sync.ts` to `src/node/sync/sync.ts` |
-| 2026-03-07 | readRemoteEntries scoped to single target user; excludeMachine parameter replaces user+machine skip; supports `-u` flag for viewing other users' data |
-| 2026-03-07 | Fixed `-u` same-user: falls through to fresh-fetch path instead of reading stale repo data |
-| 2026-03-07 | Added `readRemoteEntriesByMachine` returning grouped `Map<string, UsageEntry[]>`; refactored `readRemoteEntries` to delegate and flatten |
-| 2026-04-23 | Migrated git invocations from `exec("git -C ... ...")` to `execFile("git", [...argv])` — no shell fork, paths with spaces/quotes pass through as literal argv entries (260423-lx0g) |
-| 2026-06-10 | Never-shrink guard in `writeMetrics` (skip silently when incoming `totalCost` is lower than the existing day-file's); display path max-merges own-machine snapshots back into the live view (all production reads now pass `excludeMachine = null`); added standalone one-time repair script `scripts/repair-metrics.mjs` (dry-run default, `--write` working-tree only) (260610-srmi) |

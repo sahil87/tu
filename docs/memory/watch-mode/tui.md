@@ -1,3 +1,8 @@
+---
+type: memory
+description: Live polling TUI, compositor architecture, sparkline, rain animation, session stats
+---
+
 # Watch Mode & TUI
 
 ## Overview
@@ -44,12 +49,3 @@ Watch mode (`--watch`/`-w`) provides a persistent live-polling terminal UI using
 - **No sparkline**: The braille sparkline was removed — 3 rows of braille over a wide cost range produced a nearly flat line, and the history table already shows trend data.
 - **No side-by-side merge**: Without a side panel, `mergeSideBySide()` was removed. The table renders at full width directly.
 - **Exit behavior**: On quit, the last rendered lines are printed to the normal screen so the user retains the final data without re-fetching.
-
-## Changelog
-
-| Date | Change |
-|------|--------|
-| 2026-03-06 | Generated from code analysis |
-| 2026-03-06 | Updated file paths from `src/` to `src/node/tui/` for watch, compositor, panel, sparkline, rain |
-| 2026-03-06 | Added requirement: Tokens/min suppressed until 2+ polls (fix divide-by-near-zero on first render) |
-| 2026-03-06 | Redesign: removed sparkline and side panel, added 2x3 stats grid above table, simplified to 2-tier breakpoints, rain tick 80ms→107ms, added loading skeleton |
