@@ -166,6 +166,14 @@ export function currentLabel(period: string, now: Date = new Date()): string {
   const yyyy = now.getFullYear();
   const mm = String(now.getMonth() + 1).padStart(2, "0");
   if (period === "monthly") return `${yyyy}-${mm}`;
+  if (period === "weekly") {
+    // Start of the current week (Sunday), local time — consistent with the
+    // daily/monthly cases which key on the user's local "now". setDate
+    // normalizes month/year underflow (e.g. a Sunday in the previous month).
+    const d = new Date(now);
+    d.setDate(d.getDate() - d.getDay()); // getDay(): 0 = Sunday
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
   const dd = String(now.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 }
@@ -287,6 +295,51 @@ export function filterEntriesByRange(
   until?: string,
 ): UsageEntry[] {
   return entries.filter((e) => (!since || e.label >= since) && (!until || e.label <= until));
+}
+
+// --- Weekly aggregation from daily entries ---
+
+// Week label: ISO date of the week's Sunday (aligned with ccusage weekly's
+// default --start-of-week sunday, so tu weekly rows match ccusage weekly rows).
+// UTC arithmetic on the date-only label — immune to local DST transitions.
+export function weekLabel(dailyLabel: string): string {
+  const d = new Date(`${dailyLabel}T00:00:00Z`);
+  // A malformed/empty label yields an Invalid Date, whose toISOString() throws
+  // RangeError. Labels come from parsed JSON/metrics, so a single bad entry must
+  // not crash weekly aggregation (Constitution II — graceful degradation). Fall
+  // back to the original label: it becomes its own bucket instead of hard-crashing.
+  if (Number.isNaN(d.getTime())) return dailyLabel;
+  d.setUTCDate(d.getUTCDate() - d.getUTCDay()); // getUTCDay(): 0 = Sunday
+  return d.toISOString().slice(0, 10);
+}
+
+export function aggregateWeekly(dailyEntries: UsageEntry[]): UsageEntry[] {
+  const map = new Map<string, UsageEntry>();
+  for (const e of dailyEntries) {
+    const wLabel = weekLabel(e.label);
+    const existing = map.get(wLabel);
+    if (existing) {
+      existing.inputTokens += e.inputTokens;
+      existing.outputTokens += e.outputTokens;
+      existing.cacheCreationTokens += e.cacheCreationTokens;
+      existing.cacheReadTokens += e.cacheReadTokens;
+      existing.totalTokens += e.totalTokens;
+      existing.totalCost += e.totalCost;
+    } else {
+      map.set(wLabel, { ...e, label: wLabel });
+    }
+  }
+  return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
+// --- Period-to-aggregator mapping ---
+// Threads the period dimension through cli.ts dispatch/fetch sites so weekly
+// works everywhere monthly does, without a third scattered `period === ...`
+// branch. daily is the identity (no rollup).
+export function aggregateForPeriod(period: string, entries: UsageEntry[]): UsageEntry[] {
+  if (period === "monthly") return aggregateMonthly(entries);
+  if (period === "weekly") return aggregateWeekly(entries);
+  return entries;
 }
 
 // --- Merge local + remote entries (used by multi-machine mode) ---

@@ -13,6 +13,9 @@ import {
   maxMergeEntries,
   aggregateMonthly,
   filterEntriesByRange,
+  aggregateWeekly,
+  aggregateForPeriod,
+  weekLabel,
   TOOLS,
   EMPTY,
 } from "../fetcher.js";
@@ -206,9 +209,24 @@ describe("currentLabel", () => {
     assert.equal(currentLabel("daily", now), "2026-01-05");
   });
 
+  it("returns start of current week (Sunday) for weekly period", () => {
+    const now = new Date(2026, 1, 16); // Mon Feb 16, 2026 → Sunday Feb 15
+    assert.equal(currentLabel("weekly", now), "2026-02-15");
+  });
+
+  it("returns the same date when today is already Sunday (weekly)", () => {
+    const now = new Date(2026, 1, 15); // Sun Feb 15, 2026
+    assert.equal(currentLabel("weekly", now), "2026-02-15");
+  });
+
+  it("handles month/year underflow for weekly (Sunday in previous month/year)", () => {
+    const now = new Date(2026, 0, 1); // Thu Jan 1, 2026 → Sunday Dec 28, 2025
+    assert.equal(currentLabel("weekly", now), "2025-12-28");
+  });
+
   it("defaults to daily-style label for unknown period", () => {
     const now = new Date(2026, 1, 16);
-    assert.equal(currentLabel("weekly", now), "2026-02-16");
+    assert.equal(currentLabel("hourly", now), "2026-02-16");
   });
 });
 
@@ -515,6 +533,168 @@ describe("aggregateMonthly", () => {
     const copy = JSON.parse(JSON.stringify(daily));
     aggregateMonthly(daily);
     assert.deepEqual(daily, copy);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// weekLabel — Sunday-start week-start ISO label, UTC arithmetic
+// ---------------------------------------------------------------------------
+describe("weekLabel", () => {
+  it("maps a Monday to the preceding Sunday", () => {
+    // 2026-02-16 is a Monday → week-start Sunday 2026-02-15
+    assert.equal(weekLabel("2026-02-16"), "2026-02-15");
+  });
+
+  it("returns the same date when the label is itself a Sunday", () => {
+    // 2026-02-15 is a Sunday
+    assert.equal(weekLabel("2026-02-15"), "2026-02-15");
+  });
+
+  it("maps a Saturday to the Sunday six days earlier", () => {
+    // 2026-02-21 is a Saturday → week-start Sunday 2026-02-15
+    assert.equal(weekLabel("2026-02-21"), "2026-02-15");
+  });
+
+  it("groups a year-boundary week under the prior-year Sunday", () => {
+    // 2026-12-27 is a Sunday; the week runs through 2027-01-02 (Saturday).
+    assert.equal(weekLabel("2026-12-28"), "2026-12-27"); // Mon
+    assert.equal(weekLabel("2026-12-31"), "2026-12-27"); // Thu
+    assert.equal(weekLabel("2027-01-01"), "2026-12-27"); // Fri, prior-year label
+    assert.equal(weekLabel("2027-01-02"), "2026-12-27"); // Sat
+  });
+
+  it("uses UTC arithmetic so DST-transition weeks are not skewed", () => {
+    // 2026-03-08 (US spring-forward Sunday) and 2026-11-01 (fall-back Sunday)
+    // are both Sundays → they are their own week-start labels, unshifted.
+    assert.equal(weekLabel("2026-03-08"), "2026-03-08");
+    assert.equal(weekLabel("2026-03-09"), "2026-03-08"); // Mon after spring-forward
+    assert.equal(weekLabel("2026-11-01"), "2026-11-01");
+    assert.equal(weekLabel("2026-11-02"), "2026-11-01"); // Mon after fall-back
+  });
+
+  it("returns the original label (no throw) for a malformed date", () => {
+    // A bad label from parsed JSON/metrics must not crash weekly aggregation
+    // (graceful degradation) — it falls back to being its own bucket.
+    assert.equal(weekLabel(""), "");
+    assert.equal(weekLabel("not-a-date"), "not-a-date");
+    assert.equal(weekLabel("2026-13-45"), "2026-13-45"); // out-of-range parts
+  });
+});
+
+// ---------------------------------------------------------------------------
+// aggregateWeekly
+// ---------------------------------------------------------------------------
+describe("aggregateWeekly", () => {
+  it("aggregates daily entries into a single week", () => {
+    // 2026-02-15 (Sun) .. 2026-02-17 (Tue) — all in the week of Sunday 2026-02-15
+    const daily = [
+      mkEntry("2026-02-15", 1.0, 100),
+      mkEntry("2026-02-16", 2.0, 200),
+      mkEntry("2026-02-17", 3.0, 300),
+    ];
+    const result = aggregateWeekly(daily);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].label, "2026-02-15");
+    assert.equal(result[0].totalCost, 6.0);
+    assert.equal(result[0].inputTokens, 600);
+    assert.equal(result[0].totalTokens, 600);
+  });
+
+  it("groups entries spanning a week boundary", () => {
+    // 2026-02-14 (Sat) → week 2026-02-08; 2026-02-15 (Sun) → week 2026-02-15
+    const daily = [
+      mkEntry("2026-02-14", 1.0, 100),
+      mkEntry("2026-02-15", 2.0, 200),
+    ];
+    const result = aggregateWeekly(daily);
+    assert.equal(result.length, 2);
+    assert.equal(result[0].label, "2026-02-08");
+    assert.equal(result[0].totalCost, 1.0);
+    assert.equal(result[1].label, "2026-02-15");
+    assert.equal(result[1].totalCost, 2.0);
+  });
+
+  it("returns sorted by week-start label", () => {
+    const daily = [
+      mkEntry("2026-03-02", 3.0), // week 2026-03-01
+      mkEntry("2026-01-05", 1.0), // week 2026-01-04
+      mkEntry("2026-02-10", 2.0), // week 2026-02-08
+    ];
+    const result = aggregateWeekly(daily);
+    assert.deepEqual(
+      result.map((e) => e.label),
+      ["2026-01-04", "2026-02-08", "2026-03-01"]
+    );
+  });
+
+  it("groups a year-boundary week under the prior-year Sunday", () => {
+    // Week of Sunday 2026-12-27 spans into 2027.
+    const daily = [
+      mkEntry("2026-12-28", 1.0, 100),
+      mkEntry("2026-12-31", 2.0, 200),
+      mkEntry("2027-01-01", 3.0, 300),
+      mkEntry("2027-01-02", 4.0, 400),
+    ];
+    const result = aggregateWeekly(daily);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].label, "2026-12-27");
+    assert.equal(result[0].totalCost, 10.0);
+    assert.equal(result[0].totalTokens, 1000);
+  });
+
+  it("groups DST-transition weeks without label skew (UTC arithmetic)", () => {
+    // Spring-forward week of 2026-03-08 (Sun) and fall-back week of
+    // 2026-11-01 (Sun) each stay anchored to their Sunday label.
+    const daily = [
+      mkEntry("2026-03-08", 1.0, 100), // Sun
+      mkEntry("2026-03-09", 2.0, 200), // Mon (post spring-forward)
+      mkEntry("2026-11-01", 3.0, 300), // Sun
+      mkEntry("2026-11-02", 4.0, 400), // Mon (post fall-back)
+    ];
+    const result = aggregateWeekly(daily);
+    assert.deepEqual(
+      result.map((e) => e.label),
+      ["2026-03-08", "2026-11-01"]
+    );
+    assert.equal(result[0].totalCost, 3.0);
+    assert.equal(result[1].totalCost, 7.0);
+  });
+
+  it("returns empty array for empty input", () => {
+    assert.deepEqual(aggregateWeekly([]), []);
+  });
+
+  it("does not mutate input", () => {
+    const daily = [mkEntry("2026-02-16", 1.0)];
+    const copy = JSON.parse(JSON.stringify(daily));
+    aggregateWeekly(daily);
+    assert.deepEqual(daily, copy);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// aggregateForPeriod — period-to-aggregator routing
+// ---------------------------------------------------------------------------
+describe("aggregateForPeriod", () => {
+  const daily = [
+    mkEntry("2026-02-15", 1.0, 100), // Sun (week 2026-02-15, month 2026-02)
+    mkEntry("2026-02-16", 2.0, 200), // Mon
+  ];
+
+  it("routes monthly to aggregateMonthly", () => {
+    assert.deepEqual(aggregateForPeriod("monthly", daily), aggregateMonthly(daily));
+  });
+
+  it("routes weekly to aggregateWeekly", () => {
+    assert.deepEqual(aggregateForPeriod("weekly", daily), aggregateWeekly(daily));
+  });
+
+  it("returns entries unchanged (identity) for daily", () => {
+    assert.equal(aggregateForPeriod("daily", daily), daily);
+  });
+
+  it("returns entries unchanged for an unknown period", () => {
+    assert.equal(aggregateForPeriod("hourly", daily), daily);
   });
 });
 
