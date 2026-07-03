@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 7
@@ -33,23 +33,25 @@ stage_metrics:
     apply: {started_at: "2026-07-03T12:30:05Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-03T12:36:02Z"}
     review: {started_at: "2026-07-03T12:36:02Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-03T12:53:05Z"}
     hydrate: {started_at: "2026-07-03T12:53:05Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-03T12:55:43Z"}
-    ship: {started_at: "2026-07-03T12:55:43Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-07-03T12:55:43Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-03T12:57:12Z"}
+    review-pr: {started_at: "2026-07-03T12:57:12Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/tu/pull/39
 change_type_source: explicit
 true_impact:
-    added: 0
-    deleted: 0
-    net: 0
+    added: 420
+    deleted: 17
+    net: 403
     excluding:
-        added: 0
-        deleted: 0
-        net: 0
+        added: 85
+        deleted: 13
+        net: 72
     tests:
-        added: 0
-        deleted: 0
-        net: 0
-    computed_at: "2026-07-03T12:55:43Z"
-    computed_at_stage: hydrate
+        added: 63
+        deleted: 1
+        net: 62
+    computed_at: "2026-07-03T12:57:12Z"
+    computed_at_stage: ship
 summary: 'Remap cc to the ccusage claude subcommand and add per-tool ToolConfig.labelKey (cc: date, codex/oc: period) — fixes v20 all-agents-aggregate over/double-count'
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-07-03T12:55:43Z
+last_updated: 2026-07-03T12:57:12Z
