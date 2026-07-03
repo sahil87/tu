@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 16
@@ -33,23 +33,25 @@ stage_metrics:
     apply: {started_at: "2026-07-03T15:21:45Z", driver: fab-fff, iterations: 4, completed_at: "2026-07-03T15:25:40Z"}
     review: {started_at: "2026-07-03T15:25:40Z", driver: fab-fff, iterations: 4, completed_at: "2026-07-03T19:33:07Z"}
     hydrate: {started_at: "2026-07-03T19:33:07Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-03T19:38:20Z"}
-    ship: {started_at: "2026-07-03T19:38:20Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-07-03T19:38:20Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-03T19:42:02Z"}
+    review-pr: {started_at: "2026-07-03T19:42:02Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/tu/pull/42
 change_type_source: explicit
 true_impact:
-    added: 0
-    deleted: 0
-    net: 0
+    added: 802
+    deleted: 127
+    net: 675
     excluding:
-        added: 0
-        deleted: 0
-        net: 0
+        added: 349
+        deleted: 98
+        net: 251
     tests:
-        added: 0
-        deleted: 0
-        net: 0
-    computed_at: "2026-07-03T19:38:20Z"
-    computed_at_stage: hydrate
+        added: 267
+        deleted: 65
+        net: 202
+    computed_at: "2026-07-03T19:42:02Z"
+    computed_at_stage: ship
 summary: 'Added gemini/copilot sources: TOOLS registry gains gemini/copilot entries (prefixArgs, labelKey "date", needsFilter false), KNOWN_SOURCES/SOURCE_ALIASES gain gem→gemini/cop→copilot, completions carry the new tokens; corrected the ccfx-era labelKey error (all five per-agent subcommands emit "date" at v20.0.14, only the unused bare aggregate emits "period"; pickCurrentEntry default flipped to "date"); renderTotalHistory switched to variable per-tool column widths (max(name,8), Date 10) with a space-less watch-mode delta indicator + indicatorReserve so the full row is 79 chars / 80 with the indicator (gmcp)'
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-07-03T19:38:20Z
+last_updated: 2026-07-03T19:42:02Z
