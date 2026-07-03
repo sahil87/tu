@@ -100,8 +100,8 @@ Tools with no data for the period SHALL still render a column (the fetchers `fet
 
 ### Design Decisions
 
-1. **`pickCurrentEntry` default `labelKey` kept at `"period"`**: keeps the period-keyed legacy test call sites (`pickCurrentEntry(entries, period, now)`) valid — *Why*: all production callers (`fetchTotals`) pass `tool.labelKey` explicitly, so the default only affects test-call-site ergonomics; churning existing green tests adds risk without benefit — *Rejected*: flipping the default to `"date"` (would require rewriting all period-keyed `pickCurrentEntry` fixtures for no production gain).
-2. **Column width `max(toolName.length, 9)`**: 9 ≈ widest typical cost cell (`$1,234.56`) — *Why*: keeps the 5-tool table ≈75 chars, fitting 80-col terminals, while never truncating a tool name — *Rejected*: fixed 14 (overflows 80 at 5 tools), hiding zero-data columns (machine-dependent output violates Output Stability).
+1. **`pickCurrentEntry` default `labelKey` flipped to `"date"`** (T016): the retired `"period"` default matched no registry tool, so an omitted arg would silently yield `""` labels → empty totals — *Why*: every registry tool now keys on `"date"`, so the default must match; period-keyed test fixtures were migrated, and the explicit-`"period"` path stays exercised so the "key varies by serializer" mechanism remains live — *Rejected*: keeping the `"period"` default (a latent empty-totals footgun for any future caller that omits the arg). *(Initially the plan proposed keeping `"period"`; flipped during rework — see T016 / A-019.)*
+2. **Column width `max(toolName.length, 8)` + Date column 10** (T006): floor 8 keeps the full 5-tool data row (Date + tool columns + gutter + Cost cell) at 79 ≤ 80 chars — *Why*: fits 80-col terminals without truncating a tool name; a prior `max(name, 9)` + Date-12 attempt still rendered an 85-char full row that wrapped — *Rejected*: fixed 14 (overflows 80 at 5 tools), hiding zero-data columns (machine-dependent output violates Output Stability).
 
 ## Tasks
 

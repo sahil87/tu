@@ -8,8 +8,11 @@ import assert from "node:assert/strict";
 import { buildHelpDoc } from "../help-dump.js";
 import { runHelpDump, FULL_HELP } from "../cli.js";
 
-// A representative captured `tu --help` (FULL_HELP). The test asserts the
-// builder treats this text byte-for-byte and derives the contract fields.
+// A shortened, representative excerpt of a captured `tu --help` (NOT the full
+// FULL_HELP — it omits the Combined/Examples/Setup/Help sections and most flags).
+// The test asserts the builder treats whatever text it is given byte-for-byte and
+// derives the contract fields; the full FULL_HELP is exercised by the runHelpDump
+// suite below.
 const HELP_TEXT = `Usage: tu [source] [period] [display]
 
 Sources: cc (Claude Code), codex/co (Codex), oc (OpenCode), gemini/gem (Gemini), copilot/cop (Copilot), all (default)
