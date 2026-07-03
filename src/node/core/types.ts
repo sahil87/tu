@@ -15,5 +15,6 @@ export interface ToolConfig {
   name: string;
   binary: string;
   prefixArgs: string[];
+  labelKey: string; // JSON key carrying the entry's ISO date label ("date" | "period")
   needsFilter: boolean;
 }

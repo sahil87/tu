@@ -295,6 +295,54 @@ describe("pickCurrentEntry", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Per-tool label key: both "date" (claude subcommand) and "period"
+// (codex/opencode) spellings parse to the correct ISO UsageEntry.label
+// ---------------------------------------------------------------------------
+describe("per-tool label key (date vs period)", () => {
+  it("toUsageEntry resolves an ISO 'date'-keyed entry (claude subcommand shape)", () => {
+    const entry = toUsageEntry({ date: "2026-06-01", totalCost: 1, totalTokens: 10 }, "date");
+    assert.equal(entry.label, "2026-06-01");
+    assert.equal(entry.totalCost, 1);
+  });
+
+  it("toUsageEntry resolves an ISO 'period'-keyed entry (codex/opencode shape)", () => {
+    const entry = toUsageEntry({ period: "2026-06-01", totalCost: 2, totalTokens: 20 }, "period");
+    assert.equal(entry.label, "2026-06-01");
+    assert.equal(entry.totalCost, 2);
+  });
+
+  it("pickCurrentEntry matches today via a threaded 'date' key (cc / claude subcommand)", () => {
+    const now = new Date(2026, 5, 1); // Jun 1, 2026
+    const entries = [
+      { date: "2026-05-31", totalCost: 1, totalTokens: 100, inputTokens: 50, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0 },
+      { date: "2026-06-01", totalCost: 2, totalTokens: 200, inputTokens: 100, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0 },
+    ];
+    const result = pickCurrentEntry(entries, "daily", now, "date");
+    assert.equal(result.totalCost, 2);
+    assert.equal(result.totalTokens, 200);
+  });
+
+  it("pickCurrentEntry defaults to the 'period' key when labelKey is omitted", () => {
+    const now = new Date(2026, 5, 1);
+    const entries = [
+      { period: "2026-06-01", totalCost: 3, totalTokens: 300, inputTokens: 150, outputTokens: 150, cacheCreationTokens: 0, cacheReadTokens: 0 },
+    ];
+    const result = pickCurrentEntry(entries, "daily", now);
+    assert.equal(result.totalCost, 3);
+  });
+
+  it("the fetchHistory mapping shape yields correct labels for both key spellings", () => {
+    // fetchHistory maps: entries.map((e) => toUsageEntry(e, tool.labelKey))
+    const ccRaw = [{ date: "2026-06-01", totalCost: 1, totalTokens: 10 }];
+    const codexRaw = [{ period: "2026-06-01", totalCost: 2, totalTokens: 20 }];
+    const ccMapped = ccRaw.map((e) => toUsageEntry(e, TOOLS.cc.labelKey));
+    const codexMapped = codexRaw.map((e) => toUsageEntry(e, TOOLS.codex.labelKey));
+    assert.equal(ccMapped[0].label, "2026-06-01");
+    assert.equal(codexMapped[0].label, "2026-06-01");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // TOOLS registry
 // ---------------------------------------------------------------------------
 describe("TOOLS", () => {
@@ -357,9 +405,21 @@ describe("TOOLS", () => {
   });
 
   it("subcommand prefixArgs select the per-tool ccusage subcommand", () => {
-    assert.deepEqual(TOOLS.cc.prefixArgs, []);
+    // v20: bare `ccusage daily` is an all-agents aggregate, so cc uses the
+    // per-agent `claude` subcommand (not [] — that would over/double-count
+    // other detected agents).
+    assert.deepEqual(TOOLS.cc.prefixArgs, ["claude"]);
     assert.deepEqual(TOOLS.codex.prefixArgs, ["codex"]);
     assert.deepEqual(TOOLS.oc.prefixArgs, ["opencode"]);
+  });
+
+  it("exposes a per-tool labelKey (claude→date, codex/oc→period)", () => {
+    // The claude subcommand emits the ISO label under "date"; codex/opencode
+    // emit it under "period". The label key is a property of the tool, not the
+    // period (replaces the removed period-keyed LABEL_KEY const).
+    assert.equal(TOOLS.cc.labelKey, "date");
+    assert.equal(TOOLS.codex.labelKey, "period");
+    assert.equal(TOOLS.oc.labelKey, "period");
   });
 });
 
@@ -379,6 +439,8 @@ describe("runTool argv construction", () => {
     // with the `[binary, ...prefixArgs, period, --json, ...extra]` pattern.
     // The integration with execFile is exercised by fetch-warning tests.
     const expectedArgs = [...TOOLS.cc.prefixArgs, "daily", "--json"];
+    // cc now composes the per-agent `claude` subcommand invocation.
+    assert.deepEqual(expectedArgs, ["claude", "daily", "--json"]);
     assert.ok(expectedArgs.includes("daily"), "period should be in argv");
     assert.ok(expectedArgs.includes("--json"), "--json should be in argv");
     // No shell metacharacters concatenation — prefixArgs are kept as discrete entries.

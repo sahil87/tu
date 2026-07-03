@@ -1,0 +1,57 @@
+id: ccfx
+name: 260703-ccfx-fix-cc-source-mapping
+created: 2026-07-03T12:26:19Z
+created_by: sahil-noon
+change_type: fix
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
+plan:
+    generated: true
+    task_count: 7
+    acceptance_count: 11
+    acceptance_completed: 11
+confidence:
+    certain: 6
+    confident: 1
+    tentative: 0
+    unresolved: 0
+    score: 5.0
+    fuzzy: true
+    dimensions:
+        signal: 89.3
+        reversibility: 89.3
+        competence: 88.6
+        disambiguation: 87.9
+stage_metrics:
+    intake: {started_at: "2026-07-03T12:26:19Z", driver: fab-new, iterations: 1, completed_at: "2026-07-03T12:30:05Z"}
+    apply: {started_at: "2026-07-03T12:30:05Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-03T12:36:02Z"}
+    review: {started_at: "2026-07-03T12:36:02Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-03T12:53:05Z"}
+    hydrate: {started_at: "2026-07-03T12:53:05Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-03T12:55:43Z"}
+    ship: {started_at: "2026-07-03T12:55:43Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-03T12:57:12Z"}
+    review-pr: {started_at: "2026-07-03T12:57:12Z", driver: git-pr, iterations: 1, completed_at: "2026-07-03T13:04:09Z"}
+prs:
+    - https://github.com/sahil87/tu/pull/39
+change_type_source: explicit
+true_impact:
+    added: 420
+    deleted: 17
+    net: 403
+    excluding:
+        added: 85
+        deleted: 13
+        net: 72
+    tests:
+        added: 63
+        deleted: 1
+        net: 62
+    computed_at: "2026-07-03T12:57:12Z"
+    computed_at_stage: ship
+summary: 'Remap cc to the ccusage claude subcommand and add per-tool ToolConfig.labelKey (cc: date, codex/oc: period) — fixes v20 all-agents-aggregate over/double-count'
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-07-03T13:04:09Z

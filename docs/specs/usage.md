@@ -12,7 +12,7 @@ tu [source] [period] [display] [flags]
 
 | Token | Resolves to | Tool command |
 |-------|-------------|-------------|
-| `cc` | Claude Code | `ccusage` |
+| `cc` | Claude Code | `ccusage claude` |
 | `codex`, `co` | Codex | `ccusage codex` |
 | `oc` | OpenCode | `ccusage opencode` |
 | `all` (default) | All three tools | — |
