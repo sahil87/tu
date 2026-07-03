@@ -58,26 +58,33 @@ function writeCache(toolKey: string, entries: UsageEntry[]): void {
 // Rust binary vendored at dist/vendor/ccusage/bin/ccusage (exec'd directly, no
 // node interpreter); in dev mode it is the npm launcher at node_modules/.bin/ccusage
 // (a JS shim that resolves the host's optional native package). Per-tool
-// subcommands (codex/opencode) are expressed via prefixArgs.
+// subcommands are expressed via prefixArgs: cc→claude, codex→codex, oc→opencode.
+// Bare `ccusage daily` is a v20 all-agents aggregate, so cc must use the
+// per-agent `claude` subcommand to avoid over/double-counting other agents.
+// The claude subcommand emits the ISO label under "date"; codex/opencode use
+// "period" — hence the per-tool labelKey.
 const CCUSAGE = useVendor ? `${BIN}/ccusage/bin/ccusage` : `${BIN}/ccusage`;
 
 export const TOOLS: Record<string, ToolConfig> = {
   cc: {
     name: "Claude Code",
     binary: CCUSAGE,
-    prefixArgs: [],
+    prefixArgs: ["claude"],
+    labelKey: "date",
     needsFilter: false,
   },
   codex: {
     name: "Codex",
     binary: CCUSAGE,
     prefixArgs: ["codex"],
+    labelKey: "period",
     needsFilter: true,
   },
   oc: {
     name: "OpenCode",
     binary: CCUSAGE,
     prefixArgs: ["opencode"],
+    labelKey: "period",
     needsFilter: true,
   },
 };
@@ -149,11 +156,10 @@ export function toUsageEntry(t: Record<string, unknown>, labelKey: string): Usag
   };
 }
 
-// Label key: ccusage@20 emits the ISO label under "period" for both daily
-// ("2026-07-03") and monthly ("2026-07") entries — it replaced v18's
-// human-readable "date"/"month" fields. normalizeLabel passes ISO labels
-// through unchanged.
-const LABEL_KEY: Record<string, string> = { daily: "period", monthly: "period" };
+// The JSON key carrying an entry's ISO date label varies by tool, not by
+// period: the `claude` subcommand emits it under "date", while codex/opencode
+// emit it under "period". That key lives per-tool as ToolConfig.labelKey.
+// normalizeLabel passes ISO labels through unchanged for either spelling.
 
 // Current ISO label for filtering entries to "now"
 export function currentLabel(period: string, now: Date = new Date()): string {
@@ -164,13 +170,16 @@ export function currentLabel(period: string, now: Date = new Date()): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-// Pick the entry matching the current date/month, or return EMPTY
+// Pick the entry matching the current date/month, or return EMPTY.
+// labelKey is the JSON key carrying the entry's ISO date label (per-tool:
+// "date" for the claude subcommand, "period" for codex/opencode). Defaults to
+// "period" so callers with period-keyed fixtures need not pass it.
 export function pickCurrentEntry(
   entries: Record<string, unknown>[],
   period: string,
-  now: Date = new Date()
+  now: Date = new Date(),
+  labelKey: string = "period"
 ): UsageTotals {
-  const labelKey = LABEL_KEY[period] || "period";
   const target = currentLabel(period, now);
   const match = entries.find((e) => normalizeLabel(String(e[labelKey] || "")) === target);
   return match ? toUsageTotals(match) : { ...EMPTY };
@@ -205,7 +214,7 @@ export async function fetchTotals(toolKey: string, extraArgs: string[] = []): Pr
   const dailyRaw = parsed["daily"] as Record<string, unknown>[] | undefined;
   if (!dailyRaw || dailyRaw.length === 0) return { ...EMPTY };
 
-  return pickCurrentEntry(dailyRaw, "daily");
+  return pickCurrentEntry(dailyRaw, "daily", new Date(), tool.labelKey);
 }
 
 export async function fetchAllTotals(extraArgs: string[] = []): Promise<Map<string, UsageTotals>> {
@@ -238,7 +247,7 @@ export async function fetchHistory(toolKey: string, period: string, extraArgs: s
   const entries = parsed["daily"] as Record<string, unknown>[] | undefined;
   if (!entries || entries.length === 0) return [];
 
-  const result = entries.map((e) => toUsageEntry(e, LABEL_KEY.daily));
+  const result = entries.map((e) => toUsageEntry(e, tool.labelKey));
 
   if (extraArgs.length === 0) writeCache(toolKey, result);
   return result;
