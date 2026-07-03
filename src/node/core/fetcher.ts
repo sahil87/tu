@@ -54,23 +54,30 @@ function writeCache(toolKey: string, entries: UsageEntry[]): void {
   }
 }
 
+// ccusage@20 ships a single all-agent CLI. In vendor mode this is the native
+// Rust binary vendored at dist/vendor/ccusage/bin/ccusage (exec'd directly, no
+// node interpreter); in dev mode it is the npm launcher at node_modules/.bin/ccusage
+// (a JS shim that resolves the host's optional native package). Per-tool
+// subcommands (codex/opencode) are expressed via prefixArgs.
+const CCUSAGE = useVendor ? `${BIN}/ccusage/bin/ccusage` : `${BIN}/ccusage`;
+
 export const TOOLS: Record<string, ToolConfig> = {
   cc: {
     name: "Claude Code",
-    binary: useVendor ? "node" : `${BIN}/ccusage`,
-    prefixArgs: useVendor ? [`${BIN}/ccusage/index.js`] : [],
+    binary: CCUSAGE,
+    prefixArgs: [],
     needsFilter: false,
   },
   codex: {
     name: "Codex",
-    binary: useVendor ? "node" : `${BIN}/ccusage-codex`,
-    prefixArgs: useVendor ? [`${BIN}/ccusage-codex/index.js`] : [],
+    binary: CCUSAGE,
+    prefixArgs: ["codex"],
     needsFilter: true,
   },
   oc: {
     name: "OpenCode",
-    binary: useVendor ? "node" : `${BIN}/ccusage-opencode`,
-    prefixArgs: useVendor ? [`${BIN}/ccusage-opencode/index.js`] : [],
+    binary: CCUSAGE,
+    prefixArgs: ["opencode"],
     needsFilter: true,
   },
 };
@@ -142,8 +149,11 @@ export function toUsageEntry(t: Record<string, unknown>, labelKey: string): Usag
   };
 }
 
-// Label key varies by period: daily entries have "date", monthly entries have "month"
-const LABEL_KEY: Record<string, string> = { daily: "date", monthly: "month" };
+// Label key: ccusage@20 emits the ISO label under "period" for both daily
+// ("2026-07-03") and monthly ("2026-07") entries — it replaced v18's
+// human-readable "date"/"month" fields. normalizeLabel passes ISO labels
+// through unchanged.
+const LABEL_KEY: Record<string, string> = { daily: "period", monthly: "period" };
 
 // Current ISO label for filtering entries to "now"
 export function currentLabel(period: string, now: Date = new Date()): string {
@@ -160,7 +170,7 @@ export function pickCurrentEntry(
   period: string,
   now: Date = new Date()
 ): UsageTotals {
-  const labelKey = LABEL_KEY[period] || "date";
+  const labelKey = LABEL_KEY[period] || "period";
   const target = currentLabel(period, now);
   const match = entries.find((e) => normalizeLabel(String(e[labelKey] || "")) === target);
   return match ? toUsageTotals(match) : { ...EMPTY };
@@ -228,7 +238,7 @@ export async function fetchHistory(toolKey: string, period: string, extraArgs: s
   const entries = parsed["daily"] as Record<string, unknown>[] | undefined;
   if (!entries || entries.length === 0) return [];
 
-  const result = entries.map((e) => toUsageEntry(e, "date"));
+  const result = entries.map((e) => toUsageEntry(e, LABEL_KEY.daily));
 
   if (extraArgs.length === 0) writeCache(toolKey, result);
   return result;
