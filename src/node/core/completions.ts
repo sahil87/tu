@@ -20,13 +20,13 @@ _tu_complete() {
   local sources="cc codex co oc all"
   local periods="d m daily monthly"
   local display="h history dh mh"
-  local long_flags="--json --csv --md --sync --fresh --watch --interval --user --by-machine --skip-brew-update --no-color --no-rain --version --help"
-  local short_flags="-f -w -i -u -v -V -h"
+  local long_flags="--json --csv --md --since --until --sync --fresh --watch --interval --user --by-machine --skip-brew-update --no-color --no-rain --version --help"
+  local short_flags="-f -w -i -u -s -j -v -V -h"
   local shells="bash zsh fish"
 
-  # Argument to --interval/--user takes a value; no completion
+  # Argument to --interval/--user/--since/--until takes a value; no completion
   case "\${prev}" in
-    --interval|-i|--user|-u)
+    --interval|-i|--user|-u|--since|-s|--until)
       return 0
       ;;
     shell-init)
@@ -74,8 +74,8 @@ _tu() {
   sources=(cc codex co oc all)
   periods=(d m daily monthly)
   display=(h history dh mh)
-  long_flags=(--json --csv --md --sync --fresh --watch --interval --user --by-machine --skip-brew-update --no-color --no-rain --version --help)
-  short_flags=(-f -w -i -u -v -V -h)
+  long_flags=(--json --csv --md --since --until --sync --fresh --watch --interval --user --by-machine --skip-brew-update --no-color --no-rain --version --help)
+  short_flags=(-f -w -i -u -s -j -v -V -h)
   shells=(bash zsh fish)
 
   local curcontext="$curcontext" state line
@@ -85,8 +85,12 @@ _tu() {
     '1: :->first' \\
     '*: :->rest' \\
     '--json[emit JSON]' \\
+    '-j[emit JSON]' \\
     '--csv[emit CSV]' \\
     '--md[emit Markdown]' \\
+    '--since[only include entries on/after date]:date:' \\
+    '-s[only include entries on/after date]:date:' \\
+    '--until[only include entries on/before date]:date:' \\
     '--sync[sync metrics before fetch]' \\
     '--fresh[bypass cache]' \\
     '-f[bypass cache]' \\
@@ -174,6 +178,8 @@ complete -c tu -n '__fish_seen_subcommand_from shell-init' -a 'fish' -d 'emit fi
 complete -c tu -l json -d 'emit JSON'
 complete -c tu -l csv -d 'emit CSV'
 complete -c tu -l md -d 'emit Markdown'
+complete -c tu -l since -r -d 'only include entries on/after date'
+complete -c tu -l until -r -d 'only include entries on/before date'
 complete -c tu -l sync -d 'sync metrics before fetch'
 complete -c tu -l fresh -d 'bypass cache'
 complete -c tu -l watch -d 'persistent polling mode'
@@ -191,6 +197,8 @@ complete -c tu -s f -d 'bypass cache'
 complete -c tu -s w -d 'persistent polling mode'
 complete -c tu -s i -r -d 'poll interval in seconds'
 complete -c tu -s u -r -d 'show usage for a specific user'
+complete -c tu -s s -r -d 'only include entries on/after date'
+complete -c tu -s j -d 'emit JSON'
 complete -c tu -s v -d 'print version'
 complete -c tu -s V -d 'print version'
 complete -c tu -s h -d 'show help'

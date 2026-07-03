@@ -265,6 +265,21 @@ export function aggregateMonthly(dailyEntries: UsageEntry[]): UsageEntry[] {
   return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
 }
 
+// --- Client-side date-range filter (used by --since/--until) ---
+//
+// Inclusive on both ends; `since`/`until` are normalized ISO strings
+// (YYYY-MM-DD). Labels are already normalized ISO, so lexicographic string
+// compare is a correct total order — an out-of-range or impossible-but-shaped
+// bound simply yields a narrower (possibly empty) window. Pure: never mutates
+// its input (Constitution V). An undefined bound is open-ended on that side.
+export function filterEntriesByRange(
+  entries: UsageEntry[],
+  since?: string,
+  until?: string,
+): UsageEntry[] {
+  return entries.filter((e) => (!since || e.label >= since) && (!until || e.label <= until));
+}
+
 // --- Merge local + remote entries (used by multi-machine mode) ---
 
 export function mergeEntries(

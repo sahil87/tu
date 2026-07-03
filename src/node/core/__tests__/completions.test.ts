@@ -45,6 +45,8 @@ const LONG_FLAGS = [
   "--json",
   "--csv",
   "--md",
+  "--since",
+  "--until",
   "--sync",
   "--fresh",
   "--watch",
@@ -57,6 +59,9 @@ const LONG_FLAGS = [
   "--version",
   "--help",
 ];
+
+// Short flags that must appear literally in every completion script.
+const SHORT_FLAGS = ["-f", "-w", "-i", "-u", "-s", "-j", "-v", "-V", "-h"];
 
 const NON_DATA_SUBCOMMANDS = [
   "help",
@@ -155,6 +160,22 @@ describe("completion script coverage — long flags", () => {
         FISH_COMPLETION.includes(flag) || FISH_COMPLETION.includes(` ${stripped} `) || FISH_COMPLETION.includes(`-l ${stripped}`),
         `fish missing ${flag} (or its -l ${stripped} form)`,
       );
+    });
+  }
+});
+
+describe("completion script coverage — short flags", () => {
+  for (const flag of SHORT_FLAGS) {
+    const letter = flag.replace(/^-/, "");
+    it(`bash script contains literal ${flag}`, () => {
+      assert.ok(BASH_COMPLETION.includes(flag), `bash missing ${flag}`);
+    });
+    it(`zsh script contains literal ${flag}`, () => {
+      assert.ok(ZSH_COMPLETION.includes(flag), `zsh missing ${flag}`);
+    });
+    it(`fish script contains ${flag} (as -s ${letter})`, () => {
+      // fish declares short flags via `-s <letter>`, e.g. `complete -c tu -s j`.
+      assert.ok(FISH_COMPLETION.includes(`-s ${letter}`), `fish missing -s ${letter}`);
     });
   }
 });
