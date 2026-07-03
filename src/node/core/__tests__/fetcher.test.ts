@@ -571,6 +571,14 @@ describe("weekLabel", () => {
     assert.equal(weekLabel("2026-11-01"), "2026-11-01");
     assert.equal(weekLabel("2026-11-02"), "2026-11-01"); // Mon after fall-back
   });
+
+  it("returns the original label (no throw) for a malformed date", () => {
+    // A bad label from parsed JSON/metrics must not crash weekly aggregation
+    // (graceful degradation) — it falls back to being its own bucket.
+    assert.equal(weekLabel(""), "");
+    assert.equal(weekLabel("not-a-date"), "not-a-date");
+    assert.equal(weekLabel("2026-13-45"), "2026-13-45"); // out-of-range parts
+  });
 });
 
 // ---------------------------------------------------------------------------

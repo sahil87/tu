@@ -304,6 +304,11 @@ export function filterEntriesByRange(
 // UTC arithmetic on the date-only label — immune to local DST transitions.
 export function weekLabel(dailyLabel: string): string {
   const d = new Date(`${dailyLabel}T00:00:00Z`);
+  // A malformed/empty label yields an Invalid Date, whose toISOString() throws
+  // RangeError. Labels come from parsed JSON/metrics, so a single bad entry must
+  // not crash weekly aggregation (Constitution II — graceful degradation). Fall
+  // back to the original label: it becomes its own bucket instead of hard-crashing.
+  if (Number.isNaN(d.getTime())) return dailyLabel;
   d.setUTCDate(d.getUTCDate() - d.getUTCDay()); // getUTCDay(): 0 = Sunday
   return d.toISOString().slice(0, 10);
 }
