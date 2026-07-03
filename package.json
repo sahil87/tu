@@ -20,10 +20,8 @@
     "node": ">=18"
   },
   "devDependencies": {
-    "@ccusage/codex": "^18.0.8",
-    "@ccusage/opencode": "^18.0.8",
     "@types/node": "^25.2.2",
-    "ccusage": "^18.0.8",
+    "ccusage": "^20.0.14",
     "esbuild": "^0.28.1",
     "tsx": "^4.22.4",
     "typescript": "^5.0.0"

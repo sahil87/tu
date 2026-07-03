@@ -10,11 +10,11 @@ tu [source] [period] [display] [flags]
 
 ### Sources
 
-| Token | Resolves to | Tool binary |
+| Token | Resolves to | Tool command |
 |-------|-------------|-------------|
 | `cc` | Claude Code | `ccusage` |
-| `codex`, `co` | Codex | `ccusage-codex` |
-| `oc` | OpenCode | `ccusage-opencode` |
+| `codex`, `co` | Codex | `ccusage codex` |
+| `oc` | OpenCode | `ccusage opencode` |
 | `all` (default) | All three tools | — |
 
 `co` is an alias for `codex`. When no source is given, defaults to `all`.

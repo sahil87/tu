@@ -1,0 +1,55 @@
+id: bxuh
+name: 260703-bxuh-ccusage-v20-native-migration
+created: 2026-07-03T10:08:39Z
+created_by: sahil-noon
+change_type: chore
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
+    review-pr: pending
+plan:
+    generated: true
+    task_count: 7
+    acceptance_count: 13
+    acceptance_completed: 13
+confidence:
+    certain: 3
+    confident: 7
+    tentative: 0
+    unresolved: 0
+    score: 4.1
+    fuzzy: true
+    dimensions:
+        signal: 67.0
+        reversibility: 80.5
+        competence: 79.0
+        disambiguation: 74.5
+stage_metrics:
+    intake: {started_at: "2026-07-03T10:08:39Z", driver: fab-new, iterations: 1, completed_at: "2026-07-03T10:13:49Z"}
+    apply: {started_at: "2026-07-03T10:13:49Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-03T10:25:23Z"}
+    review: {started_at: "2026-07-03T10:25:23Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-03T10:45:43Z"}
+    hydrate: {started_at: "2026-07-03T10:45:43Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-03T10:48:20Z"}
+    ship: {started_at: "2026-07-03T10:48:20Z", driver: fab-fff, iterations: 1}
+prs: []
+change_type_source: explicit
+true_impact:
+    added: 0
+    deleted: 0
+    net: 0
+    excluding:
+        added: 0
+        deleted: 0
+        net: 0
+    tests:
+        added: 0
+        deleted: 0
+        net: 0
+    computed_at: "2026-07-03T10:48:20Z"
+    computed_at_stage: hydrate
+summary: 'Migrate ccusage 18→v20: single vendored native Rust binary (dist/vendor/ccusage/bin/ccusage) replaces three JS bundles; TOOLS registry uses one binary with codex/opencode prefixArgs; LABEL_KEY maps both periods to v20''s ISO ''period'' key'
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-07-03T10:48:20Z

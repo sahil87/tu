@@ -19,7 +19,17 @@ npx esbuild src/node/core/cli.ts \
   --define:__PKG_DESCRIPTION__="$DESC_DEF"
 
 rm -rf dist/vendor
-mkdir -p dist/vendor/ccusage dist/vendor/ccusage-codex dist/vendor/ccusage-opencode
-cp node_modules/ccusage/dist/*.js dist/vendor/ccusage/
-cp node_modules/@ccusage/codex/dist/*.js dist/vendor/ccusage-codex/
-cp node_modules/@ccusage/opencode/dist/*.js dist/vendor/ccusage-opencode/
+# ccusage@20 ships no JS implementation — the native Rust binary lives in a
+# per-platform optionalDependency (@ccusage/ccusage-{platform}-{arch}) that npm
+# installs for the host at `npm install` time. Vendor the host's binary directly.
+# Fail loud: this is build-time (not a runtime data source), so an absent binary
+# is a hard error, not graceful degradation.
+PLATFORM_PKG=$(node -p '`@ccusage/ccusage-${process.platform}-${process.arch}`')
+BIN_SRC="node_modules/${PLATFORM_PKG}/bin/ccusage"
+if [ ! -f "$BIN_SRC" ]; then
+  echo "error: ${PLATFORM_PKG} not installed — unsupported platform or npm install skipped optional deps" >&2
+  exit 1
+fi
+mkdir -p dist/vendor/ccusage/bin
+cp "$BIN_SRC" dist/vendor/ccusage/bin/ccusage
+chmod 0755 dist/vendor/ccusage/bin/ccusage

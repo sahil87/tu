@@ -1,0 +1,10 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-07-03T10:08:39Z"}
+{"args":"Migrate ccusage dependency from deprecated 18.x three-package JS line to ccusage@20 (Rust-native, all-agent CLI): drop @ccusage/codex and @ccusage/opencode, consolidate fetcher to single ccusage binary with codex/opencode subcommands, vendor per-platform native binary at build time","cmd":"fab-new","event":"command","ts":"2026-07-03T10:08:39Z"}
+{"delta":"+4.1","event":"confidence","score":4.1,"trigger":"calc-score","ts":"2026-07-03T10:10:41Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-07-03T10:13:40Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-03T10:13:49Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-03T10:25:23Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-07-03T10:26:13Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-07-03T10:45:43Z"}
+{"event":"review","result":"passed","ts":"2026-07-03T10:45:43Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-07-03T10:48:20Z"}

@@ -214,12 +214,15 @@ describe("currentLabel", () => {
 // ---------------------------------------------------------------------------
 // pickCurrentEntry
 // ---------------------------------------------------------------------------
+// ccusage@20 emits the ISO label under "period" for both daily ("2026-02-16")
+// and monthly ("2026-02") entries — it replaced v18's human-readable
+// "date"/"month" fields. All fixtures below use the v20 shape.
 describe("pickCurrentEntry", () => {
   it("returns matching entry for today (daily)", () => {
     const now = new Date(2026, 1, 16);
     const entries = [
-      { date: "Feb 15, 2026", totalCost: 1, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150 },
-      { date: "Feb 16, 2026", totalCost: 2, inputTokens: 200, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 300 },
+      { period: "2026-02-15", totalCost: 1, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150 },
+      { period: "2026-02-16", totalCost: 2, inputTokens: 200, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 300 },
     ];
     const result = pickCurrentEntry(entries, "daily", now);
     assert.equal(result.totalCost, 2);
@@ -229,8 +232,8 @@ describe("pickCurrentEntry", () => {
   it("returns EMPTY when no entry matches today", () => {
     const now = new Date(2026, 1, 16);
     const entries = [
-      { date: "Feb 14, 2026", totalCost: 1, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150 },
-      { date: "Feb 15, 2026", totalCost: 2, inputTokens: 200, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 300 },
+      { period: "2026-02-14", totalCost: 1, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150 },
+      { period: "2026-02-15", totalCost: 2, inputTokens: 200, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 300 },
     ];
     const result = pickCurrentEntry(entries, "daily", now);
     assert.equal(result.totalCost, 0);
@@ -240,8 +243,8 @@ describe("pickCurrentEntry", () => {
   it("returns matching entry for current month (monthly)", () => {
     const now = new Date(2026, 1, 16);
     const entries = [
-      { month: "Jan 2026", totalCost: 5, inputTokens: 1000, outputTokens: 500, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1500 },
-      { month: "Feb 2026", totalCost: 3, inputTokens: 800, outputTokens: 200, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1000 },
+      { period: "2026-01", totalCost: 5, inputTokens: 1000, outputTokens: 500, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1500 },
+      { period: "2026-02", totalCost: 3, inputTokens: 800, outputTokens: 200, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1000 },
     ];
     const result = pickCurrentEntry(entries, "monthly", now);
     assert.equal(result.totalCost, 3);
@@ -251,8 +254,8 @@ describe("pickCurrentEntry", () => {
   it("returns EMPTY when no entry matches current month", () => {
     const now = new Date(2026, 2, 1); // March 2026
     const entries = [
-      { month: "Jan 2026", totalCost: 5, inputTokens: 1000, outputTokens: 500, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1500 },
-      { month: "Feb 2026", totalCost: 3, inputTokens: 800, outputTokens: 200, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1000 },
+      { period: "2026-01", totalCost: 5, inputTokens: 1000, outputTokens: 500, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1500 },
+      { period: "2026-02", totalCost: 3, inputTokens: 800, outputTokens: 200, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1000 },
     ];
     const result = pickCurrentEntry(entries, "monthly", now);
     assert.equal(result.totalCost, 0);
@@ -263,18 +266,18 @@ describe("pickCurrentEntry", () => {
   it("does not attribute historical usage to today", () => {
     const now = new Date(2026, 1, 16); // Today is Feb 16
     const entries = [
-      { date: "Feb 10, 2026", totalCost: 10, inputTokens: 5000, outputTokens: 2000, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 7000 },
-      { date: "Feb 13, 2026", totalCost: 5, inputTokens: 2000, outputTokens: 1000, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 3000 },
+      { period: "2026-02-10", totalCost: 10, inputTokens: 5000, outputTokens: 2000, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 7000 },
+      { period: "2026-02-13", totalCost: 5, inputTokens: 2000, outputTokens: 1000, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 3000 },
     ];
     const result = pickCurrentEntry(entries, "daily", now);
     assert.equal(result.totalCost, 0);
     assert.equal(result.totalTokens, 0);
   });
 
-  it("handles entries already in ISO format", () => {
+  it("handles ISO period labels directly (v20 needs no normalization)", () => {
     const now = new Date(2026, 1, 16);
     const entries = [
-      { date: "2026-02-16", totalCost: 4, inputTokens: 300, outputTokens: 150, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 450 },
+      { period: "2026-02-16", totalCost: 4, inputTokens: 300, outputTokens: 150, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 450 },
     ];
     const result = pickCurrentEntry(entries, "daily", now);
     assert.equal(result.totalCost, 4);
@@ -283,7 +286,7 @@ describe("pickCurrentEntry", () => {
   it("handles legacy field names in matched entry", () => {
     const now = new Date(2026, 1, 16);
     const entries = [
-      { date: "Feb 16, 2026", costUSD: 7.5, cachedInputTokens: 500, totalTokens: 1000 },
+      { period: "2026-02-16", costUSD: 7.5, cachedInputTokens: 500, totalTokens: 1000 },
     ];
     const result = pickCurrentEntry(entries, "daily", now);
     assert.equal(result.totalCost, 7.5);
@@ -310,7 +313,7 @@ describe("TOOLS", () => {
     assert.equal(TOOLS.oc.needsFilter, true);
   });
 
-  // --- Post-exec-migration shape: each entry carries { binary, prefixArgs } ---
+  // --- ccusage@20 shape: one binary, per-tool subcommand prefixArgs ---
   it("each entry exposes a binary field (string)", () => {
     assert.equal(typeof TOOLS.cc.binary, "string");
     assert.equal(typeof TOOLS.codex.binary, "string");
@@ -324,23 +327,39 @@ describe("TOOLS", () => {
   });
 
   it("no entry still carries a legacy `command` field (migration complete)", () => {
-    // Verifies T001: the ToolConfig reshape removed `command: string` entirely.
     assert.equal((TOOLS.cc as Record<string, unknown>).command, undefined);
     assert.equal((TOOLS.codex as Record<string, unknown>).command, undefined);
     assert.equal((TOOLS.oc as Record<string, unknown>).command, undefined);
   });
 
-  it("binary + prefixArgs reflect vendor vs on-PATH convention", () => {
-    // Either vendor mode (binary === "node", prefixArgs === [<path>/index.js])
-    // or non-vendor mode (binary === <path>/<tool>, prefixArgs === []).
+  it("all three tools share the single ccusage binary (v20 unified CLI)", () => {
+    assert.equal(TOOLS.cc.binary, TOOLS.codex.binary);
+    assert.equal(TOOLS.codex.binary, TOOLS.oc.binary);
+  });
+
+  it("no entry uses the legacy `node`-interpreter / index.js vendor convention", () => {
+    // v20 vendors a native Rust binary exec'd directly — no `node` wrapper, no
+    // `index.js` entrypoint. Regression guard against the pre-v20 shape.
     for (const tool of [TOOLS.cc, TOOLS.codex, TOOLS.oc]) {
-      if (tool.binary === "node") {
-        assert.equal(tool.prefixArgs.length, 1, "vendor mode should have one prefix arg (index.js path)");
-        assert.ok(tool.prefixArgs[0].endsWith("index.js"), "vendor prefix arg should point at an index.js entrypoint");
-      } else {
-        assert.equal(tool.prefixArgs.length, 0, "non-vendor mode should have empty prefixArgs");
-      }
+      assert.notEqual(tool.binary, "node");
+      assert.ok(!tool.prefixArgs.some((a) => a.endsWith("index.js")));
     }
+  });
+
+  it("binary points at ccusage in both vendor and dev modes", () => {
+    // Vendor mode: <vendor>/ccusage/bin/ccusage (native binary, exec'd directly).
+    // Dev mode:    <node_modules>/.bin/ccusage (the npm launcher).
+    for (const tool of [TOOLS.cc, TOOLS.codex, TOOLS.oc]) {
+      const vendorShape = tool.binary.endsWith("/ccusage/bin/ccusage");
+      const devShape = tool.binary.endsWith("/ccusage");
+      assert.ok(vendorShape || devShape, `unexpected binary path: ${tool.binary}`);
+    }
+  });
+
+  it("subcommand prefixArgs select the per-tool ccusage subcommand", () => {
+    assert.deepEqual(TOOLS.cc.prefixArgs, []);
+    assert.deepEqual(TOOLS.codex.prefixArgs, ["codex"]);
+    assert.deepEqual(TOOLS.oc.prefixArgs, ["opencode"]);
   });
 });
 
@@ -653,11 +672,12 @@ describe("fetchTotals/fetchAllTotals signatures", () => {
 
   it("pickCurrentEntry with daily period matches today", () => {
     // This verifies what fetchTotals now does internally:
-    // parse daily raw → pickCurrentEntry(dailyRaw, "daily")
+    // parse daily raw → pickCurrentEntry(dailyRaw, "daily").
+    // ccusage@20 daily entries carry the ISO label under "period".
     const now = new Date(2026, 1, 22);
     const dailyRaw = [
-      { date: "Feb 21, 2026", totalCost: 1, totalTokens: 100, inputTokens: 50, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0 },
-      { date: "Feb 22, 2026", totalCost: 2, totalTokens: 200, inputTokens: 100, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0 },
+      { period: "2026-02-21", totalCost: 1, totalTokens: 100, inputTokens: 50, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0 },
+      { period: "2026-02-22", totalCost: 2, totalTokens: 200, inputTokens: 100, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0 },
     ];
     const result = pickCurrentEntry(dailyRaw, "daily", now);
     assert.equal(result.totalCost, 2);
@@ -667,7 +687,7 @@ describe("fetchTotals/fetchAllTotals signatures", () => {
   it("pickCurrentEntry with daily period returns EMPTY when no match", () => {
     const now = new Date(2026, 1, 22);
     const dailyRaw = [
-      { date: "Feb 20, 2026", totalCost: 1, totalTokens: 100, inputTokens: 50, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0 },
+      { period: "2026-02-20", totalCost: 1, totalTokens: 100, inputTokens: 50, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0 },
     ];
     const result = pickCurrentEntry(dailyRaw, "daily", now);
     assert.equal(result.totalCost, 0);
