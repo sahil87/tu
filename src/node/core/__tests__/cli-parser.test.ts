@@ -63,6 +63,16 @@ describe("parseDataArgs", () => {
       assert.equal(result.period, "daily");
     });
 
+    it("parses w as weekly", () => {
+      const result = parseDataArgs(["cc", "w"]);
+      assert.equal(result.period, "weekly");
+    });
+
+    it("parses weekly as weekly", () => {
+      const result = parseDataArgs(["cc", "weekly"]);
+      assert.equal(result.period, "weekly");
+    });
+
     it("parses m as monthly", () => {
       const result = parseDataArgs(["cc", "m"]);
       assert.equal(result.period, "monthly");
@@ -71,6 +81,13 @@ describe("parseDataArgs", () => {
     it("parses monthly as monthly", () => {
       const result = parseDataArgs(["cc", "monthly"]);
       assert.equal(result.period, "monthly");
+    });
+
+    it("parses bare w as weekly with default source all", () => {
+      const result = parseDataArgs(["w"]);
+      assert.equal(result.source, "all");
+      assert.equal(result.period, "weekly");
+      assert.equal(result.display, "snapshot");
     });
 
     it("defaults period to daily", () => {
@@ -105,11 +122,25 @@ describe("parseDataArgs", () => {
       assert.equal(result.source, "all");
     });
 
+    it("parses wh as weekly + history", () => {
+      const result = parseDataArgs(["wh"]);
+      assert.equal(result.period, "weekly");
+      assert.equal(result.display, "history");
+      assert.equal(result.source, "all");
+    });
+
     it("parses mh as monthly + history", () => {
       const result = parseDataArgs(["mh"]);
       assert.equal(result.period, "monthly");
       assert.equal(result.display, "history");
       assert.equal(result.source, "all");
+    });
+
+    it("parses source + wh", () => {
+      const result = parseDataArgs(["cc", "wh"]);
+      assert.equal(result.source, "cc");
+      assert.equal(result.period, "weekly");
+      assert.equal(result.display, "history");
     });
 
     it("parses source + mh", () => {
@@ -131,6 +162,12 @@ describe("parseDataArgs", () => {
     it("tu cc d h is equivalent to tu cc dh", () => {
       const separate = parseDataArgs(["cc", "d", "h"]);
       const combined = parseDataArgs(["cc", "dh"]);
+      assert.deepEqual(separate, combined);
+    });
+
+    it("tu cc w h is equivalent to tu cc wh", () => {
+      const separate = parseDataArgs(["cc", "w", "h"]);
+      const combined = parseDataArgs(["cc", "wh"]);
       assert.deepEqual(separate, combined);
     });
 

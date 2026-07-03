@@ -199,9 +199,9 @@ describe("completion script coverage — sources, periods, display, shell-init a
     // Sources
     "cc", "codex", "co", "oc", "all",
     // Periods
-    "d", "m", "daily", "monthly",
+    "d", "w", "m", "daily", "weekly", "monthly",
     // Display
-    "h", "history", "dh", "mh",
+    "h", "history", "dh", "wh", "mh",
     // `shell-init` args
     "bash", "zsh", "fish",
   ];

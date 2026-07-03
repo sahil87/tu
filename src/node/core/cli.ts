@@ -1,4 +1,4 @@
-import { TOOLS, EMPTY, fetchHistory, fetchAllTotals, fetchAllHistory, aggregateMonthly, mergeEntries, maxMergeEntries, currentLabel, filterEntriesByRange } from "./fetcher.js";
+import { TOOLS, EMPTY, fetchHistory, fetchAllTotals, fetchAllHistory, aggregateForPeriod, mergeEntries, maxMergeEntries, currentLabel, filterEntriesByRange } from "./fetcher.js";
 import { printHistory, printTotal, printTotalHistory, renderHistory, renderTotal, renderTotalHistory, emitCsv, emitMarkdown } from "../tui/formatter.js";
 import type { FormatOptions } from "../tui/formatter.js";
 import { readConfig, CONFIG_PATH, TU_HOME, THREE_HOURS_MS, resolveHome, DEFAULT_CONFIG_PATH } from "./config.js";
@@ -74,15 +74,16 @@ Run 'tu help' for all commands.`;
 export const FULL_HELP = `Usage: tu [source] [period] [display]
 
 Sources: cc (Claude Code), codex/co (Codex), oc (OpenCode), all (default)
-Periods: d/daily (default), m/monthly
+Periods: d/daily (default), w/weekly, m/monthly
 Display: (bare) = snapshot, h/history = history
-Combined: dh (daily history), mh (monthly history)
+Combined: dh (daily history), wh (weekly history), mh (monthly history)
 
 Examples:
   tu                   Today's cost, all tools (snapshot)
   tu cc                Today's cost, Claude Code
   tu h                 Daily cost history, all tools (pivot)
   tu cc mh             Monthly cost history, Claude Code
+  tu wh                Weekly cost history, all tools
   tu m                 This month's cost, all tools
 
 Setup:
@@ -462,8 +463,7 @@ async function fetchToolMerged(
     _mark(`fetchToolMerged(${toolKey}) → readRemote for ${targetUser}`);
     const entries = filterEntriesByRange(readRemoteEntries(config.metricsDir, targetUser, null, toolKey), since, until);
     _mark(`fetchToolMerged(${toolKey}) → readRemote done (${entries.length} entries)`);
-    if (period === "monthly") return aggregateMonthly(entries);
-    return entries;
+    return aggregateForPeriod(period, entries);
   }
   _mark(`fetchToolMerged(${toolKey}) → fetchHistory`);
   const local = await fetchHistory(toolKey, "daily", extra, skipCache);
@@ -484,8 +484,7 @@ async function fetchToolMerged(
   _mark(`fetchToolMerged(${toolKey}) → readRemote done (${remote.length} entries)`);
   const effectiveLocal = maxMergeEntries(local, ownSnapshots);
   const merged = filterEntriesByRange(mergeEntries(effectiveLocal, remote), since, until);
-  if (period === "monthly") return aggregateMonthly(merged);
-  return merged;
+  return aggregateForPeriod(period, merged);
 }
 
 interface MergedResult {
@@ -522,11 +521,11 @@ async function fetchToolMergedWithMachines(
     const entries: UsageEntry[] = [];
     for (const machineEntries of machineMap.values()) entries.push(...machineEntries);
     const merged = mergeEntries(entries, []);
-    if (period === "monthly") {
-      const monthlyEntries = aggregateMonthly(merged);
-      const monthlyMap = new Map<string, UsageEntry[]>();
-      for (const [machine, mEntries] of machineMap) monthlyMap.set(machine, aggregateMonthly(mEntries));
-      return { entries: monthlyEntries, machineMap: monthlyMap };
+    if (period !== "daily") {
+      const aggregatedEntries = aggregateForPeriod(period, merged);
+      const aggregatedMap = new Map<string, UsageEntry[]>();
+      for (const [machine, mEntries] of machineMap) aggregatedMap.set(machine, aggregateForPeriod(period, mEntries));
+      return { entries: aggregatedEntries, machineMap: aggregatedMap };
     }
     return { entries: merged, machineMap };
   }
@@ -558,11 +557,11 @@ async function fetchToolMergedWithMachines(
   for (const mEntries of machineMap.values()) allEntries.push(...mEntries);
   const merged = mergeEntries(allEntries, []);
 
-  if (period === "monthly") {
-    const monthlyEntries = aggregateMonthly(merged);
-    const monthlyMap = new Map<string, UsageEntry[]>();
-    for (const [machine, mEntries] of machineMap) monthlyMap.set(machine, aggregateMonthly(mEntries));
-    return { entries: monthlyEntries, machineMap: monthlyMap };
+  if (period !== "daily") {
+    const aggregatedEntries = aggregateForPeriod(period, merged);
+    const aggregatedMap = new Map<string, UsageEntry[]>();
+    for (const [machine, mEntries] of machineMap) aggregatedMap.set(machine, aggregateForPeriod(period, mEntries));
+    return { entries: aggregatedEntries, machineMap: aggregatedMap };
   }
 
   return { entries: merged, machineMap };
@@ -771,12 +770,17 @@ export function parseDataArgs(args: string[]): DataArgs {
   for (const arg of remaining) {
     if (arg === "d" || arg === "daily") {
       period = "daily";
+    } else if (arg === "w" || arg === "weekly") {
+      period = "weekly";
     } else if (arg === "m" || arg === "monthly") {
       period = "monthly";
     } else if (arg === "h" || arg === "history") {
       display = "history";
     } else if (arg === "dh") {
       period = "daily";
+      display = "history";
+    } else if (arg === "wh") {
+      period = "weekly";
       display = "history";
     } else if (arg === "mh") {
       period = "monthly";
@@ -816,10 +820,10 @@ async function dispatchAllHistory(config: TuConfig, period: string, outputFormat
     _lastRenderCostMap = buildCostMap(mergedMap);
   } else {
     const results = await fetchAllHistory("daily", [], skipCache);
-    if (period === "monthly") {
+    if (period !== "daily") {
       const aggregated = new Map<string, UsageEntry[]>();
       for (const [name, entries] of results) {
-        aggregated.set(name, aggregateMonthly(filterEntriesByRange(entries, since, until)));
+        aggregated.set(name, aggregateForPeriod(period, filterEntriesByRange(entries, since, until)));
       }
       renderTotalHistoryByFormat(outputFormat, period, aggregated, fmtOpts);
       _lastRenderCost = sumAllToolCosts(aggregated);
@@ -880,14 +884,14 @@ async function dispatchAllSnapshot(config: TuConfig, period: string, outputForma
     _lastRenderCost = sumToolTotalsCost(result);
     _lastRenderCostMap = buildCostMap(result);
   } else {
-    if (period === "monthly") {
+    if (period !== "daily") {
       const toolKeys = Object.keys(TOOLS);
       const allDaily = await Promise.all(toolKeys.map((k) => fetchHistory(k, "daily", [], skipCache)));
       const result = new Map<string, UsageTotals>();
-      const target = currentLabel("monthly");
+      const target = currentLabel(period);
       for (let i = 0; i < toolKeys.length; i++) {
-        const monthly = aggregateMonthly(allDaily[i]);
-        const match = monthly.find((m) => m.label === target);
+        const aggregated = aggregateForPeriod(period, allDaily[i]);
+        const match = aggregated.find((m) => m.label === target);
         result.set(TOOLS[toolKeys[i]].name, match ?? { ...EMPTY });
       }
       renderSnapshotByFormat(outputFormat, period, result, fmtOpts);
@@ -965,7 +969,7 @@ async function dispatchSingleTool(
     entries = await fetchToolMerged(config, toolKey, period, [], skipCache, targetUser, since, until);
   } else {
     entries = filterEntriesByRange(await fetchHistory(toolKey, "daily", [], skipCache), since, until);
-    if (period === "monthly") entries = aggregateMonthly(entries);
+    entries = aggregateForPeriod(period, entries);
   }
   _mark("fetch done");
 
@@ -1109,10 +1113,10 @@ async function dispatchAllHistoryLines(config: TuConfig, period: string, skipCac
     return renderTotalHistory(period, mergedMap, undefined, fmtOpts);
   } else {
     const results = await fetchAllHistory("daily", [], skipCache);
-    if (period === "monthly") {
+    if (period !== "daily") {
       const aggregated = new Map<string, UsageEntry[]>();
       for (const [name, entries] of results) {
-        aggregated.set(name, aggregateMonthly(filterEntriesByRange(entries, since, until)));
+        aggregated.set(name, aggregateForPeriod(period, filterEntriesByRange(entries, since, until)));
       }
       _lastRenderCost = sumAllToolCosts(aggregated);
       _lastRenderCostMap = buildCostMap(aggregated);
@@ -1160,14 +1164,14 @@ async function dispatchAllSnapshotLines(config: TuConfig, period: string, skipCa
     _lastRenderTotalTokens = sumToolTotalsTokens(result);
     return renderTotal(period, result, fmtOpts);
   } else {
-    if (period === "monthly") {
+    if (period !== "daily") {
       const toolKeys = Object.keys(TOOLS);
       const allDaily = await Promise.all(toolKeys.map((k) => fetchHistory(k, "daily", [], skipCache)));
       const result = new Map<string, UsageTotals>();
-      const target = currentLabel("monthly");
+      const target = currentLabel(period);
       for (let i = 0; i < toolKeys.length; i++) {
-        const monthly = aggregateMonthly(allDaily[i]);
-        const match = monthly.find((m) => m.label === target);
+        const aggregated = aggregateForPeriod(period, allDaily[i]);
+        const match = aggregated.find((m) => m.label === target);
         result.set(TOOLS[toolKeys[i]].name, match ?? { ...EMPTY });
       }
       _lastRenderCost = sumToolTotalsCost(result);
@@ -1222,7 +1226,7 @@ async function dispatchSingleToolLines(
     entries = await fetchToolMerged(config, toolKey, period, [], skipCache, targetUser, since, until);
   } else {
     entries = filterEntriesByRange(await fetchHistory(toolKey, "daily", [], skipCache), since, until);
-    if (period === "monthly") entries = aggregateMonthly(entries);
+    entries = aggregateForPeriod(period, entries);
   }
 
   if (display === "history") {

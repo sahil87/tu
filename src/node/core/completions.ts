@@ -18,8 +18,8 @@ _tu_complete() {
 
   local non_data_subcommands="help init-conf init-metrics sync status update shell-init"
   local sources="cc codex co oc all"
-  local periods="d m daily monthly"
-  local display="h history dh mh"
+  local periods="d w m daily weekly monthly"
+  local display="h history dh wh mh"
   local long_flags="--json --csv --md --since --until --sync --fresh --watch --interval --user --by-machine --skip-brew-update --no-color --no-rain --version --help"
   local short_flags="-f -w -i -u -s -j -v -V -h"
   local shells="bash zsh fish"
@@ -72,8 +72,8 @@ _tu() {
 
   non_data_subcommands=(help init-conf init-metrics sync status update shell-init)
   sources=(cc codex co oc all)
-  periods=(d m daily monthly)
-  display=(h history dh mh)
+  periods=(d w m daily weekly monthly)
+  display=(h history dh wh mh)
   long_flags=(--json --csv --md --since --until --sync --fresh --watch --interval --user --by-machine --skip-brew-update --no-color --no-rain --version --help)
   short_flags=(-f -w -i -u -s -j -v -V -h)
   shells=(bash zsh fish)
@@ -159,15 +159,18 @@ complete -c tu -n '__fish_use_subcommand' -a 'all' -d 'all tools (default)'
 
 # Periods + display (any positional)
 complete -c tu -n '__fish_use_subcommand' -a 'd' -d 'daily'
+complete -c tu -n '__fish_use_subcommand' -a 'w' -d 'weekly'
 complete -c tu -n '__fish_use_subcommand' -a 'm' -d 'monthly'
 complete -c tu -n '__fish_use_subcommand' -a 'daily' -d 'daily'
+complete -c tu -n '__fish_use_subcommand' -a 'weekly' -d 'weekly'
 complete -c tu -n '__fish_use_subcommand' -a 'monthly' -d 'monthly'
 complete -c tu -n '__fish_use_subcommand' -a 'h' -d 'history'
 complete -c tu -n '__fish_use_subcommand' -a 'history' -d 'history'
 complete -c tu -n '__fish_use_subcommand' -a 'dh' -d 'daily history'
+complete -c tu -n '__fish_use_subcommand' -a 'wh' -d 'weekly history'
 complete -c tu -n '__fish_use_subcommand' -a 'mh' -d 'monthly history'
 
-complete -c tu -n 'not __fish_use_subcommand' -a 'd m daily monthly h history dh mh'
+complete -c tu -n 'not __fish_use_subcommand' -a 'd w m daily weekly monthly h history dh wh mh'
 
 # Shells (only after 'shell-init')
 complete -c tu -n '__fish_seen_subcommand_from shell-init' -a 'bash' -d 'emit bash completion'

@@ -24,15 +24,17 @@ tu [source] [period] [display] [flags]
 | Token | Meaning |
 |-------|---------|
 | `d`, `daily` (default) | Daily granularity |
+| `w`, `weekly` | Weekly granularity (aggregated from daily) |
 | `m`, `monthly` | Monthly granularity (aggregated from daily) |
 
 ### Display
 
 | Token | Meaning |
 |-------|---------|
-| (bare, default) | Snapshot — current day/month only |
+| (bare, default) | Snapshot — current day/week/month only |
 | `h`, `history` | Full history table |
 | `dh` | Combined: daily + history |
+| `wh` | Combined: weekly + history |
 | `mh` | Combined: monthly + history |
 
 ### Examples
@@ -43,6 +45,7 @@ tu [source] [period] [display] [flags]
 | `tu cc` | Today's cost, Claude Code only |
 | `tu h` | Daily cost history, all tools (pivot table) |
 | `tu cc mh` | Monthly cost history, Claude Code |
+| `tu wh` | Weekly cost history, all tools |
 | `tu m` | This month's cost, all tools |
 
 ## Global Flags
@@ -87,7 +90,7 @@ interface UsageTotals {
 }
 
 interface UsageEntry extends UsageTotals {
-  label: string; // ISO date "YYYY-MM-DD" or month "YYYY-MM"
+  label: string; // ISO date "YYYY-MM-DD" (daily; also the week's Sunday for weekly) or month "YYYY-MM"
 }
 ```
 
@@ -100,7 +103,7 @@ Tool configs define the three supported tools (`cc`, `codex`, `oc`), each with a
 1. Each tool is invoked via its binary with `daily --json` args
 2. Output is parsed as JSON; the `daily` array is extracted as `UsageEntry[]`
 3. Labels are normalized from human-readable ("Feb 14, 2026") to ISO format ("2026-02-14")
-4. Monthly data is computed by aggregating daily entries (slicing label to "YYYY-MM" and summing fields)
+4. Weekly and monthly data are computed by aggregating daily entries (via `aggregateForPeriod`, which routes to `aggregateWeekly`/`aggregateMonthly`; daily is the identity). Monthly slices the label to "YYYY-MM"; weekly keys each day under its week's **Sunday** as an ISO date ("YYYY-MM-DD"), computed with UTC arithmetic on the date-only label (immune to DST) and aligned with `ccusage weekly`'s default `--start-of-week sunday`. Both sum the numeric fields.
 
 ### Caching
 
@@ -111,22 +114,22 @@ Tool configs define the three supported tools (`cc`, `codex`, `oc`), each with a
 
 ### Snapshot vs History
 
-- **Snapshot**: fetches all entries, then filters to the one matching `currentLabel(period)` (today's date or current month). Shows a cross-tool table with one row per tool.
+- **Snapshot**: fetches all entries, then filters to the one matching `currentLabel(period)` (today's date, the current week's Sunday, or the current month). `currentLabel` uses local-time date methods (the weekly case backs up to Sunday via `setDate(getDate() - getDay())`, normalizing month/year underflow). Shows a cross-tool table with one row per tool.
 - **History**: fetches all entries, shows full table with one row per date/month. Single-tool history shows token breakdown; all-tools history shows a cost pivot table (date rows x tool columns).
 
 ## Output Formats
 
 ### Snapshot Table (all tools)
 
-Columns: Tool, Tokens, Input, Output, Cost. One row per tool with non-zero tokens, plus a Total row. Heading: "Combined Usage (daily|monthly)".
+Columns: Tool, Tokens, Input, Output, Cost. One row per tool with non-zero tokens, plus a Total row. Heading: "Combined Usage (daily|weekly|monthly)".
 
 ### Single-Tool History Table
 
-Columns: Date, Input, Output, Cache Write, Cache Read, Total, Cost. Includes inline bar charts (Unicode block elements at eighths precision, scaled to max cost in the table). Total row when >1 entry. Heading: "{Tool Name} (daily|monthly)".
+Columns: Date, Input, Output, Cache Write, Cache Read, Total, Cost. Includes inline bar charts (Unicode block elements at eighths precision, scaled to max cost in the table). Total row when >1 entry. Heading: "{Tool Name} (daily|weekly|monthly)".
 
 ### All-Tools History Pivot Table
 
-Columns: Date, {Tool1}, {Tool2}, ..., Cost. Each cell is a cost value. Includes inline bar charts for row totals. Total row with per-tool sums. Heading: "Combined Cost History (daily|monthly)".
+Columns: Date, {Tool1}, {Tool2}, ..., Cost. Each cell is a cost value. Includes inline bar charts for row totals. Total row with per-tool sums. Heading: "Combined Cost History (daily|weekly|monthly)".
 
 ### JSON Output (`--json`)
 
