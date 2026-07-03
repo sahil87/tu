@@ -1,0 +1,57 @@
+id: sntl
+name: 260703-sntl-since-until-filters-json-alias
+created: 2026-07-03T12:24:47Z
+created_by: sahil-noon
+change_type: feat
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
+plan:
+    generated: true
+    task_count: 12
+    acceptance_count: 18
+    acceptance_completed: 18
+confidence:
+    certain: 9
+    confident: 5
+    tentative: 0
+    unresolved: 0
+    score: 4.7
+    fuzzy: true
+    dimensions:
+        signal: 76.4
+        reversibility: 83.6
+        competence: 89.3
+        disambiguation: 85.7
+stage_metrics:
+    intake: {started_at: "2026-07-03T12:24:47Z", driver: fab-new, iterations: 1, completed_at: "2026-07-03T12:33:03Z"}
+    apply: {started_at: "2026-07-03T12:33:03Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-03T12:43:42Z"}
+    review: {started_at: "2026-07-03T12:43:42Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-03T12:53:21Z"}
+    hydrate: {started_at: "2026-07-03T12:53:21Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-03T12:55:58Z"}
+    ship: {started_at: "2026-07-03T12:55:58Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-03T12:57:48Z"}
+    review-pr: {started_at: "2026-07-03T12:57:48Z", driver: git-pr, iterations: 1, completed_at: "2026-07-03T13:04:04Z"}
+prs:
+    - https://github.com/sahil87/tu/pull/40
+change_type_source: explicit
+true_impact:
+    added: 776
+    deleted: 46
+    net: 730
+    excluding:
+        added: 383
+        deleted: 45
+        net: 338
+    tests:
+        added: 219
+        deleted: 0
+        net: 219
+    computed_at: "2026-07-03T12:57:48Z"
+    computed_at_stage: ship
+summary: Add --since/-s + --until date filters (client-side history window) and -j --json alias to the CLI
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-07-03T13:04:04Z

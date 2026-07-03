@@ -12,6 +12,7 @@ import {
   mergeEntries,
   maxMergeEntries,
   aggregateMonthly,
+  filterEntriesByRange,
   TOOLS,
   EMPTY,
 } from "../fetcher.js";
@@ -651,6 +652,87 @@ describe("maxMergeEntries", () => {
     // Winner is copied, not aliased — mutating the result must not touch inputs
     result[0].totalCost = 999;
     assert.equal(b[0].totalCost, 2.0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// filterEntriesByRange — inclusive ISO date-range window (--since/--until)
+// ---------------------------------------------------------------------------
+
+describe("filterEntriesByRange", () => {
+  const entries = [
+    mkEntry("2026-06-01", 1.0),
+    mkEntry("2026-06-15", 2.0),
+    mkEntry("2026-07-01", 3.0),
+  ];
+
+  it("includes both bounds (inclusive since <= label <= until)", () => {
+    const result = filterEntriesByRange(entries, "2026-06-01", "2026-06-30");
+    assert.deepEqual(result.map((e) => e.label), ["2026-06-01", "2026-06-15"]);
+  });
+
+  it("includes an entry exactly on the since boundary and on the until boundary", () => {
+    const result = filterEntriesByRange(entries, "2026-06-15", "2026-07-01");
+    assert.deepEqual(result.map((e) => e.label), ["2026-06-15", "2026-07-01"]);
+  });
+
+  it("since-only is an open-ended upper window", () => {
+    const result = filterEntriesByRange(entries, "2026-06-15", undefined);
+    assert.deepEqual(result.map((e) => e.label), ["2026-06-15", "2026-07-01"]);
+  });
+
+  it("until-only is an open-ended lower window", () => {
+    const result = filterEntriesByRange(entries, undefined, "2026-06-15");
+    assert.deepEqual(result.map((e) => e.label), ["2026-06-01", "2026-06-15"]);
+  });
+
+  it("returns all entries when neither bound is set", () => {
+    const result = filterEntriesByRange(entries, undefined, undefined);
+    assert.deepEqual(result.map((e) => e.label), ["2026-06-01", "2026-06-15", "2026-07-01"]);
+  });
+
+  it("handles empty input", () => {
+    assert.deepEqual(filterEntriesByRange([], "2026-06-01", "2026-06-30"), []);
+  });
+
+  it("yields an empty window for an impossible-but-shaped bound", () => {
+    // 2026-13-01 sorts after any real December day → nothing on/after it.
+    assert.deepEqual(filterEntriesByRange(entries, "2026-13-01", undefined), []);
+  });
+
+  it("does not mutate the input array or its entries", () => {
+    const copy = JSON.parse(JSON.stringify(entries));
+    filterEntriesByRange(entries, "2026-06-01", "2026-06-15");
+    assert.deepEqual(entries, copy);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Multi-mode merge path with a --since/--until window (backlog-required)
+// ---------------------------------------------------------------------------
+
+describe("filterEntriesByRange on the multi-mode merge path", () => {
+  it("windows merged local+remote daily entries", () => {
+    const local = [mkEntry("2026-05-30", 1.0), mkEntry("2026-06-10", 2.0)];
+    const remote = [mkEntry("2026-06-20", 3.0), mkEntry("2026-07-05", 4.0)];
+    // Production order: mergeEntries → filterEntriesByRange (before aggregation)
+    const windowed = filterEntriesByRange(mergeEntries(local, remote), "2026-06-01", "2026-06-30");
+    assert.deepEqual(windowed.map((e) => e.label), ["2026-06-10", "2026-06-20"]);
+    assert.equal(windowed.reduce((s, e) => s + e.totalCost, 0), 5.0);
+  });
+
+  it("monthly rollup of a partially-windowed month sums only in-window days", () => {
+    const daily = [
+      mkEntry("2026-06-05", 1.0, 100),
+      mkEntry("2026-06-15", 2.0, 200),
+      mkEntry("2026-06-25", 4.0, 400),
+    ];
+    // Window trims June 25 → the June rollup must reflect only Jun 5 + Jun 15.
+    const monthly = aggregateMonthly(filterEntriesByRange(daily, "2026-06-01", "2026-06-20"));
+    const june = monthly.find((m) => m.label === "2026-06");
+    assert.ok(june);
+    assert.equal(june.totalCost, 3.0);
+    assert.equal(june.inputTokens, 300);
   });
 });
 

@@ -268,3 +268,119 @@ describe("parseGlobalFlags: format-flag conflicts", () => {
     assert.ok(s.errors.some((e) => e.includes("--watch and --json are incompatible")));
   });
 });
+
+// ---------------------------------------------------------------------------
+// parseGlobalFlags: -j alias for --json
+// ---------------------------------------------------------------------------
+
+describe("parseGlobalFlags: -j alias for --json", () => {
+  it("-j resolves to outputFormat: json and jsonFlag: true", () => {
+    const r = parseGlobalFlags(["cc", "-j"]);
+    assert.equal(r.outputFormat, "json");
+    assert.equal(r.jsonFlag, true);
+    assert.deepEqual(r.filteredArgs, ["cc"]);
+  });
+
+  it("-j is filtered out of positional args", () => {
+    const r = parseGlobalFlags(["-j", "cc", "mh"]);
+    assert.deepEqual(r.filteredArgs, ["cc", "mh"]);
+  });
+
+  it("-j + --csv is rejected with canonical --json wording", (t) => {
+    t.after(restoreMocks);
+    const s = captureExit();
+    parseGlobalFlags(["cc", "-j", "--csv"]);
+    assert.equal(s.code, 1);
+    assert.ok(s.errors.some((e) => e.includes("--json and --csv are incompatible")), `got errors: ${s.errors.join("; ")}`);
+  });
+
+  it("-j + --watch is rejected with canonical --json wording", (t) => {
+    t.after(restoreMocks);
+    const s = captureExit();
+    parseGlobalFlags(["cc", "-j", "--watch"]);
+    assert.equal(s.code, 1);
+    assert.ok(s.errors.some((e) => e.includes("--watch and --json are incompatible")), `got errors: ${s.errors.join("; ")}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseGlobalFlags: --since / -s / --until date filters
+// ---------------------------------------------------------------------------
+
+describe("parseGlobalFlags: --since / -s / --until parsing", () => {
+  it("parses --since with an ISO date and filters it from args", () => {
+    const r = parseGlobalFlags(["cc", "h", "--since", "2026-06-01"]);
+    assert.equal(r.sinceFlag, "2026-06-01");
+    assert.equal(r.untilFlag, undefined);
+    assert.deepEqual(r.filteredArgs, ["cc", "h"]);
+  });
+
+  it("parses -s short alias for --since", () => {
+    const r = parseGlobalFlags(["h", "-s", "2026-06-01"]);
+    assert.equal(r.sinceFlag, "2026-06-01");
+    assert.deepEqual(r.filteredArgs, ["h"]);
+  });
+
+  it("normalizes YYYYMMDD to ISO for --since and --until", () => {
+    const r = parseGlobalFlags(["h", "--since", "20260601", "--until", "20260630"]);
+    assert.equal(r.sinceFlag, "2026-06-01");
+    assert.equal(r.untilFlag, "2026-06-30");
+  });
+
+  it("--until stays long-only — -u still parses as --user", () => {
+    const r = parseGlobalFlags(["h", "--until", "2026-06-30", "-u", "bob"]);
+    assert.equal(r.untilFlag, "2026-06-30");
+    assert.equal(r.userFlag, "bob");
+  });
+
+  it("sinceFlag/untilFlag are undefined when absent", () => {
+    const r = parseGlobalFlags(["cc", "h"]);
+    assert.equal(r.sinceFlag, undefined);
+    assert.equal(r.untilFlag, undefined);
+  });
+
+  it("accepts a well-shaped but impossible date (shape-only validation)", () => {
+    const r = parseGlobalFlags(["h", "--since", "2026-13-01"]);
+    assert.equal(r.sinceFlag, "2026-13-01");
+  });
+});
+
+describe("parseGlobalFlags: --since / --until validation errors", () => {
+  it("--since with no value exits 1", (t) => {
+    t.after(restoreMocks);
+    const s = captureExit();
+    parseGlobalFlags(["h", "--since"]);
+    assert.equal(s.code, 1);
+    assert.ok(s.errors.some((e) => e.includes("--since requires a date (YYYY-MM-DD or YYYYMMDD)")), `got: ${s.errors.join("; ")}`);
+  });
+
+  it("--since with a malformed value exits 1", (t) => {
+    t.after(restoreMocks);
+    const s = captureExit();
+    parseGlobalFlags(["h", "--since", "june"]);
+    assert.equal(s.code, 1);
+    assert.ok(s.errors.some((e) => e.includes("--since requires a date (YYYY-MM-DD or YYYYMMDD)")));
+  });
+
+  it("--until with a malformed value exits 1 with its own name", (t) => {
+    t.after(restoreMocks);
+    const s = captureExit();
+    parseGlobalFlags(["h", "--until", "2026-6-1"]);
+    assert.equal(s.code, 1);
+    assert.ok(s.errors.some((e) => e.includes("--until requires a date (YYYY-MM-DD or YYYYMMDD)")));
+  });
+
+  it("inverted window (since > until) exits 1", (t) => {
+    t.after(restoreMocks);
+    const s = captureExit();
+    parseGlobalFlags(["h", "--since", "2026-06-30", "--until", "2026-06-01"]);
+    assert.equal(s.code, 1);
+    assert.ok(s.errors.some((e) => e.includes("--since must be on or before --until")));
+  });
+
+  it("equal since and until is a valid (single-day) window", () => {
+    const r = parseGlobalFlags(["h", "--since", "2026-06-15", "--until", "2026-06-15"]);
+    assert.equal(r.sinceFlag, "2026-06-15");
+    assert.equal(r.untilFlag, "2026-06-15");
+  });
+});
