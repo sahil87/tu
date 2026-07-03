@@ -14,6 +14,8 @@ tu [source] [period] [display]
   - `cc` — Claude Code
   - `codex` / `co` — Codex
   - `oc` — OpenCode
+  - `gemini` / `gem` — Gemini
+  - `copilot` / `cop` — Copilot
   - `all` — every source (default)
 - **Period** — the time window:
   - `d` / `daily` — daily (default)

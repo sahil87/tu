@@ -12,7 +12,7 @@ import { runHelpDump, FULL_HELP } from "../cli.js";
 // builder treats this text byte-for-byte and derives the contract fields.
 const HELP_TEXT = `Usage: tu [source] [period] [display]
 
-Sources: cc (Claude Code), codex/co (Codex), oc (OpenCode), all (default)
+Sources: cc (Claude Code), codex/co (Codex), oc (OpenCode), gemini/gem (Gemini), copilot/cop (Copilot), all (default)
 Periods: d/daily (default), m/monthly
 Display: (bare) = snapshot, h/history = history
 

@@ -16,12 +16,19 @@ export function fmtCost(n: number): string {
   return `$${n.toFixed(2)}`;
 }
 
-export function deltaIndicator(current: number, key: string, prevCosts?: Map<string, number>): string {
+export function deltaIndicator(current: number, key: string, prevCosts?: Map<string, number>, noSpace = false): string {
   if (!prevCosts) return "";
   const prev = prevCosts.get(key);
   if (prev === undefined) return "";
-  if (current > prev) return " " + green("\u2191");
-  if (current < prev) return " " + red("\u2193");
+  // The cross-tool pivot (renderTotalHistory) passes noSpace=true so the arrow
+  // appends directly to the Cost cell ($128.13\u2191, 1 visible char) rather than
+  // with a leading space ( \u2191, 2 chars): its full 79-char row + a 2-char
+  // indicator would be 81 and wrap on an 80-col terminal, corrupting the
+  // watch-mode compositor's line-counting. Other renderers have width headroom
+  // and keep the spaced form.
+  const sp = noSpace ? "" : " ";
+  if (current > prev) return sp + green("\u2191");
+  if (current < prev) return sp + red("\u2193");
   return "";
 }
 
@@ -49,6 +56,16 @@ const MIN_BAR_AREA = 10;
 const MAX_BAR_WIDTH = 30;
 const GUTTER = 3; // " | " separator between main table and cost area
 const COST_WIDTH = 8;
+// Floor for a variable-width cross-tool pivot column (renderTotalHistory): each
+// column is sized to its tool name but never narrower than this. 8 chars holds
+// a typical cost cell ($9999.99 is 8; $99999.99 — a five-figure daily total —
+// would overflow its cell and widen the row via padStart, but that is far beyond
+// any realistic single-day/tool cost). This floor keeps the FULL 5-tool data row
+// (Date + tool columns + gutter + Cost) within 80 cols: 10 + (11+8+8+8+8) + 5×3 + 3 + 8 = 79.
+const MIN_TOOL_COL_WIDTH = 8;
+// Date column width in the cross-tool pivot: ISO daily labels are 10 chars
+// ("2026-07-01"), monthly 7 ("2026-07"), the "Date" header 4 — 10 fits all.
+const PIVOT_DATE_WIDTH = 10;
 
 // Machine column rendering helpers
 export const MACHINE_COL_WIDTH = COST_WIDTH;
@@ -333,18 +350,27 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
     costMap.set(tool, m);
   }
 
-  const D = 12;
-  const N = 14;
-  const colCount = toolNames.length + 1; // Date + tools (Total moved to merged area)
-  const tableWidth = D + (colCount - 1) * (N + 3);
+  const D = PIVOT_DATE_WIDTH;
+  // Variable per-tool column width: each tool column is sized to its name, with
+  // a floor of MIN_TOOL_COL_WIDTH (see the constant for the full-row math).
+  // Fixed-width columns overflowed 80-col terminals once the pivot grew to 5
+  // tools; sizing per column keeps the full 5-tool data row within 80 cols.
+  const toolWidths = toolNames.map((name) => Math.max(name.length, MIN_TOOL_COL_WIDTH));
+  // Date + each tool column + the " | " (3-char) separator before each column.
+  const tableWidth = D + toolWidths.reduce((sum, w) => sum + w + 3, 0);
   const width = termWidth ?? process.stdout.columns ?? 80;
-  const barWidth = Math.min(width - tableWidth - GUTTER - COST_WIDTH - 1, MAX_BAR_WIDTH);
+  // The bar renders with a leading space (the trailing -1). In watch mode a
+  // 1-char delta indicator (deltaIndicator noSpace=true) is appended to the Cost
+  // cell before the bar, so reserve one more char when prevCosts is set —
+  // otherwise the max-cost row measures width+1 and wraps across the bars band.
+  const indicatorReserve = opts?.prevCosts ? 1 : 0;
+  const barWidth = Math.min(width - tableWidth - GUTTER - COST_WIDTH - 1 - indicatorReserve, MAX_BAR_WIDTH);
   const showBars = barWidth >= MIN_BAR_AREA;
 
-  const row = (...cols: string[]) => cols.map((c, i) => (i === 0 ? c.padEnd(D) : c.padStart(N))).join(" | ");
+  const row = (...cols: string[]) => cols.map((c, i) => (i === 0 ? c.padEnd(D) : c.padStart(toolWidths[i - 1]))).join(" | ");
   const colorRow = (cols: string[], colorFn: (s: string) => string) =>
-    cols.map((c, i) => colorFn(i === 0 ? c.padEnd(D) : c.padStart(N))).join(" | ");
-  const divStr = [D, ...toolNames.map(() => N)].map((w) => "─".repeat(w)).join("─|─");
+    cols.map((c, i) => colorFn(i === 0 ? c.padEnd(D) : c.padStart(toolWidths[i - 1]))).join(" | ");
+  const divStr = [D, ...toolWidths].map((w) => "─".repeat(w)).join("─|─");
   const costDiv = "─|─" + "─".repeat(COST_WIDTH);
   const barDiv = showBars ? "─" + "─".repeat(barWidth) : "";
 
@@ -377,7 +403,7 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
   for (const r of rowData) {
     const rowStr = row(r.label, ...r.cells);
     const costBase = " | " + fmtCost(r.rowTotal).padStart(COST_WIDTH);
-    const indicator = deltaIndicator(r.rowTotal, `total:${r.label}`, prevCosts);
+    const indicator = deltaIndicator(r.rowTotal, `total:${r.label}`, prevCosts, true);
     const rawBar = showBars ? renderBar(r.rowTotal, maxCost, barWidth) : "";
     const bar = rawBar ? " " + green(rawBar) : "";
     lines.push(rowStr + costBase + indicator + bar);

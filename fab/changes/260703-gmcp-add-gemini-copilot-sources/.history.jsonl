@@ -1,0 +1,19 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-07-03T13:09:40Z"}
+{"args":"Add gemini + copilot sources to tu (backlog [gmcp])","cmd":"fab-new","event":"command","ts":"2026-07-03T13:09:40Z"}
+{"delta":"+4.8","event":"confidence","score":4.8,"trigger":"calc-score","ts":"2026-07-03T13:16:01Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-07-03T13:20:50Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-03T13:20:50Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-03T13:39:25Z"}
+{"event":"review","result":"failed","ts":"2026-07-03T14:19:09Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-03T14:19:09Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-03T14:35:13Z"}
+{"event":"review","result":"failed","ts":"2026-07-03T14:51:18Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-03T14:51:18Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-03T14:56:40Z"}
+{"event":"review","result":"failed","ts":"2026-07-03T15:21:45Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-03T15:21:45Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-03T15:25:40Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-07-03T19:04:04Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-07-03T19:33:07Z"}
+{"event":"review","result":"passed","ts":"2026-07-03T19:33:07Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-07-03T19:38:20Z"}

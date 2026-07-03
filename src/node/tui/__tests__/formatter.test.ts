@@ -2,7 +2,7 @@ import { describe, it, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 
 import { fmtNum, fmtCost, renderBar, printHistory, printTotal, printTotalHistory, renderHistory, renderTotal, renderTotalHistory, emitCsv, emitMarkdown } from "../formatter.js";
-import { setNoColor } from "../colors.js";
+import { setNoColor, stripAnsi } from "../colors.js";
 import type { UsageTotals, UsageEntry } from "../../core/types.js";
 
 // Disable ANSI colors for formatter tests to keep assertions simple
@@ -449,9 +449,10 @@ describe("printTotalHistory", () => {
         { label: "2026-02-14", totalCost: 3, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 },
       ]],
     ]);
-    // 2 tools → colCount=3 → tableWidth = 12 + 2*17 = 46
-    // termWidth=60 → barWidth = 60 - 46 - 3 - 8 - 1 = 2 < MIN_BAR_AREA
-    printTotalHistory("daily", data, 60);
+    // Variable-width columns: Claude Code → max(11,8)=11, Codex → max(5,8)=8.
+    // Date column is 10. tableWidth = 10 + (11+3) + (8+3) = 35.
+    // termWidth=50 → barWidth = 50 - 35 - 3 - 8 - 1 = 3 < MIN_BAR_AREA
+    printTotalHistory("daily", data, 50);
     const output = logged.join("\n");
     assert.ok(!output.includes("\u2588"), "expected no bars on narrow terminal");
   });
@@ -463,13 +464,139 @@ describe("printTotalHistory", () => {
       ["B", [{ label: "2026-02-14", totalCost: 5, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 }]],
       ["C", [{ label: "2026-02-14", totalCost: 3, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 }]],
     ]);
-    // 3 tools → colCount=4 → tableWidth = 12 + 3*17 = 63
-    // termWidth=140 → barWidth = min(140-63-3-8-1, 30) = min(65, 30) = 30
+    // Variable-width columns: A/B/C each → max(1,8)=8. Date column is 10.
+    // tableWidth = 10 + 3*(8+3) = 43.
+    // termWidth=140 → barWidth = min(140-43-3-8-1, 30) = min(85, 30) = 30
     printTotalHistory("daily", data, 140);
     const dataLine = logged.find(l => l.includes("2026-02-14"));
     assert.ok(dataLine);
     // Max value row ($18 total) should have bars
     assert.ok(dataLine!.includes("\u2588"), "expected bars in data row");
+  });
+
+  it("5-tool pivot full data row (through the Cost cell) is 79 chars and fits within 80 columns", (t) => {
+    t.after(restoreLog);
+    const mk = (cost: number): UsageEntry[] => [
+      { label: "2026-07-01", totalCost: cost, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 },
+    ];
+    // Full 5-tool registry order, including zero-data gemini/copilot columns.
+    const data = new Map<string, UsageEntry[]>([
+      ["Claude Code", mk(123.45)],
+      ["Codex", mk(0.12)],
+      ["OpenCode", mk(4.56)],
+      ["Gemini", mk(0)],
+      ["Copilot", mk(0)],
+    ]);
+    printTotalHistory("daily", data, 80);
+    const output = logged.join("\n");
+
+    // All five tool columns render (zero-data ones are NOT omitted).
+    for (const name of ["Claude Code", "Codex", "OpenCode", "Gemini", "Copilot"]) {
+      assert.match(output, new RegExp(name));
+    }
+    // Zero-data tools show $0.00, not a blank/omitted column.
+    assert.match(output, /\$0\.00/);
+
+    // The FULL rendered data row \u2014 Date + the five tool columns + the 3-char
+    // gutter + the 8-wide Cost cell \u2014 must fit within 80 cols. Per-column
+    // widths: Date 10, Claude Code max(11,8)=11, the other four max(<=8,8)=8. So
+    // the row is 10 + (11+8+8+8+8) + 5x3 (the " | " before each tool column) + 3
+    // (gutter) + 8 (Cost) = 79 (vs. the old fixed-14 layout's ~108, and the prior
+    // max(name,9)+Date-12 body-only "fit" that still rendered an 85-char row).
+    // Measure the ACTUAL rendered data row through the Cost cell \u2014 not the
+    // body, not recomputed arithmetic against a constant.
+    const dataLine = logged.find((l) => stripAnsi(l).includes("2026-07-01"));
+    assert.ok(dataLine, "expected the 2026-07-01 data row");
+    const stripped = stripAnsi(dataLine!);
+    // Slice through the end of the Cost cell (the row's grand total, $128.13).
+    const costCell = "$128.13";
+    const costEnd = stripped.indexOf(costCell) + costCell.length;
+    const fullRow = stripped.slice(0, costEnd);
+    assert.equal(fullRow.length, 79, `full data row must be 79 chars (got ${fullRow.length}): "${fullRow}"`);
+    assert.ok(fullRow.length <= 80, `full data row exceeds 80 cols (${fullRow.length})`);
+    // And no inline bar renders at 80 cols (barWidth = 80 - 71 - 3 - 8 - 1 < 0).
+    assert.ok(!output.includes("\u2588"), "expected no inline bars for the 5-tool pivot at 80 cols");
+
+    // Watch mode: with prevCosts set (watch.ts populates it after the first
+    // poll) the row appends a delta indicator after the Cost cell. In this pivot
+    // it is rendered WITHOUT its leading space (the arrow abuts the cost \u2014
+    // "$128.13\u2191", 1 visible char) so the row is 79 + 1 = 80 exactly and
+    // does NOT wrap at 80 cols. The spaced form ( \u2191, 2 chars) would render
+    // 81 and wrap, corrupting the watch compositor's line-counting.
+    captureLog();
+    // Row total for 2026-07-01 is 123.45 + 0.12 + 4.56 = 128.13; a lower prev
+    // triggers the up-arrow (\u2191).
+    printTotalHistory("daily", data, 80, { prevCosts: new Map([["total:2026-07-01", 100]]) });
+    const watchOutput = logged.join("\n");
+    const watchLine = logged.find((l) => stripAnsi(l).includes("2026-07-01"));
+    assert.ok(watchLine, "expected the 2026-07-01 watch-mode data row");
+    const watchStripped = stripAnsi(watchLine!);
+    // Sanity: the indicator rendered space-lessly, directly against the cost.
+    assert.ok(watchStripped.includes("$128.13\u2191"), `expected space-less indicator "$128.13\u2191", got: "${watchStripped}"`);
+    // Measure the full row through the indicator (the arrow is the last glyph).
+    const arrowEnd = watchStripped.indexOf("\u2191") + 1;
+    const watchRow = watchStripped.slice(0, arrowEnd);
+    assert.equal(watchRow.length, 80, `watch-mode row (through the delta indicator) must be 80 chars (got ${watchRow.length}): "${watchRow}"`);
+    assert.ok(watchRow.length <= 80, `watch-mode row exceeds 80 cols (${watchRow.length})`);
+    // Still no inline bar at 80 cols in watch mode.
+    assert.ok(!watchOutput.includes("\u2588"), "expected no inline bars for the 5-tool watch pivot at 80 cols");
+  });
+
+  it("5-tool watch-mode pivot: no line exceeds terminal width across the bars band (90/100/110)", (t) => {
+    t.after(restoreLog);
+    const mk = (cost: number): UsageEntry[] => [
+      { label: "2026-07-01", totalCost: cost, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 },
+    ];
+    // Full 5-tool registry order; the max-cost row is the one that renders the
+    // longest bar (full width) — it is the wrap risk once a delta indicator is
+    // appended. tableWidth = 68, so bars render from ~width 90 (barWidth >= 10).
+    const data = new Map<string, UsageEntry[]>([
+      ["Claude Code", mk(123.45)],
+      ["Codex", mk(0.12)],
+      ["OpenCode", mk(4.56)],
+      ["Gemini", mk(0)],
+      ["Copilot", mk(0)],
+    ]);
+    // A lower prev triggers the up-arrow (row total 128.13 > 100), exercising the
+    // watch-mode delta indicator on the max-cost row.
+    const prevCosts = new Map([["total:2026-07-01", 100]]);
+    for (const termWidth of [90, 100, 110]) {
+      captureLog();
+      printTotalHistory("daily", data, termWidth, { prevCosts });
+      // Reserving the indicator char shifts the bars threshold up by one: with
+      // tableWidth 68, barWidth = width - 68 - 3 - 8 - 1 - 1 (indicator reserve),
+      // so bars render from width 91 (>=10). 90 is the last no-bar width; 100/110
+      // render bars and exercise the bar + indicator interaction on the max-cost
+      // row (the historical width+1 wrap).
+      if (termWidth >= 91) {
+        assert.ok(logged.join("\n").includes("█"), `expected inline bars at ${termWidth} cols`);
+      }
+      // EVERY rendered line — headers, dividers, data rows (bar + indicator),
+      // totals — must measure <= termWidth once ANSI is stripped, or it wraps and
+      // corrupts the watch-mode compositor's line-counting.
+      for (const line of logged) {
+        const w = stripAnsi(line).length;
+        assert.ok(w <= termWidth, `line exceeds ${termWidth} cols (got ${w}): "${stripAnsi(line)}"`);
+      }
+    }
+  });
+
+  it("tool columns are sized to max(name.length, 8)", (t) => {
+    t.after(restoreLog);
+    const data = new Map<string, UsageEntry[]>([
+      // "Claude Code" (11) exceeds the 8 floor; "AB" (2) is padded up to 8.
+      ["Claude Code", [{ label: "2026-07-01", totalCost: 1, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 }]],
+      ["AB", [{ label: "2026-07-01", totalCost: 2, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 }]],
+    ]);
+    printTotalHistory("daily", data, 140);
+    const header = logged.find(l => l.includes("Claude Code"));
+    assert.ok(header);
+    const stripped = stripAnsi(header!);
+    // Columns joined by " | ": Date padEnd(10) = "Date" + 6 spaces, then the
+    // separator's leading space → 7 spaces before the pipe; "Claude Code"
+    // padStart(11) (fits exactly, so no pad); "AB" padStart(8) — padStart
+    // right-aligns, so 6 leading pad spaces + the separator space = 7 before "AB".
+    assert.match(stripped, /^Date {7}\| Claude Code \| {7}AB \|/);
   });
 });
 

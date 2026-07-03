@@ -38,6 +38,29 @@ describe("parseDataArgs", () => {
       assert.equal(result.source, "oc");
     });
 
+    it("recognizes gemini as source", () => {
+      const result = parseDataArgs(["gemini", "h"]);
+      assert.equal(result.source, "gemini");
+      assert.equal(result.display, "history");
+    });
+
+    it("resolves gem alias to gemini", () => {
+      const result = parseDataArgs(["gem"]);
+      assert.equal(result.source, "gemini");
+    });
+
+    it("recognizes copilot as source", () => {
+      const result = parseDataArgs(["copilot", "mh"]);
+      assert.equal(result.source, "copilot");
+      assert.equal(result.period, "monthly");
+      assert.equal(result.display, "history");
+    });
+
+    it("resolves cop alias to copilot", () => {
+      const result = parseDataArgs(["cop"]);
+      assert.equal(result.source, "copilot");
+    });
+
     it("recognizes all as explicit source", () => {
       const result = parseDataArgs(["all", "mh"]);
       assert.equal(result.source, "all");

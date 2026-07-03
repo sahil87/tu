@@ -197,7 +197,7 @@ describe("completion script coverage — non-data subcommands", () => {
 describe("completion script coverage — sources, periods, display, shell-init args", () => {
   const TOKENS = [
     // Sources
-    "cc", "codex", "co", "oc", "all",
+    "cc", "codex", "co", "oc", "gemini", "gem", "copilot", "cop", "all",
     // Periods
     "d", "w", "m", "daily", "weekly", "monthly",
     // Display
