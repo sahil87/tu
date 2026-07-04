@@ -58,11 +58,12 @@ function writeCache(toolKey: string, entries: UsageEntry[]): void {
 // Rust binary vendored at dist/vendor/ccusage/bin/ccusage (exec'd directly, no
 // node interpreter); in dev mode it is the npm launcher at node_modules/.bin/ccusage
 // (a JS shim that resolves the host's optional native package). Per-tool
-// subcommands are expressed via prefixArgs: cc→claude, codex→codex, oc→opencode.
-// Bare `ccusage daily` is a v20 all-agents aggregate, so cc must use the
-// per-agent `claude` subcommand to avoid over/double-counting other agents.
-// The claude subcommand emits the ISO label under "date"; codex/opencode use
-// "period" — hence the per-tool labelKey.
+// subcommands are expressed via prefixArgs: cc→claude, codex→codex, oc→opencode,
+// gemini→gemini, copilot→copilot. Bare `ccusage daily` is a v20 all-agents
+// aggregate, so every tool must use its per-agent subcommand to avoid
+// over/double-counting other agents. All per-agent subcommands emit the ISO
+// daily label under "date"; only the bare all-agents aggregate (which tu never
+// calls) emits "period" — hence the per-tool labelKey stays "date" for all.
 const CCUSAGE = useVendor ? `${BIN}/ccusage/bin/ccusage` : `${BIN}/ccusage`;
 
 export const TOOLS: Record<string, ToolConfig> = {
@@ -77,15 +78,29 @@ export const TOOLS: Record<string, ToolConfig> = {
     name: "Codex",
     binary: CCUSAGE,
     prefixArgs: ["codex"],
-    labelKey: "period",
+    labelKey: "date",
     needsFilter: true,
   },
   oc: {
     name: "OpenCode",
     binary: CCUSAGE,
     prefixArgs: ["opencode"],
-    labelKey: "period",
+    labelKey: "date",
     needsFilter: true,
+  },
+  gemini: {
+    name: "Gemini",
+    binary: CCUSAGE,
+    prefixArgs: ["gemini"],
+    labelKey: "date",
+    needsFilter: false,
+  },
+  copilot: {
+    name: "Copilot",
+    binary: CCUSAGE,
+    prefixArgs: ["copilot"],
+    labelKey: "date",
+    needsFilter: false,
   },
 };
 
@@ -156,9 +171,11 @@ export function toUsageEntry(t: Record<string, unknown>, labelKey: string): Usag
   };
 }
 
-// The JSON key carrying an entry's ISO date label varies by tool, not by
-// period: the `claude` subcommand emits it under "date", while codex/opencode
-// emit it under "period". That key lives per-tool as ToolConfig.labelKey.
+// The JSON key carrying an entry's ISO date label lives per-tool as
+// ToolConfig.labelKey. All per-agent subcommands (claude/codex/opencode/
+// gemini/copilot) emit it under "date"; only the bare all-agents aggregate
+// (which tu never calls) emits "period". The mechanism is kept because the
+// key varies by serializer, so a future divergence stays a data-only change.
 // normalizeLabel passes ISO labels through unchanged for either spelling.
 
 // Current ISO label for filtering entries to "now"
@@ -179,14 +196,16 @@ export function currentLabel(period: string, now: Date = new Date()): string {
 }
 
 // Pick the entry matching the current date/month, or return EMPTY.
-// labelKey is the JSON key carrying the entry's ISO date label (per-tool:
-// "date" for the claude subcommand, "period" for codex/opencode). Defaults to
-// "period" so callers with period-keyed fixtures need not pass it.
+// labelKey is the JSON key carrying the entry's ISO date label. All per-agent
+// subcommands emit it under "date"; only the bare (unused) all-agents aggregate
+// emits "period". The default is "date" — matching every registry tool — so an
+// omitted arg still resolves real labels; every production caller passes
+// tool.labelKey ("date") explicitly regardless.
 export function pickCurrentEntry(
   entries: Record<string, unknown>[],
   period: string,
   now: Date = new Date(),
-  labelKey: string = "period"
+  labelKey: string = "date"
 ): UsageTotals {
   const target = currentLabel(period, now);
   const match = entries.find((e) => normalizeLabel(String(e[labelKey] || "")) === target);

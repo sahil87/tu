@@ -233,15 +233,17 @@ describe("currentLabel", () => {
 // ---------------------------------------------------------------------------
 // pickCurrentEntry
 // ---------------------------------------------------------------------------
-// ccusage@20 emits the ISO label under "period" for both daily ("2026-02-16")
-// and monthly ("2026-02") entries — it replaced v18's human-readable
-// "date"/"month" fields. All fixtures below use the v20 shape.
+// pickCurrentEntry threads a labelKey (defaulting to "date" — the spelling
+// every registry tool uses; all per-agent subcommands emit "date"). These
+// fixtures omit the labelKey arg to exercise that default, so they key their
+// entries under "date". The bare-aggregate "period" spelling is still handled
+// by the mechanism (covered in the "per-tool label key" describe below).
 describe("pickCurrentEntry", () => {
   it("returns matching entry for today (daily)", () => {
     const now = new Date(2026, 1, 16);
     const entries = [
-      { period: "2026-02-15", totalCost: 1, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150 },
-      { period: "2026-02-16", totalCost: 2, inputTokens: 200, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 300 },
+      { date: "2026-02-15", totalCost: 1, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150 },
+      { date: "2026-02-16", totalCost: 2, inputTokens: 200, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 300 },
     ];
     const result = pickCurrentEntry(entries, "daily", now);
     assert.equal(result.totalCost, 2);
@@ -251,8 +253,8 @@ describe("pickCurrentEntry", () => {
   it("returns EMPTY when no entry matches today", () => {
     const now = new Date(2026, 1, 16);
     const entries = [
-      { period: "2026-02-14", totalCost: 1, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150 },
-      { period: "2026-02-15", totalCost: 2, inputTokens: 200, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 300 },
+      { date: "2026-02-14", totalCost: 1, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150 },
+      { date: "2026-02-15", totalCost: 2, inputTokens: 200, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 300 },
     ];
     const result = pickCurrentEntry(entries, "daily", now);
     assert.equal(result.totalCost, 0);
@@ -262,8 +264,8 @@ describe("pickCurrentEntry", () => {
   it("returns matching entry for current month (monthly)", () => {
     const now = new Date(2026, 1, 16);
     const entries = [
-      { period: "2026-01", totalCost: 5, inputTokens: 1000, outputTokens: 500, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1500 },
-      { period: "2026-02", totalCost: 3, inputTokens: 800, outputTokens: 200, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1000 },
+      { date: "2026-01", totalCost: 5, inputTokens: 1000, outputTokens: 500, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1500 },
+      { date: "2026-02", totalCost: 3, inputTokens: 800, outputTokens: 200, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1000 },
     ];
     const result = pickCurrentEntry(entries, "monthly", now);
     assert.equal(result.totalCost, 3);
@@ -273,8 +275,8 @@ describe("pickCurrentEntry", () => {
   it("returns EMPTY when no entry matches current month", () => {
     const now = new Date(2026, 2, 1); // March 2026
     const entries = [
-      { period: "2026-01", totalCost: 5, inputTokens: 1000, outputTokens: 500, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1500 },
-      { period: "2026-02", totalCost: 3, inputTokens: 800, outputTokens: 200, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1000 },
+      { date: "2026-01", totalCost: 5, inputTokens: 1000, outputTokens: 500, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1500 },
+      { date: "2026-02", totalCost: 3, inputTokens: 800, outputTokens: 200, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1000 },
     ];
     const result = pickCurrentEntry(entries, "monthly", now);
     assert.equal(result.totalCost, 0);
@@ -285,18 +287,18 @@ describe("pickCurrentEntry", () => {
   it("does not attribute historical usage to today", () => {
     const now = new Date(2026, 1, 16); // Today is Feb 16
     const entries = [
-      { period: "2026-02-10", totalCost: 10, inputTokens: 5000, outputTokens: 2000, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 7000 },
-      { period: "2026-02-13", totalCost: 5, inputTokens: 2000, outputTokens: 1000, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 3000 },
+      { date: "2026-02-10", totalCost: 10, inputTokens: 5000, outputTokens: 2000, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 7000 },
+      { date: "2026-02-13", totalCost: 5, inputTokens: 2000, outputTokens: 1000, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 3000 },
     ];
     const result = pickCurrentEntry(entries, "daily", now);
     assert.equal(result.totalCost, 0);
     assert.equal(result.totalTokens, 0);
   });
 
-  it("handles ISO period labels directly (v20 needs no normalization)", () => {
+  it("handles ISO date labels directly (v20 needs no normalization)", () => {
     const now = new Date(2026, 1, 16);
     const entries = [
-      { period: "2026-02-16", totalCost: 4, inputTokens: 300, outputTokens: 150, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 450 },
+      { date: "2026-02-16", totalCost: 4, inputTokens: 300, outputTokens: 150, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 450 },
     ];
     const result = pickCurrentEntry(entries, "daily", now);
     assert.equal(result.totalCost, 4);
@@ -305,7 +307,7 @@ describe("pickCurrentEntry", () => {
   it("handles legacy field names in matched entry", () => {
     const now = new Date(2026, 1, 16);
     const entries = [
-      { period: "2026-02-16", costUSD: 7.5, cachedInputTokens: 500, totalTokens: 1000 },
+      { date: "2026-02-16", costUSD: 7.5, cachedInputTokens: 500, totalTokens: 1000 },
     ];
     const result = pickCurrentEntry(entries, "daily", now);
     assert.equal(result.totalCost, 7.5);
@@ -314,23 +316,27 @@ describe("pickCurrentEntry", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Per-tool label key: both "date" (claude subcommand) and "period"
-// (codex/opencode) spellings parse to the correct ISO UsageEntry.label
+// Per-tool label key: the mechanism handles both "date" and "period" key
+// spellings. All five per-agent subcommands emit the ISO label under "date"
+// at ccusage v20.0.14; only the bare all-agents aggregate (which tu never
+// calls) emits "period". The per-tool ToolConfig.labelKey is therefore "date"
+// for every tool — the "period" support is kept because the key varies by
+// serializer (a future divergence stays a data-only change).
 // ---------------------------------------------------------------------------
 describe("per-tool label key (date vs period)", () => {
-  it("toUsageEntry resolves an ISO 'date'-keyed entry (claude subcommand shape)", () => {
+  it("toUsageEntry resolves an ISO 'date'-keyed entry (per-agent subcommand shape)", () => {
     const entry = toUsageEntry({ date: "2026-06-01", totalCost: 1, totalTokens: 10 }, "date");
     assert.equal(entry.label, "2026-06-01");
     assert.equal(entry.totalCost, 1);
   });
 
-  it("toUsageEntry resolves an ISO 'period'-keyed entry (codex/opencode shape)", () => {
+  it("toUsageEntry still resolves an ISO 'period'-keyed entry (bare-aggregate shape)", () => {
     const entry = toUsageEntry({ period: "2026-06-01", totalCost: 2, totalTokens: 20 }, "period");
     assert.equal(entry.label, "2026-06-01");
     assert.equal(entry.totalCost, 2);
   });
 
-  it("pickCurrentEntry matches today via a threaded 'date' key (cc / claude subcommand)", () => {
+  it("pickCurrentEntry matches today via a threaded 'date' key (per-agent subcommand)", () => {
     const now = new Date(2026, 5, 1); // Jun 1, 2026
     const entries = [
       { date: "2026-05-31", totalCost: 1, totalTokens: 100, inputTokens: 50, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0 },
@@ -341,23 +347,54 @@ describe("per-tool label key (date vs period)", () => {
     assert.equal(result.totalTokens, 200);
   });
 
-  it("pickCurrentEntry defaults to the 'period' key when labelKey is omitted", () => {
+  it("pickCurrentEntry defaults to the 'date' key when labelKey is omitted", () => {
+    // The default is "date" — the spelling every registry tool uses — so an
+    // omitted labelKey still resolves a real label rather than "" (the retired
+    // "period" default matched no registry tool and would have yielded EMPTY).
     const now = new Date(2026, 5, 1);
     const entries = [
-      { period: "2026-06-01", totalCost: 3, totalTokens: 300, inputTokens: 150, outputTokens: 150, cacheCreationTokens: 0, cacheReadTokens: 0 },
+      { date: "2026-06-01", totalCost: 3, totalTokens: 300, inputTokens: 150, outputTokens: 150, cacheCreationTokens: 0, cacheReadTokens: 0 },
     ];
     const result = pickCurrentEntry(entries, "daily", now);
     assert.equal(result.totalCost, 3);
   });
 
-  it("the fetchHistory mapping shape yields correct labels for both key spellings", () => {
-    // fetchHistory maps: entries.map((e) => toUsageEntry(e, tool.labelKey))
+  it("pickCurrentEntry with the retired 'period' default no longer matches a period-keyed entry when labelKey is omitted", () => {
+    // Guard the T016 correction: omitting labelKey now reads "date". A raw entry
+    // keyed only under "period" therefore no longer matches — proving the default
+    // flipped from "period" to "date".
+    const now = new Date(2026, 5, 1);
+    const entries = [
+      { period: "2026-06-01", totalCost: 3, totalTokens: 300, inputTokens: 150, outputTokens: 150, cacheCreationTokens: 0, cacheReadTokens: 0 },
+    ];
+    const result = pickCurrentEntry(entries, "daily", now);
+    assert.equal(result.totalCost, 0);
+    // Passing the "period" key explicitly still resolves it (mechanism intact).
+    assert.equal(pickCurrentEntry(entries, "daily", now, "period").totalCost, 3);
+  });
+
+  it("the fetchHistory mapping shape yields correct labels for the per-tool key", () => {
+    // fetchHistory maps: entries.map((e) => toUsageEntry(e, tool.labelKey)).
+    // All registry tools carry labelKey "date"; a "date"-keyed raw entry maps to
+    // a real ISO label, whereas the ccfx-era "period" registry value would have
+    // produced "" for codex/oc on a machine with transcripts.
     const ccRaw = [{ date: "2026-06-01", totalCost: 1, totalTokens: 10 }];
-    const codexRaw = [{ period: "2026-06-01", totalCost: 2, totalTokens: 20 }];
+    const codexRaw = [{ date: "2026-06-01", totalCost: 2, totalTokens: 20 }];
     const ccMapped = ccRaw.map((e) => toUsageEntry(e, TOOLS.cc.labelKey));
     const codexMapped = codexRaw.map((e) => toUsageEntry(e, TOOLS.codex.labelKey));
     assert.equal(ccMapped[0].label, "2026-06-01");
     assert.equal(codexMapped[0].label, "2026-06-01");
+  });
+
+  it("codex/oc 'date'-keyed entries map to real ISO labels (ccfx-era 'period' regression guard)", () => {
+    // Regression: with the ccfx-era labelKey "period", a codex entry keyed under
+    // "date" resolved t["period"] → undefined → label "". Now labelKey is "date".
+    const codexRaw = { date: "2026-06-02", totalCost: 4, totalTokens: 40 };
+    const ocRaw = { date: "2026-06-03", totalCost: 5, totalTokens: 50 };
+    assert.equal(toUsageEntry(codexRaw, TOOLS.codex.labelKey).label, "2026-06-02");
+    assert.equal(toUsageEntry(ocRaw, TOOLS.oc.labelKey).label, "2026-06-03");
+    // The pre-fix "period" spelling would have yielded an empty label.
+    assert.equal(toUsageEntry(codexRaw, "period").label, "");
   });
 });
 
@@ -365,14 +402,26 @@ describe("per-tool label key (date vs period)", () => {
 // TOOLS registry
 // ---------------------------------------------------------------------------
 describe("TOOLS", () => {
-  it("has entries for cc, codex, and oc", () => {
+  const ALL_TOOLS = () => [TOOLS.cc, TOOLS.codex, TOOLS.oc, TOOLS.gemini, TOOLS.copilot];
+
+  it("has entries for cc, codex, oc, gemini, and copilot", () => {
     assert.ok(TOOLS.cc);
     assert.ok(TOOLS.codex);
     assert.ok(TOOLS.oc);
+    assert.ok(TOOLS.gemini);
+    assert.ok(TOOLS.copilot);
   });
 
-  it("cc does not need filtering", () => {
+  it("registry order is cc, codex, oc, gemini, copilot (column order in all-tools views)", () => {
+    // Insertion order determines column order; new tools are appended so the
+    // existing columns keep their positions (Output Stability).
+    assert.deepEqual(Object.keys(TOOLS), ["cc", "codex", "oc", "gemini", "copilot"]);
+  });
+
+  it("cc, gemini, and copilot do not need filtering", () => {
     assert.equal(TOOLS.cc.needsFilter, false);
+    assert.equal(TOOLS.gemini.needsFilter, false);
+    assert.equal(TOOLS.copilot.needsFilter, false);
   });
 
   it("codex and oc need filtering", () => {
@@ -380,34 +429,35 @@ describe("TOOLS", () => {
     assert.equal(TOOLS.oc.needsFilter, true);
   });
 
+  it("gemini and copilot carry the expected display names", () => {
+    assert.equal(TOOLS.gemini.name, "Gemini");
+    assert.equal(TOOLS.copilot.name, "Copilot");
+  });
+
   // --- ccusage@20 shape: one binary, per-tool subcommand prefixArgs ---
   it("each entry exposes a binary field (string)", () => {
-    assert.equal(typeof TOOLS.cc.binary, "string");
-    assert.equal(typeof TOOLS.codex.binary, "string");
-    assert.equal(typeof TOOLS.oc.binary, "string");
+    for (const tool of ALL_TOOLS()) assert.equal(typeof tool.binary, "string");
   });
 
   it("each entry exposes a prefixArgs field (string[])", () => {
-    assert.ok(Array.isArray(TOOLS.cc.prefixArgs));
-    assert.ok(Array.isArray(TOOLS.codex.prefixArgs));
-    assert.ok(Array.isArray(TOOLS.oc.prefixArgs));
+    for (const tool of ALL_TOOLS()) assert.ok(Array.isArray(tool.prefixArgs));
   });
 
   it("no entry still carries a legacy `command` field (migration complete)", () => {
-    assert.equal((TOOLS.cc as Record<string, unknown>).command, undefined);
-    assert.equal((TOOLS.codex as Record<string, unknown>).command, undefined);
-    assert.equal((TOOLS.oc as Record<string, unknown>).command, undefined);
+    for (const tool of ALL_TOOLS()) {
+      assert.equal((tool as Record<string, unknown>).command, undefined);
+    }
   });
 
-  it("all three tools share the single ccusage binary (v20 unified CLI)", () => {
-    assert.equal(TOOLS.cc.binary, TOOLS.codex.binary);
-    assert.equal(TOOLS.codex.binary, TOOLS.oc.binary);
+  it("all tools share the single ccusage binary (v20 unified CLI)", () => {
+    const binaries = new Set(ALL_TOOLS().map((t) => t.binary));
+    assert.equal(binaries.size, 1);
   });
 
   it("no entry uses the legacy `node`-interpreter / index.js vendor convention", () => {
     // v20 vendors a native Rust binary exec'd directly — no `node` wrapper, no
     // `index.js` entrypoint. Regression guard against the pre-v20 shape.
-    for (const tool of [TOOLS.cc, TOOLS.codex, TOOLS.oc]) {
+    for (const tool of ALL_TOOLS()) {
       assert.notEqual(tool.binary, "node");
       assert.ok(!tool.prefixArgs.some((a) => a.endsWith("index.js")));
     }
@@ -416,7 +466,7 @@ describe("TOOLS", () => {
   it("binary points at ccusage in both vendor and dev modes", () => {
     // Vendor mode: <vendor>/ccusage/bin/ccusage (native binary, exec'd directly).
     // Dev mode:    <node_modules>/.bin/ccusage (the npm launcher).
-    for (const tool of [TOOLS.cc, TOOLS.codex, TOOLS.oc]) {
+    for (const tool of ALL_TOOLS()) {
       const vendorShape = tool.binary.endsWith("/ccusage/bin/ccusage");
       const devShape = tool.binary.endsWith("/ccusage");
       assert.ok(vendorShape || devShape, `unexpected binary path: ${tool.binary}`);
@@ -424,21 +474,22 @@ describe("TOOLS", () => {
   });
 
   it("subcommand prefixArgs select the per-tool ccusage subcommand", () => {
-    // v20: bare `ccusage daily` is an all-agents aggregate, so cc uses the
-    // per-agent `claude` subcommand (not [] — that would over/double-count
-    // other detected agents).
+    // v20: bare `ccusage daily` is an all-agents aggregate, so each tool uses
+    // its per-agent subcommand (not [] — that would over/double-count other
+    // detected agents).
     assert.deepEqual(TOOLS.cc.prefixArgs, ["claude"]);
     assert.deepEqual(TOOLS.codex.prefixArgs, ["codex"]);
     assert.deepEqual(TOOLS.oc.prefixArgs, ["opencode"]);
+    assert.deepEqual(TOOLS.gemini.prefixArgs, ["gemini"]);
+    assert.deepEqual(TOOLS.copilot.prefixArgs, ["copilot"]);
   });
 
-  it("exposes a per-tool labelKey (claude→date, codex/oc→period)", () => {
-    // The claude subcommand emits the ISO label under "date"; codex/opencode
-    // emit it under "period". The label key is a property of the tool, not the
-    // period (replaces the removed period-keyed LABEL_KEY const).
-    assert.equal(TOOLS.cc.labelKey, "date");
-    assert.equal(TOOLS.codex.labelKey, "period");
-    assert.equal(TOOLS.oc.labelKey, "period");
+  it("every tool's labelKey is 'date' (all per-agent subcommands emit 'date')", () => {
+    // All five per-agent subcommands (claude/codex/opencode/gemini/copilot) emit
+    // the ISO label under "date" at ccusage v20.0.14; only the bare all-agents
+    // aggregate (which tu never calls) emits "period". codex/oc were corrected
+    // from the ccfx-era "period" here.
+    for (const tool of ALL_TOOLS()) assert.equal(tool.labelKey, "date");
   });
 });
 
@@ -996,12 +1047,13 @@ describe("fetchTotals/fetchAllTotals signatures", () => {
 
   it("pickCurrentEntry with daily period matches today", () => {
     // This verifies what fetchTotals now does internally:
-    // parse daily raw → pickCurrentEntry(dailyRaw, "daily").
-    // ccusage@20 daily entries carry the ISO label under "period".
+    // parse daily raw → pickCurrentEntry(dailyRaw, "daily", now, tool.labelKey).
+    // All per-agent subcommands emit the ISO label under "date" at v20; the
+    // pickCurrentEntry default is likewise "date", so these fixtures key on it.
     const now = new Date(2026, 1, 22);
     const dailyRaw = [
-      { period: "2026-02-21", totalCost: 1, totalTokens: 100, inputTokens: 50, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0 },
-      { period: "2026-02-22", totalCost: 2, totalTokens: 200, inputTokens: 100, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0 },
+      { date: "2026-02-21", totalCost: 1, totalTokens: 100, inputTokens: 50, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0 },
+      { date: "2026-02-22", totalCost: 2, totalTokens: 200, inputTokens: 100, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0 },
     ];
     const result = pickCurrentEntry(dailyRaw, "daily", now);
     assert.equal(result.totalCost, 2);
@@ -1011,7 +1063,7 @@ describe("fetchTotals/fetchAllTotals signatures", () => {
   it("pickCurrentEntry with daily period returns EMPTY when no match", () => {
     const now = new Date(2026, 1, 22);
     const dailyRaw = [
-      { period: "2026-02-20", totalCost: 1, totalTokens: 100, inputTokens: 50, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0 },
+      { date: "2026-02-20", totalCost: 1, totalTokens: 100, inputTokens: 50, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0 },
     ];
     const result = pickCurrentEntry(dailyRaw, "daily", now);
     assert.equal(result.totalCost, 0);
