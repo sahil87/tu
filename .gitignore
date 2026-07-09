@@ -25,3 +25,5 @@ help/
 
 
 .status.yaml.lock
+
+!fab/.fab-version
