@@ -7,17 +7,21 @@
 AI coding assistant cost tracking CLI.
 Track your token usage in style!
 
-<img width="1025" height="675" alt="tu terminal output showing today's AI coding assistant costs across Claude Code, Codex, OpenCode, Gemini, and Copilot" src="https://github.com/user-attachments/assets/d6d1c930-8230-4910-ba1b-985e7df17e7c" />
-
-
 ## Install
+
+```sh
+curl -fsSL https://shll.ai/install | sh -s -- tu
+```
+
+Installs tu (plus the shll meta-CLI) via Homebrew, handling tap trust automatically. To install the entire sahil87 toolkit instead:
+
+```sh
+curl -fsSL https://shll.ai/install | sh
+```
 
 > 📖 Full walkthrough: the [install guide](docs/site/install.md) covers install, shell completions, and multi-machine setup in depth.
 
-```bash
-brew tap sahil87/tap
-brew install tu
-```
+<img width="1025" height="675" alt="tu terminal output showing today's AI coding assistant costs across Claude Code, Codex, OpenCode, Gemini, and Copilot" src="https://github.com/user-attachments/assets/d6d1c930-8230-4910-ba1b-985e7df17e7c" />
 
 ### Shell completions
 
