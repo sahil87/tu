@@ -611,6 +611,21 @@ export function threeMonthFloor(now: Date = new Date()): string {
   return `${y}-${m}-01`;
 }
 
+// Whether the implicit 3-month cap applies for the given display context.
+// The cap engages only on daily/weekly history (never snapshot, never monthly
+// history) and is disabled by an explicit --since/--until window or --full.
+// Pure predicate mirroring the guard in main(); extracted so the injection
+// decision is unit-testable without invoking the full main() pipeline.
+export function capApplies(
+  display: string,
+  period: string,
+  sinceFlag: string | undefined,
+  untilFlag: string | undefined,
+  fullFlag: boolean,
+): boolean {
+  return display === "history" && period !== "monthly" && sinceFlag === undefined && untilFlag === undefined && !fullFlag;
+}
+
 // Accepts YYYY-MM-DD or YYYYMMDD (consistent-dash shapes only); returns the
 // normalized ISO string YYYY-MM-DD, or undefined when the shape is invalid.
 // Shape-only — no calendar validity check (an impossible-but-shaped date like
@@ -1370,7 +1385,7 @@ async function main() {
   // --until disables the cap entirely (no intersection — otherwise a past
   // --until would silently empty the output).
   let capActive = false;
-  if (display === "history" && period !== "monthly" && sinceFlag === undefined && untilFlag === undefined && !fullFlag) {
+  if (capApplies(display, period, sinceFlag, untilFlag, fullFlag)) {
     sinceFlag = threeMonthFloor();
     capActive = true;
   }

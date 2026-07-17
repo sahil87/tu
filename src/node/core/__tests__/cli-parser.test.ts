@@ -1,7 +1,7 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseDataArgs, parseGlobalFlags, threeMonthFloor } from "../cli.js";
+import { capApplies, parseDataArgs, parseGlobalFlags, threeMonthFloor } from "../cli.js";
 
 function captureExit(): { code: number | null; errors: string[] } {
   const state = { code: null as number | null, errors: [] as string[] };
@@ -497,5 +497,40 @@ describe("threeMonthFloor", () => {
 
   it("always returns the first day of the month (YYYY-MM-01)", () => {
     assert.match(threeMonthFloor(new Date(2026, 8, 30)), /^\d{4}-\d{2}-01$/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// capApplies: implicit 3-month cap injection decision (the main() guard)
+// ---------------------------------------------------------------------------
+
+describe("capApplies", () => {
+  it("engages on daily history with no explicit window and no --full", () => {
+    assert.equal(capApplies("history", "daily", undefined, undefined, false), true);
+  });
+
+  it("engages on weekly history with no explicit window and no --full", () => {
+    assert.equal(capApplies("history", "weekly", undefined, undefined, false), true);
+  });
+
+  it("does not engage on monthly history (full history is always shown)", () => {
+    assert.equal(capApplies("history", "monthly", undefined, undefined, false), false);
+  });
+
+  it("does not engage on snapshot display", () => {
+    assert.equal(capApplies("snapshot", "daily", undefined, undefined, false), false);
+    assert.equal(capApplies("snapshot", "weekly", undefined, undefined, false), false);
+  });
+
+  it("is disabled by an explicit --since", () => {
+    assert.equal(capApplies("history", "daily", "2026-01-01", undefined, false), false);
+  });
+
+  it("is disabled by an explicit --until", () => {
+    assert.equal(capApplies("history", "daily", undefined, "2026-06-30", false), false);
+  });
+
+  it("is disabled by --full", () => {
+    assert.equal(capApplies("history", "weekly", undefined, undefined, true), false);
   });
 });
