@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { RainState } from "../rain.js";
+import { RainState, computeActiveDropCount } from "../rain.js";
 import { setNoColor } from "../colors.js";
 
 // Disable colors for simpler assertions
@@ -156,5 +156,87 @@ describe("RainState", () => {
       assert.ok(pos >= startRow, `row ${pos} should be >= startRow ${startRow}`);
       assert.ok(pos < startRow + 5, `row ${pos} should be < ${startRow + 5}`);
     }
+  });
+
+  describe("computeActiveDropCount", () => {
+    it("equals width-only count at or below the reference height (regression guard)", () => {
+      // rows <= DENSITY_REF_ROWS (20) clamps the height scale to 1x, so the
+      // count matches the pre-change Math.round(cols * 0.3) exactly.
+      assert.equal(computeActiveDropCount(40, 20), Math.round(40 * 0.3)); // 12
+      assert.equal(computeActiveDropCount(40, 10), Math.round(40 * 0.3)); // 12
+      assert.equal(computeActiveDropCount(40, 1), Math.round(40 * 0.3)); // 12
+      assert.equal(computeActiveDropCount(100, 15), Math.round(100 * 0.3)); // 30
+    });
+
+    it("scales linearly with height between the reference and the cap", () => {
+      // 40 rows = 2x DENSITY_REF_ROWS -> 2x the base count.
+      assert.equal(computeActiveDropCount(40, 40), 24);
+      // 30 rows = 1.5x -> Math.round(40 * 0.3 * 1.5) = 18.
+      assert.equal(computeActiveDropCount(40, 30), 18);
+    });
+
+    it("caps the height scale at 3x for very tall zones", () => {
+      // 60 rows = exactly 3x DENSITY_REF_ROWS -> Math.round(40 * 0.3 * 3) = 36.
+      assert.equal(computeActiveDropCount(40, 60), 36);
+      // Beyond the cap the count does not grow further.
+      assert.equal(computeActiveDropCount(40, 200), 36);
+    });
+  });
+
+  it("scales occupancy with rain-zone height", () => {
+    // Count distinct occupied cells (non-space cursor writes) accumulated over
+    // several tick/render cycles. A taller zone gets a scaled-up drop count, so
+    // it occupies more distinct cells than a same-width reference-height zone.
+    function occupiedCells(
+      rain: RainState,
+      rows: number,
+      startRow: number,
+      ticks: number,
+    ): Set<string> {
+      const cells = new Set<string>();
+      // Match a cursor move followed by the single written character.
+      const re = /\x1b\[(\d+);(\d+)H(.)/g;
+      for (let i = 0; i < ticks; i++) {
+        rain.tick();
+        const output = rain.render(startRow);
+        for (const m of output.matchAll(re)) {
+          const row = Number(m[1]);
+          const col = Number(m[2]);
+          const char = m[3];
+          if (char !== " ") cells.add(`${row},${col}`);
+          // Assert every write stays within the zone's row bounds.
+          assert.ok(
+            row >= startRow && row < startRow + rows,
+            `row ${row} should be within [${startRow}, ${startRow + rows})`,
+          );
+        }
+      }
+      return cells;
+    }
+
+    const startRow = 1;
+    const ticks = 20;
+    const tall = new RainState(40, 60); // 3x scale -> 36 drops
+    const reference = new RainState(40, 20); // 1x scale -> 12 drops
+    const tallCells = occupiedCells(tall, 60, startRow, ticks);
+    const referenceCells = occupiedCells(reference, 20, startRow, ticks);
+
+    assert.ok(tallCells.size > 0, "tall zone should render occupied cells");
+    assert.ok(
+      tallCells.size > referenceCells.size,
+      `tall zone (${tallCells.size} cells) should occupy more cells than reference (${referenceCells.size})`,
+    );
+
+    // Discriminating regression guard: drops keep their column on respawn, so
+    // the pre-fix width-only sizing can never occupy more than
+    // Math.round(cols * DENSITY) = 12 distinct columns in a 40-col zone; the
+    // height-scaled count seeds 36 distinct columns.
+    const tallColumns = new Set(
+      [...tallCells].map((key) => key.split(",")[1]),
+    );
+    assert.ok(
+      tallColumns.size > Math.round(40 * 0.3),
+      `tall zone should occupy more than 12 distinct columns (got ${tallColumns.size})`,
+    );
   });
 });

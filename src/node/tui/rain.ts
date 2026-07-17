@@ -10,6 +10,8 @@ const LATIN = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const CHAR_POOL = KATAKANA + DIGITS + LATIN;
 
 const DENSITY = 0.3;
+const DENSITY_REF_ROWS = 20; // zone height the current DENSITY was calibrated at
+const MAX_DENSITY_SCALE = 3; // cap so very tall zones don't produce unbounded per-frame output
 const MIN_SPEED = 0.3;
 const MAX_SPEED = 1.0;
 const MIN_LENGTH = 3;
@@ -27,6 +29,19 @@ function randInt(min: number, max: number): number {
 
 function randChar(): string {
   return CHAR_POOL[Math.floor(Math.random() * CHAR_POOL.length)];
+}
+
+// Active drop count scales with rain-zone height: DENSITY is calibrated at
+// DENSITY_REF_ROWS, and taller zones get proportionally more drops so coverage
+// stays roughly constant. Clamped to 1x at/below the reference height
+// (byte-identical to the prior width-only count) and capped at
+// MAX_DENSITY_SCALE to bound per-frame output on very tall zones. With the
+// shipped constants the count stays at or below `cols` (0.3 * 3 = 0.9); a
+// column only hosts a second drop if DENSITY * MAX_DENSITY_SCALE is tuned
+// above 1.
+export function computeActiveDropCount(cols: number, rows: number): number {
+  const heightScale = Math.min(MAX_DENSITY_SCALE, Math.max(1, rows / DENSITY_REF_ROWS));
+  return Math.round(cols * DENSITY * heightScale);
 }
 
 interface Drop {
@@ -57,15 +72,18 @@ export class RainState {
   private initDrops(): void {
     this.drops = [];
     this.prevPositions = new Set();
-    const activeCount = Math.round(this.cols * DENSITY);
-    // Shuffle column indices and pick first activeCount
+    const activeCount = computeActiveDropCount(this.cols, this.rows);
+    // Shuffle column indices, then assign drops round-robin over them: every
+    // column is used once before any column would get a second drop (which
+    // only happens if the constants are tuned so DENSITY * MAX_DENSITY_SCALE
+    // exceeds 1 — shipped constants stay within one drop per column).
     const columns = Array.from({ length: this.cols }, (_, i) => i);
     for (let i = columns.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [columns[i], columns[j]] = [columns[j], columns[i]];
     }
-    for (let i = 0; i < activeCount && i < columns.length; i++) {
-      this.drops.push(this.createDrop(columns[i], true));
+    for (let i = 0; i < activeCount; i++) {
+      this.drops.push(this.createDrop(columns[i % this.cols], true));
     }
   }
 
