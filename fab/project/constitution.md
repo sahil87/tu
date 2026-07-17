@@ -39,6 +39,10 @@ Node/TypeScript test files MUST be co-located with the source code they test, in
 ### Output Stability
 CLI output format (table layouts, color usage, JSON structure) SHOULD remain stable across patch versions. Breaking output changes MUST be accompanied by a minor version bump since downstream scripts may parse the output.
 
+### Toolkit Standards
+
+This tool is part of the sahil87 toolkit and MUST conform to the toolkit's published standards. The standards are enumerated by running `shll standards` — each entry names what it governs; read one with `shll standards <name>`. Before changing the CLI surface, help output, README.md, or docs/site/, the change MUST be checked against the standards governing that surface. If shll is unavailable, the canonical sources are the sahil87/shll repository's docs/site/standards/ tree (rendered on https://shll.ai). Standards added or revised there bind this repo without further amendment to this constitution.
+
 ## Governance
 
-**Version**: 1.0.0 | **Ratified**: 2026-03-06 | **Last Amended**: 2026-03-06
+**Version**: 1.1.0 | **Ratified**: 2026-03-06 | **Last Amended**: 2026-07-18
