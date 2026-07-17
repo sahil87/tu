@@ -25,9 +25,9 @@ A new ≤150-line, static-only markdown usage briefing. It renders at `/tu/skill
 
 - **When to use**: cost/usage questions about AI coding assistants on this machine (Claude Code, Codex, OpenCode); when NOT to reach for it (billing management, non-supported tools, anything needing per-request granularity beyond what ccusage emits).
 - **Capabilities map** — one line per subcommand/grammar, keyed to the command:
-  - Data grammar: `tu [tool] [period]` — tools `cc`/`cx`/`oc` (omit = all), periods `d`/`w`/`m`/`dh`/`wh`/`mh` (today/week/month, `*h` = history).
+  - Data grammar: `tu [source] [period] [display]` — sources `cc`/`codex`(`co`)/`oc`/`gemini`(`gem`)/`copilot`(`cop`) (omit = all), periods `d`/`w`/`m` plus `dh`/`wh`/`mh` (today/week/month, `*h` = history).
   - Setup/non-data: `init-conf`, `init-metrics`, `sync`, `status`, `update`, `shell-init <sh>`, `help-dump`, `skill` (self-reference).
-- **Composition patterns**: shells out to vendored `ccusage` (plus `ccusage-codex`/`ccusage-opencode` when installed), `git` (multi-machine metrics sync), `brew` (`tu update`); is shelled-out-to by shll.ai's pull cron (`tu help-dump`) and, forward, `shll agent-setup` (aggregates `tu skill`).
+- **Composition patterns**: shells out to a single vendored `ccusage` binary (v20 all-agent CLI — per-source subcommands via prefixArgs, no separate `ccusage-*` binaries), `git` (multi-machine metrics sync), `brew` (`tu update`); is shelled-out-to by shll.ai's pull cron (`tu help-dump`) and, forward, `shll agent-setup` (aggregates `tu skill`).
 - **Output & exit-code contracts**: stdout = data, stderr = diagnostics/warnings (graceful degradation per Constitution II — a missing data source warns and falls back, never crashes); `--json`/`-j`, `--csv`, `--md` on data commands only; document tu's *actual* exit-code behavior (verify at apply — do not fabricate a `0/1/2` convention the binary doesn't implement).
 - **Gotchas**: cached data with TTL (`--fresh`/`-f` to bypass); single vs multi mode depends on `~/.tu.conf` (`tu status` shows which); `--watch`/`-w` is an interactive TUI — agents should not invoke it; `--no-color` for clean parseable output.
 
