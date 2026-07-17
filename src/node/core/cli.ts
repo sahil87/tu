@@ -960,7 +960,9 @@ async function dispatchSingleTool(
   const toolCfg = TOOLS[toolKey];
   if (!toolCfg) {
     console.error(`Unknown tool: ${toolKey}`);
-    console.log(SHORT_USAGE);
+    // Usage hint is a diagnostic on an error path — stderr, not stdout
+    // (toolkit principle №2: stdout is data, stderr is diagnostics).
+    console.error(SHORT_USAGE);
     process.exit(1);
   }
 
@@ -1328,7 +1330,9 @@ async function main() {
     parsed = parseDataArgs(filteredArgs);
   } catch (err: unknown) {
     console.error((err as Error).message);
-    console.log(SHORT_USAGE);
+    // Usage hint is a diagnostic on an error path — stderr, not stdout
+    // (toolkit principle №2: stdout is data, stderr is diagnostics).
+    console.error(SHORT_USAGE);
     process.exit(1);
   }
   const { source, period, display } = parsed;

@@ -37,10 +37,12 @@ describe("buildHelpDoc", () => {
     assert.equal(doc.version, "0.4.14");
   });
 
-  it("emits a Z-suffixed ISO-8601 captured_at", () => {
-    assert.equal(typeof doc.captured_at, "string");
-    assert.ok(doc.captured_at.endsWith("Z"), "captured_at must be Z-suffixed UTC");
-    assert.ok(!Number.isNaN(Date.parse(doc.captured_at)), "captured_at must be parseable");
+  it("does NOT emit captured_at (owned by shll.ai's puller)", () => {
+    // The help-dump standard forbids emitting captured_at — the capture
+    // timestamp belongs to shll.ai, which stamps it after capture. The envelope
+    // is exactly {tool, version, schema_version, root}.
+    assert.ok(!("captured_at" in doc), "captured_at must be absent from the envelope");
+    assert.deepEqual(Object.keys(doc).sort(), ["root", "schema_version", "tool", "version"]);
   });
 
   it("builds the root Node with the expected identity fields", () => {
@@ -119,7 +121,7 @@ describe("runHelpDump (in-binary command)", () => {
     assert.equal(doc.schema_version, 1);
     assert.equal(doc.tool, "tu");
     assert.ok(typeof doc.version === "string" && doc.version.length > 0);
-    assert.ok(doc.captured_at.endsWith("Z"));
+    assert.ok(!("captured_at" in doc), "captured_at must be absent (owned by shll.ai's puller)");
     assert.equal(doc.root.name, "tu");
     assert.deepEqual(doc.root.commands, []);
   });
