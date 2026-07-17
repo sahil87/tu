@@ -10,7 +10,7 @@ progress:
     review: done
     hydrate: done
     ship: done
-    review-pr: active
+    review-pr: done
 plan:
     generated: true
     task_count: 9
@@ -34,7 +34,7 @@ stage_metrics:
     review: {started_at: "2026-07-17T21:56:04Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T22:14:48Z"}
     hydrate: {started_at: "2026-07-17T22:14:48Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T22:18:08Z"}
     ship: {started_at: "2026-07-17T22:18:08Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T22:20:57Z"}
-    review-pr: {started_at: "2026-07-17T22:20:57Z", driver: git-pr, iterations: 1}
+    review-pr: {started_at: "2026-07-17T22:20:57Z", driver: git-pr, iterations: 1, completed_at: "2026-07-17T22:33:50Z"}
 prs:
     - https://github.com/sahil87/tu/pull/50
 change_type_source: explicit
@@ -54,4 +54,4 @@ true_impact:
     computed_at_stage: ship
 summary: 'Adopt toolkit skill standard: tu skill subcommand prints static docs/site/skill.md bundle, embedded via --define:__SKILL_MD__ with post-build cmp drift guard'
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-07-17T22:20:57Z
+last_updated: 2026-07-17T22:33:50Z
