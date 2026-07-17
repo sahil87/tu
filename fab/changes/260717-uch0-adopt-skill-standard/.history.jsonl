@@ -1,0 +1,9 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-07-17T21:42:16Z"}
+{"args":"Adopt the toolkit skill standard for tu — add a tu skill subcommand printing a stable one-page agent usage bundle to stdout, byte-identical to a new canonical docs/site/skill.md (backlog uch0)","cmd":"fab-new","event":"command","ts":"2026-07-17T21:42:16Z"}
+{"delta":"+4.9","event":"confidence","score":4.9,"trigger":"calc-score","ts":"2026-07-17T21:44:05Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-07-17T21:47:43Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-17T21:48:13Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-17T21:56:04Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-07-17T22:14:48Z"}
+{"event":"review","result":"passed","ts":"2026-07-17T22:14:48Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-07-17T22:18:08Z"}

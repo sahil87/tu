@@ -7,6 +7,7 @@ import { runWatch } from "../tui/watch.js";
 import { setNoColor } from "../tui/colors.js";
 import { BASH_COMPLETION, ZSH_COMPLETION, FISH_COMPLETION } from "./completions.js";
 import { buildHelpDoc } from "./help-dump.js";
+import { SKILL_MD } from "./skill.js";
 import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { execSync, execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -93,6 +94,7 @@ Setup:
   tu status            Show config and sync state
   tu update            Update tu to latest version
   tu shell-init <sh>   Emit shell init script (bash/zsh/fish)
+  tu skill             Print agent usage bundle (markdown)
 
 Help: tu help | tu -h | tu --help
 
@@ -286,6 +288,13 @@ export function runHelpDump(): void {
     helpText: FULL_HELP + "\n",
   });
   process.stdout.write(JSON.stringify(doc, null, 2) + "\n");
+}
+
+// `tu skill` — print the agent usage bundle to STDOUT, byte-identical to
+// docs/site/skill.md. Static content, no rendering/pager/framing: stdout is the
+// bundle, stderr is empty, exit 0. See skill.ts for how SKILL_MD is resolved.
+export function runSkill(): void {
+  process.stdout.write(SKILL_MD);
 }
 
 const SHELL_INIT_USAGE = `Usage: tu shell-init <bash|zsh|fish>
@@ -1322,6 +1331,7 @@ async function main() {
     if (cmd === "update") { runUpdate(process.argv.includes("--skip-brew-update")); return; }
     if (cmd === "shell-init") { runShellInit(filteredArgs[1]); return; }
     if (cmd === "help-dump") { runHelpDump(); return; }
+    if (cmd === "skill") { runSkill(); return; }
   }
 
   // Parse positional data args (source, period, display)
