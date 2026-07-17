@@ -32,7 +32,7 @@ The governance line MUST be updated from `**Version**: 1.0.0 | **Ratified**: 202
 ### Non-Goals
 
 - Conformance fixes to the CLI surface, help output, README.md, or docs/site/ — installing the obligation is in scope; acting on it is not.
-- Any change to files other than `fab/project/constitution.md` (no src/, no README.md, no docs/site/, no tests).
+- Any change to product/runtime files other than `fab/project/constitution.md` (no src/, no README.md, no docs/site/, no tests). The fab change-tracking artifacts under `fab/changes/260717-43u4-bind-toolkit-standards/` are pipeline-generated and expected.
 - Copying, listing, or snapshotting the toolkit's standards into this repo — the article points at `shll standards` deliberately.
 
 ### Design Decisions
@@ -45,7 +45,7 @@ The governance line MUST be updated from `**Version**: 1.0.0 | **Ratified**: 202
 
 - [x] T001 Add the `### Toolkit Standards` article as the last `###` article under `## Additional Constraints` in `fab/project/constitution.md`, immediately before `## Governance`, using the intake's exact article text with `--` rendered as em dashes (`—`) <!-- R1 -->
 - [x] T002 Update the governance line in `fab/project/constitution.md` to `**Version**: 1.1.0 | **Ratified**: 2026-03-06 | **Last Amended**: 2026-07-18` <!-- R3 -->
-- [x] T003 Verify the written article contains no standard names, counts, or per-standard URLs beyond the permitted literals, and that no file other than `fab/project/constitution.md` was modified <!-- R2 -->
+- [x] T003 Verify the written article contains no standard names, counts, or per-standard URLs beyond the permitted literals, and that no product/runtime file other than `fab/project/constitution.md` was modified (the fab change-tracking artifacts under `fab/changes/260717-43u4-bind-toolkit-standards/` are pipeline-generated and expected) <!-- R2 -->
 
 ## Acceptance
 
@@ -65,7 +65,7 @@ The governance line MUST be updated from `**Version**: 1.0.0 | **Ratified**: 202
 ### Code Quality
 
 - [x] A-007 Pattern consistency: The new article matches the file's existing `### {Title}` + prose structure and its em-dash usage
-- [x] A-008 No unnecessary duplication: No file other than `fab/project/constitution.md` is changed; the standards are referenced by pointer, not duplicated
+- [x] A-008 No unnecessary duplication: No product/runtime file other than `fab/project/constitution.md` is changed (fab change-tracking artifacts under `fab/changes/260717-43u4-bind-toolkit-standards/` are pipeline-generated and expected); the standards are referenced by pointer, not duplicated
 
 ## Notes
 
