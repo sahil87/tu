@@ -27,19 +27,24 @@ interface WatchSession {
 
 export const ROLLING_WINDOW = 5;
 
-function enterAltScreen(): void {
+// Exported for testing (cursor hide/show sequences)
+export function enterAltScreen(): void {
   process.stdout.write("\x1b[?1049h");
+  process.stdout.write("\x1b[?25l"); // hide cursor for the watch session
 }
 
-function exitAltScreen(): void {
+export function exitAltScreen(): void {
+  process.stdout.write("\x1b[?25h"); // restore cursor visibility
   process.stdout.write("\x1b[?1049l");
 }
 
-function renderSkeleton(termWidth: number): void {
+/**
+ * Build the loading-skeleton content lines, write them to the alt screen, and
+ * return them so the caller can lay out the rain zone against their geometry.
+ */
+function renderSkeleton(termWidth: number): string[] {
   const compact = termWidth < COMPACT_THRESHOLD;
-
-  // Cursor home
-  process.stdout.write("\x1b[H");
+  const lines: string[] = [];
 
   if (!compact) {
     // Stats grid with placeholder values
@@ -50,17 +55,12 @@ function renderSkeleton(termWidth: number): void {
       pollHistory: [],
       totalTokens: 0,
     };
-    const statsLines = buildStatsGrid(skeletonSession, 0);
-    for (const line of statsLines) {
-      process.stdout.write(line + "\n");
-    }
-  }
+    lines.push(...buildStatsGrid(skeletonSession, 0));
 
-  if (!compact) {
     // Full table header (leading blank matches renderTotal's output)
-    process.stdout.write("\n");
-    process.stdout.write(boldWhite("\u{1F4CA} Combined Usage (daily)") + "\n");
-    process.stdout.write("\n");
+    lines.push("");
+    lines.push(boldWhite("\u{1F4CA} Combined Usage (daily)"));
+    lines.push("");
 
     const W = 14;
     const N = 14;
@@ -68,20 +68,29 @@ function renderSkeleton(termWidth: number): void {
     const header = cols
       .map((c, i) => boldCyan(i === 0 ? c.padEnd(W) : c.padStart(N)))
       .join(" | ");
-    process.stdout.write(header + "\n");
+    lines.push(header);
 
     const divider = [W, N, N, N, N].map((w) => "\u2500".repeat(w)).join("\u2500|\u2500");
-    process.stdout.write(dim(divider) + "\n");
+    lines.push(dim(divider));
 
     // Centered "Loading..." placeholder
     const loadingText = "Loading...";
     const visibleDivLen = divider.length;
     const pad = Math.max(0, Math.floor((visibleDivLen - loadingText.length) / 2));
-    process.stdout.write(" ".repeat(pad) + dim(loadingText) + "\n");
+    lines.push(" ".repeat(pad) + dim(loadingText));
   } else {
     // Compact skeleton: just centered loading text
-    process.stdout.write("\n" + dim("Loading...") + "\n");
+    lines.push("");
+    lines.push(dim("Loading..."));
   }
+
+  // Cursor home, then write the skeleton content
+  process.stdout.write("\x1b[H");
+  for (const line of lines) {
+    process.stdout.write(line + "\n");
+  }
+
+  return lines;
 }
 
 export async function runWatch(opts: WatchOptions): Promise<never> {
@@ -140,7 +149,11 @@ export async function runWatch(opts: WatchOptions): Promise<never> {
 
   // Enter alternate screen and render skeleton
   enterAltScreen();
-  renderSkeleton(termWidth());
+  const skeletonLines = renderSkeleton(termWidth());
+
+  // Lay out the rain zone against the skeleton geometry so rain animates
+  // immediately alongside the loading skeleton (before the first poll).
+  compositor.layoutForSkeleton(skeletonLines);
 
   // Start compositor (rain begins immediately alongside skeleton)
   compositor.start();
