@@ -69,7 +69,9 @@ function validateArtifact(path) {
 
   if (!isNonEmptyString(doc.tool)) fail("`tool` must be a non-empty string");
   if (!isNonEmptyString(doc.version)) fail("`version` must be a non-empty string");
-  if (!isNonEmptyString(doc.captured_at)) fail("`captured_at` must be a non-empty string");
+  // No `captured_at`: the help-dump standard forbids emitting it (shll.ai's
+  // puller owns the capture timestamp and stamps it after capture).
+  if ("captured_at" in doc) fail("`captured_at` must NOT be present (owned by shll.ai)");
   if (doc.schema_version !== SCHEMA_VERSION) fail(`\`schema_version\` must be ${SCHEMA_VERSION}`);
   if (typeof doc.root !== "object" || doc.root === null) fail("`root` must be an object");
 

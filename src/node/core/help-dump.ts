@@ -13,9 +13,15 @@
 // directly. All I/O (capturing help text, writing the file, validation) lives at
 // the call sites.
 //
-// Contract (frozen, schema_version 1):
-//   { tool, version, captured_at, schema_version: 1, root: Node }
+// Contract (schema_version 1):
+//   { tool, version, schema_version: 1, root: Node }
 //   Node = { name, path, short, usage, text, commands }
+//
+// NOTE: the envelope deliberately does NOT carry `captured_at`. Per the
+// toolkit help-dump standard (shll standards help-dump), the capture timestamp
+// is owned by shll.ai's puller — a tool cannot know its own capture time — and
+// the puller stamps it after capture. (An earlier June-2026 "frozen contract"
+// included it; the standard has since forbidden it.)
 
 export const SCHEMA_VERSION = 1;
 export const TOOL = "tu";
@@ -34,7 +40,6 @@ export interface HelpNode {
 export interface HelpDoc {
   tool: string;
   version: string;
-  captured_at: string;
   schema_version: typeof SCHEMA_VERSION;
   root: HelpNode;
 }
@@ -74,7 +79,6 @@ export function buildHelpDoc({ name, version, description, helpText }: BuildHelp
   return {
     tool: name ?? TOOL,
     version,
-    captured_at: new Date().toISOString(),
     schema_version: SCHEMA_VERSION,
     root: {
       name: TOOL,

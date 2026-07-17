@@ -1,0 +1,57 @@
+id: rdo3
+name: 260717-rdo3-toolkit-standards-conformance
+created: 2026-07-17T20:14:50Z
+created_by: sahil-noon
+change_type: fix
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
+plan:
+    generated: true
+    task_count: 12
+    acceptance_count: 21
+    acceptance_completed: 21
+confidence:
+    certain: 5
+    confident: 4
+    tentative: 0
+    unresolved: 0
+    score: 4.6
+    fuzzy: true
+    dimensions:
+        signal: 81.7
+        reversibility: 85.0
+        competence: 85.0
+        disambiguation: 82.2
+stage_metrics:
+    intake: {started_at: "2026-07-17T20:14:50Z", driver: fab-new, iterations: 1, completed_at: "2026-07-17T20:21:50Z"}
+    apply: {started_at: "2026-07-17T20:21:50Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T20:34:21Z"}
+    review: {started_at: "2026-07-17T20:34:21Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T20:42:35Z"}
+    hydrate: {started_at: "2026-07-17T20:42:35Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T20:45:10Z"}
+    ship: {started_at: "2026-07-17T20:45:10Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T20:48:53Z"}
+    review-pr: {started_at: "2026-07-17T20:48:53Z", driver: git-pr, iterations: 1, completed_at: "2026-07-17T20:55:48Z"}
+prs:
+    - https://github.com/sahil87/tu/pull/49
+change_type_source: explicit
+true_impact:
+    added: 596
+    deleted: 19
+    net: 577
+    excluding:
+        added: 31
+        deleted: 14
+        net: 17
+    tests:
+        added: 7
+        deleted: 5
+        net: 2
+    computed_at: "2026-07-17T20:48:53Z"
+    computed_at_stage: ship
+summary: help-dump envelope drops captured_at; record toolkit-standards conformance posture (constitution v1.1.0 Toolkit Standards article, audited vs shll v0.0.23)
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-07-17T20:55:48Z
