@@ -130,11 +130,11 @@ describe("runShellInit: no argument", () => {
 });
 
 describe("runShellInit: unknown shell", () => {
-  it("emits stderr message and exits 1", (t) => {
+  it("emits stderr message and exits 2", (t) => {
     t.after(restore);
     const cap = captureIo();
     runShellInit("powershell");
-    assert.equal(cap.exitCode, 1);
+    assert.equal(cap.exitCode, 2);
     assert.ok(
       cap.errors.some((e) => e.includes("Unknown shell: powershell. Supported: bash, zsh, fish")),
       `expected stderr message; got: ${cap.errors.join("; ")}`,

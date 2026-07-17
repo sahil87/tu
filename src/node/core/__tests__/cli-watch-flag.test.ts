@@ -67,7 +67,7 @@ describe("--interval / -i extraction", () => {
     t.after(restoreMocks);
     const s = captureExit();
     parseGlobalFlags(["cc", "-w", "-i", "3"]);
-    assert.equal(s.code, 1);
+    assert.equal(s.code, 2);
     assert.ok(s.errors.some(e => e.includes("minimum is 5")));
   });
 
@@ -75,7 +75,7 @@ describe("--interval / -i extraction", () => {
     t.after(restoreMocks);
     const s = captureExit();
     parseGlobalFlags(["cc", "-w", "-i", "7200"]);
-    assert.equal(s.code, 1);
+    assert.equal(s.code, 2);
     assert.ok(s.errors.some(e => e.includes("maximum is 3600")));
   });
 
@@ -83,7 +83,7 @@ describe("--interval / -i extraction", () => {
     t.after(restoreMocks);
     const s = captureExit();
     parseGlobalFlags(["cc", "-w", "-i"]);
-    assert.equal(s.code, 1);
+    assert.equal(s.code, 2);
     assert.ok(s.errors.some(e => e.includes("requires a numeric value")));
   });
 
@@ -91,7 +91,7 @@ describe("--interval / -i extraction", () => {
     t.after(restoreMocks);
     const s = captureExit();
     parseGlobalFlags(["cc", "-w", "-i", "abc"]);
-    assert.equal(s.code, 1);
+    assert.equal(s.code, 2);
     assert.ok(s.errors.some(e => e.includes("requires a numeric value")));
   });
 
@@ -116,7 +116,7 @@ describe("--interval / -i extraction", () => {
     t.after(restoreMocks);
     const s = captureExit();
     parseGlobalFlags(["cc", "-w", "-i", "5.5"]);
-    assert.equal(s.code, 1);
+    assert.equal(s.code, 2);
     assert.ok(s.errors.some(e => e.includes("requires a numeric value")));
   });
 });
@@ -126,7 +126,7 @@ describe("--watch + --json incompatibility", () => {
     t.after(restoreMocks);
     const s = captureExit();
     parseGlobalFlags(["cc", "--watch", "--json"]);
-    assert.equal(s.code, 1);
+    assert.equal(s.code, 2);
     assert.ok(s.errors.some(e => e.includes("--watch and --json are incompatible")));
   });
 

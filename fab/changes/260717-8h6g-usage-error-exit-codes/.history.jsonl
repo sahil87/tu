@@ -1,0 +1,12 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-07-17T21:44:40Z"}
+{"args":"8h6g: Align tu's usage-error exit codes with the toolkit convention (0 success / 1 operational failure / 2 usage error)","cmd":"fab-new","event":"command","ts":"2026-07-17T21:44:40Z"}
+{"delta":"+4.5","event":"confidence","score":4.5,"trigger":"calc-score","ts":"2026-07-17T21:46:42Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-07-17T21:48:09Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-17T21:48:22Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-17T21:57:32Z"}
+{"event":"review","result":"failed","ts":"2026-07-17T22:13:38Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-17T22:13:38Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-17T22:16:43Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-07-17T22:24:54Z"}
+{"event":"review","result":"passed","ts":"2026-07-17T22:24:54Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-07-17T22:28:09Z"}

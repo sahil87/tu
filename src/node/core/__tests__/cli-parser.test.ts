@@ -268,7 +268,7 @@ describe("parseGlobalFlags: format-flag conflicts", () => {
     t.after(restoreMocks);
     const s = captureExit();
     parseGlobalFlags(["cc", "--json", "--csv"]);
-    assert.equal(s.code, 1);
+    assert.equal(s.code, 2);
     assert.ok(s.errors.some((e) => e.includes("--json and --csv are incompatible")), `got errors: ${s.errors.join("; ")}`);
   });
 
@@ -276,7 +276,7 @@ describe("parseGlobalFlags: format-flag conflicts", () => {
     t.after(restoreMocks);
     const s = captureExit();
     parseGlobalFlags(["cc", "--csv", "--md"]);
-    assert.equal(s.code, 1);
+    assert.equal(s.code, 2);
     assert.ok(s.errors.some((e) => e.includes("--csv and --md are incompatible")));
   });
 
@@ -284,7 +284,7 @@ describe("parseGlobalFlags: format-flag conflicts", () => {
     t.after(restoreMocks);
     const s = captureExit();
     parseGlobalFlags(["cc", "--json", "--md"]);
-    assert.equal(s.code, 1);
+    assert.equal(s.code, 2);
     assert.ok(s.errors.some((e) => e.includes("--json and --md are incompatible")));
   });
 
@@ -292,7 +292,7 @@ describe("parseGlobalFlags: format-flag conflicts", () => {
     t.after(restoreMocks);
     const s = captureExit();
     parseGlobalFlags(["cc", "--csv", "--watch"]);
-    assert.equal(s.code, 1);
+    assert.equal(s.code, 2);
     assert.ok(s.errors.some((e) => e.includes("--watch and --csv are incompatible")));
   });
 
@@ -300,7 +300,7 @@ describe("parseGlobalFlags: format-flag conflicts", () => {
     t.after(restoreMocks);
     const s = captureExit();
     parseGlobalFlags(["cc", "--md", "--watch"]);
-    assert.equal(s.code, 1);
+    assert.equal(s.code, 2);
     assert.ok(s.errors.some((e) => e.includes("--watch and --md are incompatible")));
   });
 
@@ -308,7 +308,7 @@ describe("parseGlobalFlags: format-flag conflicts", () => {
     t.after(restoreMocks);
     const s = captureExit();
     parseGlobalFlags(["cc", "--csv", "-w"]);
-    assert.equal(s.code, 1);
+    assert.equal(s.code, 2);
     assert.ok(s.errors.some((e) => e.includes("--watch and --csv are incompatible")));
   });
 
@@ -316,7 +316,7 @@ describe("parseGlobalFlags: format-flag conflicts", () => {
     t.after(restoreMocks);
     const s = captureExit();
     parseGlobalFlags(["cc", "--md", "-w"]);
-    assert.equal(s.code, 1);
+    assert.equal(s.code, 2);
     assert.ok(s.errors.some((e) => e.includes("--watch and --md are incompatible")));
   });
 
@@ -324,7 +324,7 @@ describe("parseGlobalFlags: format-flag conflicts", () => {
     t.after(restoreMocks);
     const s = captureExit();
     parseGlobalFlags(["cc", "--watch", "--json"]);
-    assert.equal(s.code, 1);
+    assert.equal(s.code, 2);
     assert.ok(s.errors.some((e) => e.includes("--watch and --json are incompatible")));
   });
 });
@@ -350,7 +350,7 @@ describe("parseGlobalFlags: -j alias for --json", () => {
     t.after(restoreMocks);
     const s = captureExit();
     parseGlobalFlags(["cc", "-j", "--csv"]);
-    assert.equal(s.code, 1);
+    assert.equal(s.code, 2);
     assert.ok(s.errors.some((e) => e.includes("--json and --csv are incompatible")), `got errors: ${s.errors.join("; ")}`);
   });
 
@@ -358,7 +358,7 @@ describe("parseGlobalFlags: -j alias for --json", () => {
     t.after(restoreMocks);
     const s = captureExit();
     parseGlobalFlags(["cc", "-j", "--watch"]);
-    assert.equal(s.code, 1);
+    assert.equal(s.code, 2);
     assert.ok(s.errors.some((e) => e.includes("--watch and --json are incompatible")), `got errors: ${s.errors.join("; ")}`);
   });
 });
@@ -406,35 +406,35 @@ describe("parseGlobalFlags: --since / -s / --until parsing", () => {
 });
 
 describe("parseGlobalFlags: --since / --until validation errors", () => {
-  it("--since with no value exits 1", (t) => {
+  it("--since with no value exits 2", (t) => {
     t.after(restoreMocks);
     const s = captureExit();
     parseGlobalFlags(["h", "--since"]);
-    assert.equal(s.code, 1);
+    assert.equal(s.code, 2);
     assert.ok(s.errors.some((e) => e.includes("--since requires a date (YYYY-MM-DD or YYYYMMDD)")), `got: ${s.errors.join("; ")}`);
   });
 
-  it("--since with a malformed value exits 1", (t) => {
+  it("--since with a malformed value exits 2", (t) => {
     t.after(restoreMocks);
     const s = captureExit();
     parseGlobalFlags(["h", "--since", "june"]);
-    assert.equal(s.code, 1);
+    assert.equal(s.code, 2);
     assert.ok(s.errors.some((e) => e.includes("--since requires a date (YYYY-MM-DD or YYYYMMDD)")));
   });
 
-  it("--until with a malformed value exits 1 with its own name", (t) => {
+  it("--until with a malformed value exits 2 with its own name", (t) => {
     t.after(restoreMocks);
     const s = captureExit();
     parseGlobalFlags(["h", "--until", "2026-6-1"]);
-    assert.equal(s.code, 1);
+    assert.equal(s.code, 2);
     assert.ok(s.errors.some((e) => e.includes("--until requires a date (YYYY-MM-DD or YYYYMMDD)")));
   });
 
-  it("inverted window (since > until) exits 1", (t) => {
+  it("inverted window (since > until) exits 2", (t) => {
     t.after(restoreMocks);
     const s = captureExit();
     parseGlobalFlags(["h", "--since", "2026-06-30", "--until", "2026-06-01"]);
-    assert.equal(s.code, 1);
+    assert.equal(s.code, 2);
     assert.ok(s.errors.some((e) => e.includes("--since must be on or before --until")));
   });
 

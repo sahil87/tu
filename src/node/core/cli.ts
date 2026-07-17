@@ -64,6 +64,12 @@ function tildefy(p: string): string {
   return p.startsWith(home) ? "~" + p.slice(home.length) : p;
 }
 
+// Exit-code convention (sahil87 toolkit principle №4): 0 = success,
+// 1 = operational failure (retry / check env), 2 = usage error (fix the
+// invocation). Usage-error sites exit with EXIT_USAGE; operational failures
+// keep their literal 1.
+const EXIT_USAGE = 2;
+
 export const SHORT_USAGE = `Usage: tu [source] [period] [display]
 
   tu                Today's cost, all tools
@@ -323,7 +329,7 @@ export function runShellInit(shell: string | undefined): void {
       return;
     default:
       console.error(`Unknown shell: ${shell}. Supported: bash, zsh, fish`);
-      process.exit(1);
+      process.exit(EXIT_USAGE);
   }
 }
 
@@ -777,16 +783,16 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   if (watchFlag && hasIntervalFlag) {
     if (rawIntervalVal === undefined) {
       console.error("Error: --interval requires a numeric value");
-      process.exit(1);
+      process.exit(EXIT_USAGE);
     }
     const num = Number(rawIntervalVal);
     if (num < 5) {
       console.error("Error: --interval minimum is 5 seconds");
-      process.exit(1);
+      process.exit(EXIT_USAGE);
     }
     if (num > 3600) {
       console.error("Error: --interval maximum is 3600 seconds");
-      process.exit(1);
+      process.exit(EXIT_USAGE);
     }
     watchInterval = num;
   }
@@ -795,51 +801,51 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   // keeps its original wording; --watch + --csv/--md follow the same pattern.
   if (watchFlag && jsonFlag) {
     console.error("Error: --watch and --json are incompatible");
-    process.exit(1);
+    process.exit(EXIT_USAGE);
   }
   if (jsonFlag && csvFlag) {
     console.error("Error: --json and --csv are incompatible");
-    process.exit(1);
+    process.exit(EXIT_USAGE);
   }
   if (jsonFlag && mdFlag) {
     console.error("Error: --json and --md are incompatible");
-    process.exit(1);
+    process.exit(EXIT_USAGE);
   }
   if (csvFlag && mdFlag) {
     console.error("Error: --csv and --md are incompatible");
-    process.exit(1);
+    process.exit(EXIT_USAGE);
   }
   if (watchFlag && csvFlag) {
     console.error("Error: --watch and --csv are incompatible");
-    process.exit(1);
+    process.exit(EXIT_USAGE);
   }
   if (watchFlag && mdFlag) {
     console.error("Error: --watch and --md are incompatible");
-    process.exit(1);
+    process.exit(EXIT_USAGE);
   }
 
   if (hasUserFlag && userFlag === undefined) {
     console.error("Error: -u requires a username");
-    process.exit(1);
+    process.exit(EXIT_USAGE);
   }
 
   if (hasSinceFlag) {
     sinceFlag = rawSinceVal !== undefined ? normalizeDateFlag(rawSinceVal) : undefined;
     if (sinceFlag === undefined) {
       console.error("Error: --since requires a date (YYYY-MM-DD or YYYYMMDD)");
-      process.exit(1);
+      process.exit(EXIT_USAGE);
     }
   }
   if (hasUntilFlag) {
     untilFlag = rawUntilVal !== undefined ? normalizeDateFlag(rawUntilVal) : undefined;
     if (untilFlag === undefined) {
       console.error("Error: --until requires a date (YYYY-MM-DD or YYYYMMDD)");
-      process.exit(1);
+      process.exit(EXIT_USAGE);
     }
   }
   if (sinceFlag !== undefined && untilFlag !== undefined && sinceFlag > untilFlag) {
     console.error("Error: --since must be on or before --until");
-    process.exit(1);
+    process.exit(EXIT_USAGE);
   }
 
   let outputFormat: OutputFormat = "table";
@@ -1035,7 +1041,7 @@ async function dispatchSingleTool(
     // Usage hint is a diagnostic on an error path — stderr, not stdout
     // (toolkit principle №2: stdout is data, stderr is diagnostics).
     console.error(SHORT_USAGE);
-    process.exit(1);
+    process.exit(EXIT_USAGE);
   }
 
   _mark(`fetching ${toolKey} ${period}`);
@@ -1420,7 +1426,7 @@ async function main() {
     // Usage hint is a diagnostic on an error path — stderr, not stdout
     // (toolkit principle №2: stdout is data, stderr is diagnostics).
     console.error(SHORT_USAGE);
-    process.exit(1);
+    process.exit(EXIT_USAGE);
   }
   const { source, period, display } = parsed;
 
