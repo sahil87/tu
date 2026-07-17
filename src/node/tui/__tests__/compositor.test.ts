@@ -195,11 +195,20 @@ describe("Compositor.flush rain redraw", () => {
     // restored within the same flush rather than left blank until the next tick.
     const clearIdx = out.indexOf("\x1b[J");
     assert.ok(clearIdx >= 0, "flush performs a screen clear (\\x1b[J)");
-    const afterClear = out.slice(clearIdx);
+
+    // The footer (written after the clear) is ITSELF a cursor-positioned write
+    // (\x1b[${rows};1H), so asserting on any positioned sequence after the clear
+    // would pass even if the rain frame were omitted — a false positive. flush()
+    // emits the rain frame strictly AFTER the footer, so slice past the footer's
+    // position sequence and assert rain cells appear in that tail.
+    const footerSeq = `\x1b[${rows};1H`;
+    const footerIdx = out.indexOf(footerSeq, clearIdx);
+    assert.ok(footerIdx >= 0, "flush writes the footer after the clear");
+    const afterFooter = out.slice(footerIdx + footerSeq.length);
     assert.match(
-      afterClear,
+      afterFooter,
       /\x1b\[\d+;\d+H/,
-      "rain frame is re-emitted after the clear (no per-poll blink)",
+      "rain frame is re-emitted after the footer (no per-poll blink)",
     );
   });
 });
