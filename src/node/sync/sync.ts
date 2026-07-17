@@ -32,7 +32,7 @@ function commitMessage(user: string): string {
 // write (toolkit principle №5: an accurate preview must not drift from the live
 // path). In live mode the return value is ignored by existing callers.
 export interface WriteDecision {
-  filePath: string; // absolute day-file path
+  filePath: string; // day-file path, `join(metricsDir, ...)` — absolute when metricsDir is (the default `~/…` resolves absolute), relative when a relative metrics_dir is configured
   action: "write" | "skip"; // skip = never-shrink guard would skip this write
   incomingCost: number;
   existingCost?: number; // present only when an existing parseable file was read
@@ -291,18 +291,20 @@ export async function fullSync(
       tools.push({ toolKey: toolKeys[i], decisions });
     }
     // Read-only check of already-staged/dirty files under the user dir, so an
-    // existing dirty working tree is reflected in the would-commit decision
-    // (mirrors live syncMetrics' `git status --porcelain <user>/`). No network,
-    // no mutation. A missing user dir or non-git repo is treated as "no dirty
-    // files" — the dry-run must never crash on an un-synced setup.
+    // existing dirty working tree is reflected in the would-commit decision.
+    // Mirrors live syncMetrics, which runs `git status --porcelain <user>/`
+    // UNCONDITIONALLY (only its `git add` is gated on the dir existing) — so the
+    // preview must run the status even when the dir is absent on disk, or a
+    // tracked-but-deleted user dir (dir gone, but `git status` still reports the
+    // deletions) would under-report the commit. No network, no mutation. A
+    // non-git repo or any git failure is treated as "no dirty files" — the
+    // dry-run must never crash on an un-synced setup.
     let dirty = false;
-    if (existsSync(join(config.metricsDir, config.user))) {
-      try {
-        const status = await execFileAsync("git", ["-C", config.metricsDir, "status", "--porcelain", `${config.user}/`]);
-        dirty = status.trim().length > 0;
-      } catch {
-        dirty = false;
-      }
+    try {
+      const status = await execFileAsync("git", ["-C", config.metricsDir, "status", "--porcelain", `${config.user}/`]);
+      dirty = status.trim().length > 0;
+    } catch {
+      dirty = false;
     }
     return {
       metricsDir: config.metricsDir,
