@@ -1,0 +1,55 @@
+id: xuhk
+name: 260717-xuhk-sync-dry-run
+created: 2026-07-17T21:47:14Z
+created_by: sahil-noon
+change_type: feat
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
+    review-pr: pending
+plan:
+    generated: true
+    task_count: 12
+    acceptance_count: 23
+    acceptance_completed: 23
+confidence:
+    certain: 3
+    confident: 4
+    tentative: 0
+    unresolved: 0
+    score: 4.4
+    fuzzy: true
+    dimensions:
+        signal: 71.4
+        reversibility: 76.4
+        competence: 82.1
+        disambiguation: 74.3
+stage_metrics:
+    intake: {started_at: "2026-07-17T21:47:14Z", driver: fab-new, iterations: 1, completed_at: "2026-07-17T21:53:01Z"}
+    apply: {started_at: "2026-07-17T22:20:08Z", driver: fab-fff, iterations: 2, completed_at: "2026-07-17T22:24:12Z"}
+    review: {started_at: "2026-07-17T22:24:12Z", driver: fab-fff, iterations: 2, completed_at: "2026-07-17T22:32:48Z"}
+    hydrate: {started_at: "2026-07-17T22:32:48Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T22:36:52Z"}
+    ship: {started_at: "2026-07-17T22:36:52Z", driver: fab-fff, iterations: 1}
+prs: []
+change_type_source: explicit
+true_impact:
+    added: 0
+    deleted: 0
+    net: 0
+    excluding:
+        added: 0
+        deleted: 0
+        net: 0
+    tests:
+        added: 0
+        deleted: 0
+        net: 0
+    computed_at: "2026-07-17T22:36:52Z"
+    computed_at_stage: hydrate
+summary: 'Add sync-only --dry-run flag: preview-capable writeMetrics/fullSync (shared decision path, local git preview, no mutation) + fail-fast misuse guard'
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-07-17T22:36:52Z

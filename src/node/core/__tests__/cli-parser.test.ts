@@ -475,6 +475,36 @@ describe("parseGlobalFlags: --full extraction", () => {
 });
 
 // ---------------------------------------------------------------------------
+// parseGlobalFlags: --dry-run extraction (parsed globally, honored by tu sync)
+// ---------------------------------------------------------------------------
+
+describe("parseGlobalFlags: --dry-run extraction", () => {
+  it("sets dryRunFlag true and strips --dry-run from filteredArgs", () => {
+    const r = parseGlobalFlags(["sync", "--dry-run"]);
+    assert.equal(r.dryRunFlag, true);
+    assert.deepEqual(r.filteredArgs, ["sync"]);
+  });
+
+  it("dryRunFlag is false when --dry-run is absent", () => {
+    const r = parseGlobalFlags(["sync"]);
+    assert.equal(r.dryRunFlag, false);
+  });
+
+  it("--dry-run is stripped from the middle of positional args", () => {
+    const r = parseGlobalFlags(["cc", "--dry-run", "mh"]);
+    assert.equal(r.dryRunFlag, true);
+    assert.deepEqual(r.filteredArgs, ["cc", "mh"]);
+  });
+
+  it("--dry-run coexists with --sync (both parsed, both stripped)", () => {
+    const r = parseGlobalFlags(["cc", "--sync", "--dry-run"]);
+    assert.equal(r.dryRunFlag, true);
+    assert.equal(r.syncFlag, true);
+    assert.deepEqual(r.filteredArgs, ["cc"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // threeMonthFloor: implicit 3-month cap floor (first of the month, two back)
 // ---------------------------------------------------------------------------
 

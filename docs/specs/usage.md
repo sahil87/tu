@@ -56,6 +56,7 @@ tu [source] [period] [display] [flags]
 |------|-------|-------------|
 | `--json` | — | Output as JSON (data commands only, incompatible with `--watch`) |
 | `--sync` | — | Sync metrics before fetching (multi mode only) |
+| `--dry-run` | — | Preview a sync without writing (honored only by `tu sync`; other invocations error) |
 | `--fresh` | `-f` | Bypass cache, fetch fresh data |
 | `--full` | — | Show full history (default is the last 3 months for daily/weekly history; no effect on monthly or snapshot) |
 | `--watch` | `-w` | Persistent polling mode with live TUI display |
@@ -174,6 +175,16 @@ Each file contains one JSON line with a `UsageEntry`. Local entries are written 
 2. Write local entries to metrics repo
 3. `git add {user}/` + commit (if changes) + `pull --rebase` + `push` (retry once on push failure)
 4. Touch `.last-sync` timestamp file in `~/.tu/`
+
+#### Dry Run (`tu sync --dry-run`)
+
+`tu sync --dry-run` previews the sync without touching the working tree, the metrics repo, or the network, then prints the preview to stdout and exits 0. It shares the real write-decision path (`writeMetrics`'s never-shrink guard runs identically), so the preview cannot drift from a live sync. It reports:
+
+- which day-files **would be written** (new, or `update: X → Y`)
+- which **would be skipped** by the never-shrink guard (incoming cost < existing)
+- the commit that **would** be made (same `# {user}: update {date}` message), then the `pull --rebase` / `push` that would follow
+
+The git half is computed locally — only a read-only `git status --porcelain {user}/` is invoked; `pull`/`push` are reported, never executed or probed. The flag is honored **only** by `tu sync`; any other invocation carrying `--dry-run` (e.g. `tu cc --dry-run`, `tu cc --sync --dry-run`) fails fast on stderr with exit 1, because the multi-mode fetch path writes day-files outside the sync boundary and a combined preview-then-proceed would mutate the files it just previewed.
 
 ### Auto-Clone Guard
 

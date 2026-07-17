@@ -49,6 +49,7 @@ const LONG_FLAGS = [
   "--until",
   "--full",
   "--sync",
+  "--dry-run",
   "--fresh",
   "--watch",
   "--interval",

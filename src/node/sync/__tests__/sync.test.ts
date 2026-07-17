@@ -5,8 +5,9 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execSync } from "node:child_process";
 
-import { writeMetrics, readRemoteEntries, isStale, touchLastSync, syncMetrics } from "../sync.js";
+import { writeMetrics, readRemoteEntries, isStale, touchLastSync, syncMetrics, fullSync } from "../sync.js";
 import type { UsageEntry } from "../../core/types.js";
+import type { TuConfig } from "../../core/config.js";
 
 const TEST_DIR = join(tmpdir(), "tu-sync-test-" + process.pid);
 
@@ -139,6 +140,98 @@ describe("writeMetrics", () => {
     const day25 = JSON.parse(readFileSync(join(dir, "cc-2026-04-25.jsonl"), "utf-8").trim());
     assert.equal(day24.totalCost, 308.12);
     assert.equal(day25.totalCost, 5.0);
+  });
+
+  // --- Report return value (live mode): the decision report is a
+  // non-behavioral addition — the live write still happens and is byte-identical. ---
+
+  it("live mode returns a write decision and still writes the file", () => {
+    const decisions = writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [entry("2026-02-20", 1.5)]);
+    assert.equal(decisions.length, 1);
+    assert.equal(decisions[0].action, "write");
+    assert.equal(decisions[0].incomingCost, 1.5);
+    assert.equal(decisions[0].existingCost, undefined);
+    // File was actually written (live mode unchanged)
+    assert.ok(existsSync(join(TEST_DIR, "sahil", "2026", "macbook", "cc-2026-02-20.jsonl")));
+  });
+
+  it("live mode reports a skip decision when the never-shrink guard fires", () => {
+    writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [entry("2026-04-24", 308.12)]);
+    const decisions = writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [entry("2026-04-24", 9.46)]);
+    assert.equal(decisions[0].action, "skip");
+    assert.equal(decisions[0].incomingCost, 9.46);
+    assert.equal(decisions[0].existingCost, 308.12);
+  });
+});
+
+// --- Dry-run writeMetrics: computes the same decisions as a live write but
+// touches nothing on disk (shared decision path per toolkit principle №5). ---
+
+describe("writeMetrics (dry-run)", () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it("reports a new-file write and leaves the filesystem untouched", () => {
+    const decisions = writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [entry("2026-07-18", 3.21)], true);
+    assert.equal(decisions.length, 1);
+    assert.equal(decisions[0].action, "write");
+    assert.equal(decisions[0].incomingCost, 3.21);
+    assert.equal(decisions[0].existingCost, undefined);
+    // Nothing written — not even the year/machine directory.
+    assert.ok(!existsSync(join(TEST_DIR, "sahil", "2026", "macbook", "cc-2026-07-18.jsonl")));
+    assert.ok(!existsSync(join(TEST_DIR, "sahil", "2026", "macbook")));
+  });
+
+  it("reports an update (existing < incoming) with the prior cost", () => {
+    writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [entry("2026-07-18", 10.2)]);
+    const decisions = writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [entry("2026-07-18", 12.34)], true);
+    assert.equal(decisions[0].action, "write");
+    assert.equal(decisions[0].incomingCost, 12.34);
+    assert.equal(decisions[0].existingCost, 10.2);
+    // Existing file is unchanged by the dry-run.
+    const parsed = JSON.parse(readFileSync(join(TEST_DIR, "sahil", "2026", "macbook", "cc-2026-07-18.jsonl"), "utf-8").trim());
+    assert.equal(parsed.totalCost, 10.2);
+  });
+
+  it("reports a never-shrink skip (incoming < existing) with the prior cost", () => {
+    writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [entry("2026-06-01", 45.67)]);
+    const decisions = writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [entry("2026-06-01", 0.0)], true);
+    assert.equal(decisions[0].action, "skip");
+    assert.equal(decisions[0].incomingCost, 0.0);
+    assert.equal(decisions[0].existingCost, 45.67);
+  });
+
+  it("treats absent/empty/unparseable existing files as absent (write, no existingCost)", () => {
+    const dir = join(TEST_DIR, "sahil", "2026", "macbook");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "cc-2026-07-18.jsonl"), ""); // empty
+    writeFileSync(join(dir, "cc-2026-07-19.jsonl"), "not json\n"); // unparseable
+    const decisions = writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [
+      entry("2026-07-17", 1.0), // absent
+      entry("2026-07-18", 1.0), // empty existing
+      entry("2026-07-19", 1.0), // unparseable existing
+    ], true);
+    for (const d of decisions) {
+      assert.equal(d.action, "write");
+      assert.equal(d.existingCost, undefined);
+    }
+  });
+
+  it("reports per-entry decisions within one batch without writing", () => {
+    writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [
+      entry("2026-04-24", 308.12),
+      entry("2026-04-25", 1.0),
+    ]);
+    const decisions = writeMetrics(TEST_DIR, "sahil", "macbook", "cc", [
+      entry("2026-04-24", 9.46), // shrunk → skip
+      entry("2026-04-25", 5.0), // grown → write
+    ], true);
+    const byLabel = new Map(decisions.map((d, i) => [i === 0 ? "2026-04-24" : "2026-04-25", d]));
+    assert.equal(byLabel.get("2026-04-24")!.action, "skip");
+    assert.equal(byLabel.get("2026-04-25")!.action, "write");
+    // The grown day-file on disk is still the original 1.0 — dry-run wrote nothing.
+    const day25 = JSON.parse(readFileSync(join(TEST_DIR, "sahil", "2026", "macbook", "cc-2026-04-25.jsonl"), "utf-8").trim());
+    assert.equal(day25.totalCost, 1.0);
   });
 });
 
@@ -537,5 +630,101 @@ exit 1
 
     const log = execSync(`git -C "${spacedBare}" log --oneline`, { encoding: "utf-8" });
     assert.ok(log.includes("# sahil: update"), "expected sahil commit in bare repo log");
+  });
+});
+
+// --- fullSync (dry-run): reports without mutating the working tree, the
+// metrics repo, or the network. ---
+//
+// NOTE on fetch data: fullSync calls fetchHistory, which shells out to ccusage
+// (absent in CI → yields []). So the per-tool write decisions are empty here;
+// these tests assert the strong no-mutation invariants (no commit, no
+// .last-sync, no file writes) and the report shape, which hold regardless of
+// fetch data. The would-commit git-half branch is exercised deterministically
+// by pre-staging a dirty file under the user dir (independent of ccusage).
+
+describe("fullSync (dry-run)", () => {
+  beforeEach(() => gitSetup());
+  afterEach(() => gitTeardown());
+
+  const dryConfig = (metricsDir: string): TuConfig => ({
+    version: 2,
+    mode: "multi",
+    metricsRepo: "git@example.com:repo.git",
+    metricsDir,
+    machine: "macbook",
+    user: "sahil",
+    autoSync: true,
+  });
+
+  it("returns a structured report and performs no git commit, no push, no .last-sync", async () => {
+    const tuHome = join(GIT_DIR, "tu-home");
+    mkdirSync(tuHome, { recursive: true });
+
+    const before = execSync(`git -C "${BARE_DIR}" log --oneline`, { encoding: "utf-8" }).trim();
+
+    const report = await fullSync(dryConfig(CLONE_DIR), tuHome, true);
+
+    // Report shape
+    assert.equal(report.metricsDir, CLONE_DIR);
+    assert.equal(report.user, "sahil");
+    assert.equal(report.machine, "macbook");
+    assert.ok(Array.isArray(report.tools));
+    assert.match(report.commitMessage, /^# sahil: update \d{4}-\d{2}-\d{2}$/);
+
+    // No mutation: bare repo log unchanged, no .last-sync touched.
+    const after = execSync(`git -C "${BARE_DIR}" log --oneline`, { encoding: "utf-8" }).trim();
+    assert.equal(after, before, "dry-run must not add a commit to the bare repo");
+    assert.ok(!existsSync(join(tuHome, ".last-sync")), "dry-run must not touch .last-sync");
+  });
+
+  it("does not write day-files to the metrics repo", async () => {
+    const tuHome = join(GIT_DIR, "tu-home-2");
+    mkdirSync(tuHome, { recursive: true });
+
+    await fullSync(dryConfig(CLONE_DIR), tuHome, true);
+
+    // No user dir was created by the dry-run (fetch is empty and, even with
+    // data, writeMetrics dry-run creates nothing).
+    assert.ok(!existsSync(join(CLONE_DIR, "sahil")), "dry-run must not create the user dir");
+  });
+
+  it("reports wouldCommit=true when the user dir is already dirty (read-only git status)", async () => {
+    const tuHome = join(GIT_DIR, "tu-home-3");
+    mkdirSync(tuHome, { recursive: true });
+
+    // Pre-stage a dirty (untracked) file under the user dir. `git status
+    // --porcelain sahil/` will report it, so the dry-run's would-commit
+    // decision is true even though the fetch produced no new writes.
+    const userDir = join(CLONE_DIR, "sahil", "2026", "macbook");
+    mkdirSync(userDir, { recursive: true });
+    writeFileSync(join(userDir, "cc-2026-07-18.jsonl"), JSON.stringify(entry("2026-07-18", 5.0)) + "\n");
+
+    const report = await fullSync(dryConfig(CLONE_DIR), tuHome, true);
+    assert.equal(report.wouldCommit, true);
+
+    // Still no commit added — the dirty file remains uncommitted.
+    const log = execSync(`git -C "${BARE_DIR}" log --oneline`, { encoding: "utf-8" });
+    assert.ok(!log.includes("# sahil: update"), "dry-run must not commit the dirty file");
+  });
+
+  it("computes the git half read-only — no commit even if the tree is dirty", async () => {
+    // Regardless of what the fetch yields (ccusage cache presence is
+    // environment-dependent), the dry-run must never commit or push. Pre-stage
+    // a dirty file so the would-commit path is active, then prove the bare repo
+    // gains no commit and .last-sync is not touched.
+    const tuHome = join(GIT_DIR, "tu-home-4");
+    mkdirSync(tuHome, { recursive: true });
+    const userDir = join(CLONE_DIR, "sahil", "2026", "macbook");
+    mkdirSync(userDir, { recursive: true });
+    writeFileSync(join(userDir, "cc-2026-07-17.jsonl"), JSON.stringify(entry("2026-07-17", 9.9)) + "\n");
+
+    const before = execSync(`git -C "${BARE_DIR}" log --oneline`, { encoding: "utf-8" }).trim();
+    const report = await fullSync(dryConfig(CLONE_DIR), tuHome, true);
+    const after = execSync(`git -C "${BARE_DIR}" log --oneline`, { encoding: "utf-8" }).trim();
+
+    assert.equal(report.wouldCommit, true, "a dirty user dir must make wouldCommit true");
+    assert.equal(after, before, "dry-run must add no commit even with a dirty tree");
+    assert.ok(!existsSync(join(tuHome, ".last-sync")), "dry-run must not touch .last-sync");
   });
 });

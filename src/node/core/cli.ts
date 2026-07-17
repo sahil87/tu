@@ -3,6 +3,7 @@ import { printHistory, printTotal, printTotalHistory, renderHistory, renderTotal
 import type { FormatOptions } from "../tui/formatter.js";
 import { readConfig, CONFIG_PATH, TU_HOME, THREE_HOURS_MS, resolveHome, DEFAULT_CONFIG_PATH } from "./config.js";
 import { writeMetrics, readRemoteEntries, readRemoteEntriesByMachine, fullSync } from "../sync/sync.js";
+import type { DrySyncReport } from "../sync/sync.js";
 import { runWatch } from "../tui/watch.js";
 import { setNoColor } from "../tui/colors.js";
 import { BASH_COMPLETION, ZSH_COMPLETION, FISH_COMPLETION } from "./completions.js";
@@ -104,6 +105,7 @@ Flags:
   --until <date>       Only include entries on/before date (YYYY-MM-DD or YYYYMMDD, history display)
   --full               Show full history (default: last 3 months for daily/weekly history)
   --sync               Sync metrics before fetching (multi mode)
+  --dry-run            Preview sync without writing (tu sync only)
   --fresh / -f         Bypass cache, fetch fresh data (data commands only)
   --watch / -w         Persistent polling mode with live display (data commands only)
   --interval / -i <s>  Poll interval in seconds (default: 10, range: 5-3600)
@@ -428,7 +430,56 @@ export function checkMetricsDirGuard(config: TuConfig, tuHome: string = TU_HOME)
   }
 }
 
-export async function runSync(configPath: string = CONFIG_PATH, tuHome: string = TU_HOME, defaultsPath: string = DEFAULT_CONFIG_PATH): Promise<void> {
+// Format a dry-run sync report as the human-readable preview printed to stdout.
+// The preview shows would-write files (new vs. update: X → Y), would-skip files
+// (never-shrink guard, incoming < existing), the would-be commit + the pull/push
+// that would follow, and a closing line stating nothing was mutated.
+export function formatDrySyncReport(report: DrySyncReport): string {
+  const fmt = (n: number): string => `$${n.toFixed(2)}`;
+  const userPrefix = join(report.metricsDir, report.user);
+  const dir = tildefy(userPrefix) + "/";
+  const writes: string[] = [];
+  const skips: string[] = [];
+  for (const tool of report.tools) {
+    for (const d of tool.decisions) {
+      const name = d.filePath.startsWith(userPrefix)
+        ? d.filePath.slice(userPrefix.length + 1)
+        : d.filePath;
+      if (d.action === "write") {
+        const note = d.existingCost !== undefined ? `(update: ${fmt(d.existingCost)} → ${fmt(d.incomingCost)})` : "(new)";
+        writes.push(`  ${name}  ${fmt(d.incomingCost)}  ${note}`);
+      } else {
+        skips.push(`  ${name}  incoming ${fmt(d.incomingCost)} < existing ${fmt(d.existingCost ?? 0)}`);
+      }
+    }
+  }
+
+  const lines: string[] = [];
+  if (writes.length > 0) {
+    lines.push(`Would write ${writes.length} day-file(s) under ${dir}:`);
+    lines.push(...writes);
+  } else {
+    lines.push(`Would write 0 day-file(s) under ${dir}.`);
+  }
+  if (skips.length > 0) {
+    lines.push(`Would skip ${skips.length} file(s) (never-shrink guard):`);
+    lines.push(...skips);
+  }
+  if (report.wouldCommit) {
+    lines.push(`Would commit: "${report.commitMessage}", then pull --rebase origin main, then push`);
+  } else {
+    lines.push("Would commit: nothing (no changes), then pull --rebase origin main, then push");
+  }
+  lines.push("Dry run — nothing written, committed, or pushed.");
+  return lines.join("\n");
+}
+
+export async function runSync(
+  configPath: string = CONFIG_PATH,
+  tuHome: string = TU_HOME,
+  defaultsPath: string = DEFAULT_CONFIG_PATH,
+  dryRun = false,
+): Promise<void> {
   const config = readConfig(configPath, defaultsPath);
   if (config.mode !== "multi") {
     console.error(
@@ -440,6 +491,16 @@ export async function runSync(configPath: string = CONFIG_PATH, tuHome: string =
   if (guardedConfig.mode !== "multi") {
     // Auto-clone failed or metricsDir still missing
     process.exit(1);
+  }
+
+  // Dry-run: compute the preview without mutating the working tree, the metrics
+  // repo, or the network, and print it to stdout (exit 0). The config/mode +
+  // metrics-dir guards above run identically to a live sync, so a dry-run in
+  // single mode fails exactly like a live `tu sync`.
+  if (dryRun) {
+    const report = await fullSync(guardedConfig, tuHome, true);
+    console.log(formatDrySyncReport(report));
+    return;
   }
 
   const ok = await fullSync(guardedConfig, tuHome);
@@ -585,6 +646,7 @@ export interface GlobalFlags {
   // jsonFlag retained for downstream callers and test compatibility during transition.
   jsonFlag: boolean;
   syncFlag: boolean;
+  dryRunFlag: boolean; // --dry-run: parsed globally, honored only by `tu sync`
   freshFlag: boolean;
   watchFlag: boolean;
   watchInterval: number;
@@ -641,6 +703,7 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   const csvFlag = rawArgs.includes("--csv");
   const mdFlag = rawArgs.includes("--md");
   const syncFlag = rawArgs.includes("--sync");
+  const dryRunFlag = rawArgs.includes("--dry-run");
   const freshFlag = rawArgs.includes("--fresh") || rawArgs.includes("-f");
   const watchFlag = rawArgs.includes("--watch") || rawArgs.includes("-w");
   const noColorFlag = rawArgs.includes("--no-color");
@@ -662,7 +725,7 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   const filteredArgs: string[] = [];
   for (let i = 0; i < rawArgs.length; i++) {
     const a = rawArgs[i];
-    if (a === "--json" || a === "-j" || a === "--csv" || a === "--md" || a === "--sync" || a === "--fresh" || a === "-f" || a === "--watch" || a === "-w" || a === "--no-color" || a === "--no-rain" || a === "--by-machine" || a === "--full" || a === "--skip-brew-update") continue;
+    if (a === "--json" || a === "-j" || a === "--csv" || a === "--md" || a === "--sync" || a === "--dry-run" || a === "--fresh" || a === "-f" || a === "--watch" || a === "-w" || a === "--no-color" || a === "--no-rain" || a === "--by-machine" || a === "--full" || a === "--skip-brew-update") continue;
     if (a === "--interval" || a === "-i") {
       hasIntervalFlag = true;
       const next = rawArgs[i + 1];
@@ -775,7 +838,7 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   else if (csvFlag) outputFormat = "csv";
   else if (mdFlag) outputFormat = "md";
 
-  return { outputFormat, jsonFlag, syncFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, fullFlag, filteredArgs };
+  return { outputFormat, jsonFlag, syncFlag, dryRunFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, fullFlag, filteredArgs };
 }
 
 const KNOWN_SOURCES = new Set(["cc", "codex", "co", "oc", "gemini", "gem", "copilot", "cop", "all"]);
@@ -1296,7 +1359,7 @@ function sumToolTotalsTokens(m: Map<string, UsageTotals>): number {
 async function main() {
   _mark("main() entered");
   const rawArgs = process.argv.slice(2);
-  let { outputFormat, syncFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, fullFlag, filteredArgs } = parseGlobalFlags(rawArgs);
+  let { outputFormat, syncFlag, dryRunFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, fullFlag, filteredArgs } = parseGlobalFlags(rawArgs);
 
   if (noColorFlag) setNoColor(true);
 
@@ -1312,12 +1375,26 @@ async function main() {
     return;
   }
 
+  // --dry-run is honored ONLY by `tu sync`. Any other invocation carrying it
+  // (e.g. `tu cc --dry-run`, `tu cc --sync --dry-run`, or bare `tu --dry-run`)
+  // fails fast, exit 1. Rationale: the multi-mode fetch path writes day-files
+  // outside the sync boundary on every data command, so a combined
+  // preview-then-proceed would mutate the very files it just previewed — a
+  // lying dry-run. Fail-fast is the honest contract; strict→loose is the
+  // non-breaking direction if combined support is ever wanted. Silently
+  // ignoring the flag is ruled out: a user who passed --dry-run must never get
+  // a surprise mutation.
+  if (dryRunFlag && filteredArgs[0] !== "sync") {
+    console.error("Error: --dry-run is supported only with 'tu sync' — run 'tu sync --dry-run' to preview a sync.");
+    process.exit(1);
+  }
+
   // Non-data commands — dispatch before grammar parsing
   if (filteredArgs.length > 0) {
     const cmd = filteredArgs[0];
     if (cmd === "init-conf") { runInitConf(); return; }
     if (cmd === "init-metrics") { runInitMetrics(); return; }
-    if (cmd === "sync") { await runSync(); return; }
+    if (cmd === "sync") { await runSync(CONFIG_PATH, TU_HOME, DEFAULT_CONFIG_PATH, dryRunFlag); return; }
     if (cmd === "status") { runStatus(); return; }
     if (cmd === "update") { runUpdate(process.argv.includes("--skip-brew-update")); return; }
     if (cmd === "shell-init") { runShellInit(filteredArgs[1]); return; }

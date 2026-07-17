@@ -4,4 +4,4 @@
 
 | File | Description |
 |------|-------------|
-| [data-pipeline](data-pipeline.md) | CLI argument parsing, data fetching, caching, tool registry |
+| [data-pipeline](data-pipeline.md) | CLI argument parsing (incl. the sync-only --dry-run global flag + fail-fast misuse guard), data fetching, caching, tool registry |
