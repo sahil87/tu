@@ -1,0 +1,56 @@
+id: h9h7
+name: 260717-h9h7-watch-rain-polish
+created: 2026-07-17T08:10:58Z
+created_by: sahil-noon
+change_type: fix
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
+plan:
+    generated: true
+    task_count: 9
+    acceptance_count: 13
+    acceptance_completed: 13
+confidence:
+    certain: 5
+    confident: 1
+    tentative: 0
+    unresolved: 0
+    score: 5.0
+    fuzzy: true
+    dimensions:
+        signal: 78.3
+        reversibility: 91.7
+        competence: 88.3
+        disambiguation: 79.2
+stage_metrics:
+    intake: {started_at: "2026-07-17T08:10:58Z", driver: fab-new, iterations: 1, completed_at: "2026-07-17T08:15:24Z"}
+    apply: {started_at: "2026-07-17T08:15:24Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T08:24:00Z"}
+    review: {started_at: "2026-07-17T08:24:00Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T08:39:16Z"}
+    hydrate: {started_at: "2026-07-17T08:39:16Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T08:41:43Z"}
+    ship: {started_at: "2026-07-17T08:41:43Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T08:44:32Z"}
+    review-pr: {started_at: "2026-07-17T08:44:32Z", driver: git-pr, iterations: 1, completed_at: "2026-07-17T09:18:12Z"}
+prs:
+    - https://github.com/sahil87/tu/pull/46
+change_type_source: explicit
+true_impact:
+    added: 658
+    deleted: 52
+    net: 606
+    excluding:
+        added: 358
+        deleted: 47
+        net: 311
+    tests:
+        added: 276
+        deleted: 1
+        net: 275
+    computed_at: "2026-07-17T08:44:32Z"
+    computed_at_stage: ship
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-07-17T09:18:12Z

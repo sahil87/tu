@@ -1,6 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { formatElapsed, computeBurnRate, buildFooter, ROLLING_WINDOW } from "../watch.js";
+import {
+  formatElapsed,
+  computeBurnRate,
+  buildFooter,
+  ROLLING_WINDOW,
+  enterAltScreen,
+  exitAltScreen,
+} from "../watch.js";
 import { setNoColor } from "../colors.js";
 import type { WatchSession } from "../watch.js";
 
@@ -103,6 +110,48 @@ function makeSession(overrides: Partial<WatchSession> = {}): WatchSession {
     ...overrides,
   };
 }
+
+// Capture everything written to stdout during fn().
+function captureStdout(fn: () => void): string {
+  const original = process.stdout.write.bind(process.stdout);
+  let buf = "";
+  (process.stdout as unknown as { write: (s: string) => boolean }).write = (
+    s: string,
+  ): boolean => {
+    buf += s;
+    return true;
+  };
+  try {
+    fn();
+  } finally {
+    (process.stdout as unknown as { write: typeof original }).write = original;
+  }
+  return buf;
+}
+
+describe("cursor visibility", () => {
+  it("enterAltScreen hides the cursor after entering the alt screen", () => {
+    const out = captureStdout(() => enterAltScreen());
+    assert.ok(out.includes("\x1b[?1049h"), "enters the alternate screen");
+    assert.ok(out.includes("\x1b[?25l"), "hides the cursor");
+    // Hide must come after the alt-screen enter.
+    assert.ok(
+      out.indexOf("\x1b[?25l") > out.indexOf("\x1b[?1049h"),
+      "cursor hide is written after the alt-screen enter",
+    );
+  });
+
+  it("exitAltScreen shows the cursor before leaving the alt screen", () => {
+    const out = captureStdout(() => exitAltScreen());
+    assert.ok(out.includes("\x1b[?25h"), "shows the cursor");
+    assert.ok(out.includes("\x1b[?1049l"), "leaves the alternate screen");
+    // Show must come before the alt-screen leave.
+    assert.ok(
+      out.indexOf("\x1b[?25h") < out.indexOf("\x1b[?1049l"),
+      "cursor show is written before the alt-screen leave",
+    );
+  });
+});
 
 describe("buildFooter", () => {
   it("shows countdown when provided", () => {

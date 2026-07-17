@@ -20,10 +20,14 @@ export interface CompositorOptions {
   getTermRows: () => number;
 }
 
-const COMPOSITOR_TICK_MS = 16;
 const RAIN_TICK_MS = 107;
 const COUNTDOWN_TICK_MS = 1000;
 export const COMPACT_THRESHOLD = 60;
+
+// Right-margin rain: minimum usable width, and gutter columns kept between the
+// widest content line and the first rain column so glyphs don't touch the table.
+const MIN_RAIN_COLS = 10;
+const RAIN_GUTTER = 2;
 
 // --- TablePanel ---
 class TablePanel implements PanelBuffer {
@@ -157,7 +161,6 @@ export class Compositor {
   readonly rainLayer: RainLayer;
 
   private opts: CompositorOptions;
-  private compositorTimer: ReturnType<typeof setInterval> | null = null;
   private rainTimer: ReturnType<typeof setInterval> | null = null;
   private countdownTimer: ReturnType<typeof setTimeout> | null = null;
   private countdownValue = 0;
@@ -176,9 +179,6 @@ export class Compositor {
   }
 
   start(): void {
-    // Compositor tick: check dirty flags and recomposite
-    this.compositorTimer = setInterval(() => this.tick(), COMPOSITOR_TICK_MS);
-
     // Rain tick: independent ~107ms animation (~75% as fast as the original 80ms rate)
     if (!this.opts.noRain) {
       this.rainTimer = setInterval(() => {
@@ -190,10 +190,6 @@ export class Compositor {
   }
 
   stop(): void {
-    if (this.compositorTimer !== null) {
-      clearInterval(this.compositorTimer);
-      this.compositorTimer = null;
-    }
     if (this.rainTimer !== null) {
       clearInterval(this.rainTimer);
       this.rainTimer = null;
@@ -207,6 +203,7 @@ export class Compositor {
   startCountdown(seconds: number, onExpire: () => void): void {
     this.countdownValue = seconds;
     this.status.updateCountdown(seconds, this.opts.getTermWidth());
+    this.renderStatus();
 
     const tickDown = () => {
       this.countdownValue--;
@@ -214,6 +211,7 @@ export class Compositor {
         onExpire();
       } else {
         this.status.updateCountdown(this.countdownValue, this.opts.getTermWidth());
+        this.renderStatus();
         this.countdownTimer = setTimeout(tickDown, COUNTDOWN_TICK_MS);
       }
     };
@@ -230,6 +228,7 @@ export class Compositor {
 
   setRefreshing(): void {
     this.status.updateCountdown(null, this.opts.getTermWidth());
+    this.renderStatus();
   }
 
   /** Called after API poll with new table data and panel session */
@@ -274,8 +273,27 @@ export class Compositor {
     // Compute content height for rain zone calculation
     const statsLines = compact ? [] : this.stats.getLines();
     const contentHeight = statsLines.length + tableLines.length;
+    const maxContentWidth = this.computeMaxContentWidth([...statsLines, ...tableLines]);
 
-    // Setup rain zone
+    this.setupRainZone(contentHeight, maxContentWidth);
+  }
+
+  /**
+   * Lay out the rain zone against loading-skeleton geometry so rain animates
+   * before the first poll completes. Derives content height and max content
+   * width from the skeleton lines and reuses the shared rain-zone setup.
+   */
+  layoutForSkeleton(lines: string[]): void {
+    const contentHeight = lines.length;
+    const maxContentWidth = this.computeMaxContentWidth(lines);
+    this.setupRainZone(contentHeight, maxContentWidth);
+  }
+
+  /** Shared rain-zone computation used by both poll layout and skeleton layout. */
+  private setupRainZone(contentHeight: number, maxContentWidth: number): void {
+    const tw = this.opts.getTermWidth();
+    const compact = tw < COMPACT_THRESHOLD;
+
     const footerRow = 1;
     const termRows = this.opts.getTermRows();
     const availableRainRows = termRows - contentHeight - footerRow;
@@ -285,13 +303,12 @@ export class Compositor {
       // Below-content rain (full width, rows below content)
       this.rainLayer.setup(tw, availableRainRows, contentHeight + 1);
     } else if (wantRain) {
-      // Right-margin rain: render in columns past the content width
-      const maxContentWidth = this.computeMaxContentWidth(tableLines, statsLines);
-      const MIN_RAIN_COLS = 10;
-      const marginCols = tw - maxContentWidth;
+      // Right-margin rain: render in columns past the content width, keeping a
+      // gutter so glyphs don't visually collide with the table edge.
+      const marginCols = tw - maxContentWidth - RAIN_GUTTER;
       if (marginCols >= MIN_RAIN_COLS) {
         const rainRows = termRows - footerRow;
-        this.rainLayer.setup(marginCols, rainRows, 1, maxContentWidth);
+        this.rainLayer.setup(marginCols, rainRows, 1, maxContentWidth + RAIN_GUTTER);
       } else {
         this.rainLayer.disable();
       }
@@ -300,9 +317,9 @@ export class Compositor {
     }
   }
 
-  private computeMaxContentWidth(tableLines: string[], statsLines: string[]): number {
+  private computeMaxContentWidth(lines: string[]): number {
     let maxWidth = 0;
-    for (const line of [...statsLines, ...tableLines]) {
+    for (const line of lines) {
       const len = stripAnsi(line).length;
       if (len > maxWidth) maxWidth = len;
     }
@@ -331,17 +348,23 @@ export class Compositor {
     if (statusLines.length > 0) {
       writeFooterLine(statusLines[0], this.opts.getTermRows());
     }
+
+    // Restore the rain zone: flush's \x1b[J/\x1b[K clears erased every drawn
+    // rain cell. RainState.render() rewrites every occupied cell each frame, so
+    // re-emitting it here fully restores the rain without waiting for the next
+    // rain tick (which would otherwise leave a per-poll blink).
+    const rainOut = this.rainLayer.renderDirect();
+    if (rainOut) process.stdout.write(rainOut);
   }
 
-  private tick(): void {
-    // Full table/stats composites are driven via explicit flush() calls
-    // (e.g., after a poll). The periodic tick is responsible only for
-    // incremental status updates to avoid duplicate full-screen renders.
-    if (this.status.dirty) {
-      const statusLines = this.status.render();
-      if (statusLines.length > 0) {
-        writeFooterLine(statusLines[0], this.opts.getTermRows());
-      }
+  /**
+   * Render the footer status line immediately. Push-driven — called after every
+   * countdown/refresh state change (replaces the former periodic 16ms tick).
+   */
+  private renderStatus(): void {
+    const statusLines = this.status.render();
+    if (statusLines.length > 0) {
+      writeFooterLine(statusLines[0], this.opts.getTermRows());
     }
   }
 }
