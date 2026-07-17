@@ -1,0 +1,3 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-07-17T08:10:58Z"}
+{"args":"Rain animation fix pass in -w watch mode: hide terminal cursor, start rain with loading skeleton, eliminate rain blink on poll flush, drop 16ms compositor tick (push-driven footer), add gutter in right-margin rain mode","cmd":"fab-new","event":"command","ts":"2026-07-17T08:10:58Z"}
+{"delta":"+5.0","event":"confidence","score":5,"trigger":"calc-score","ts":"2026-07-17T08:12:43Z"}
