@@ -79,6 +79,11 @@ describe("FULL_HELP", () => {
     assert.ok(FULL_HELP.includes("-f"));
   });
 
+  it("documents the --full escape-hatch flag", () => {
+    assert.ok(FULL_HELP.includes("--full"));
+    assert.ok(/--full\b.*full history/i.test(FULL_HELP), "the --full line should describe showing full history");
+  });
+
   it("contains Examples using new grammar", () => {
     assert.ok(FULL_HELP.includes("Examples:"));
     assert.ok(FULL_HELP.includes("tu cc"));

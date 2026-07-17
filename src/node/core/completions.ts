@@ -20,7 +20,7 @@ _tu_complete() {
   local sources="cc codex co oc gemini gem copilot cop all"
   local periods="d w m daily weekly monthly"
   local display="h history dh wh mh"
-  local long_flags="--json --csv --md --since --until --sync --fresh --watch --interval --user --by-machine --skip-brew-update --no-color --no-rain --version --help"
+  local long_flags="--json --csv --md --since --until --full --sync --fresh --watch --interval --user --by-machine --skip-brew-update --no-color --no-rain --version --help"
   local short_flags="-f -w -i -u -s -j -v -V -h"
   local shells="bash zsh fish"
 
@@ -74,7 +74,7 @@ _tu() {
   sources=(cc codex co oc gemini gem copilot cop all)
   periods=(d w m daily weekly monthly)
   display=(h history dh wh mh)
-  long_flags=(--json --csv --md --since --until --sync --fresh --watch --interval --user --by-machine --skip-brew-update --no-color --no-rain --version --help)
+  long_flags=(--json --csv --md --since --until --full --sync --fresh --watch --interval --user --by-machine --skip-brew-update --no-color --no-rain --version --help)
   short_flags=(-f -w -i -u -s -j -v -V -h)
   shells=(bash zsh fish)
 
@@ -91,6 +91,7 @@ _tu() {
     '--since[only include entries on/after date]:date:' \\
     '-s[only include entries on/after date]:date:' \\
     '--until[only include entries on/before date]:date:' \\
+    '--full[show full history (no 3-month cap)]' \\
     '--sync[sync metrics before fetch]' \\
     '--fresh[bypass cache]' \\
     '-f[bypass cache]' \\
@@ -187,6 +188,7 @@ complete -c tu -l csv -d 'emit CSV'
 complete -c tu -l md -d 'emit Markdown'
 complete -c tu -l since -r -d 'only include entries on/after date'
 complete -c tu -l until -r -d 'only include entries on/before date'
+complete -c tu -l full -d 'show full history (no 3-month cap)'
 complete -c tu -l sync -d 'sync metrics before fetch'
 complete -c tu -l fresh -d 'bypass cache'
 complete -c tu -l watch -d 'persistent polling mode'

@@ -1,7 +1,7 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseDataArgs, parseGlobalFlags } from "../cli.js";
+import { capApplies, parseDataArgs, parseGlobalFlags, threeMonthFloor } from "../cli.js";
 
 function captureExit(): { code: number | null; errors: string[] } {
   const state = { code: null as number | null, errors: [] as string[] };
@@ -442,5 +442,95 @@ describe("parseGlobalFlags: --since / --until validation errors", () => {
     const r = parseGlobalFlags(["h", "--since", "2026-06-15", "--until", "2026-06-15"]);
     assert.equal(r.sinceFlag, "2026-06-15");
     assert.equal(r.untilFlag, "2026-06-15");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseGlobalFlags: --full escape-hatch flag
+// ---------------------------------------------------------------------------
+
+describe("parseGlobalFlags: --full extraction", () => {
+  it("sets fullFlag true and strips --full from filteredArgs", () => {
+    const r = parseGlobalFlags(["h", "--full"]);
+    assert.equal(r.fullFlag, true);
+    assert.deepEqual(r.filteredArgs, ["h"]);
+  });
+
+  it("fullFlag is false when --full is absent", () => {
+    const r = parseGlobalFlags(["cc", "h"]);
+    assert.equal(r.fullFlag, false);
+  });
+
+  it("--full is stripped from the middle of positional args", () => {
+    const r = parseGlobalFlags(["cc", "--full", "dh"]);
+    assert.equal(r.fullFlag, true);
+    assert.deepEqual(r.filteredArgs, ["cc", "dh"]);
+  });
+
+  it("--full coexists with an explicit --since without error", () => {
+    const r = parseGlobalFlags(["h", "--full", "--since", "2026-01-01"]);
+    assert.equal(r.fullFlag, true);
+    assert.equal(r.sinceFlag, "2026-01-01");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// threeMonthFloor: implicit 3-month cap floor (first of the month, two back)
+// ---------------------------------------------------------------------------
+
+describe("threeMonthFloor", () => {
+  it("mid-year: 2026-07-17 → 2026-05-01 (May, June, July)", () => {
+    assert.equal(threeMonthFloor(new Date(2026, 6, 17)), "2026-05-01");
+  });
+
+  it("year rollover: 2026-01-15 → 2025-11-01", () => {
+    assert.equal(threeMonthFloor(new Date(2026, 0, 15)), "2025-11-01");
+  });
+
+  it("February near year boundary: 2026-02-28 → 2025-12-01", () => {
+    assert.equal(threeMonthFloor(new Date(2026, 1, 28)), "2025-12-01");
+  });
+
+  it("March → January of the same year: 2026-03-01 → 2026-01-01", () => {
+    assert.equal(threeMonthFloor(new Date(2026, 2, 1)), "2026-01-01");
+  });
+
+  it("always returns the first day of the month (YYYY-MM-01)", () => {
+    assert.match(threeMonthFloor(new Date(2026, 8, 30)), /^\d{4}-\d{2}-01$/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// capApplies: implicit 3-month cap injection decision (the main() guard)
+// ---------------------------------------------------------------------------
+
+describe("capApplies", () => {
+  it("engages on daily history with no explicit window and no --full", () => {
+    assert.equal(capApplies("history", "daily", undefined, undefined, false), true);
+  });
+
+  it("engages on weekly history with no explicit window and no --full", () => {
+    assert.equal(capApplies("history", "weekly", undefined, undefined, false), true);
+  });
+
+  it("does not engage on monthly history (full history is always shown)", () => {
+    assert.equal(capApplies("history", "monthly", undefined, undefined, false), false);
+  });
+
+  it("does not engage on snapshot display", () => {
+    assert.equal(capApplies("snapshot", "daily", undefined, undefined, false), false);
+    assert.equal(capApplies("snapshot", "weekly", undefined, undefined, false), false);
+  });
+
+  it("is disabled by an explicit --since", () => {
+    assert.equal(capApplies("history", "daily", "2026-01-01", undefined, false), false);
+  });
+
+  it("is disabled by an explicit --until", () => {
+    assert.equal(capApplies("history", "daily", undefined, "2026-06-30", false), false);
+  });
+
+  it("is disabled by --full", () => {
+    assert.equal(capApplies("history", "weekly", undefined, undefined, true), false);
   });
 });

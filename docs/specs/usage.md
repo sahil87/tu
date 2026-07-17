@@ -34,7 +34,7 @@ tu [source] [period] [display] [flags]
 | Token | Meaning |
 |-------|---------|
 | (bare, default) | Snapshot — current day/week/month only |
-| `h`, `history` | Full history table |
+| `h`, `history` | History table (daily/weekly default to the last 3 calendar months; use `--full` for all history — monthly is never capped) |
 | `dh` | Combined: daily + history |
 | `wh` | Combined: weekly + history |
 | `mh` | Combined: monthly + history |
@@ -57,6 +57,7 @@ tu [source] [period] [display] [flags]
 | `--json` | — | Output as JSON (data commands only, incompatible with `--watch`) |
 | `--sync` | — | Sync metrics before fetching (multi mode only) |
 | `--fresh` | `-f` | Bypass cache, fetch fresh data |
+| `--full` | — | Show full history (default is the last 3 months for daily/weekly history; no effect on monthly or snapshot) |
 | `--watch` | `-w` | Persistent polling mode with live TUI display |
 | `--interval` | `-i <s>` | Poll interval in seconds (default: 10, range: 5-3600, requires `--watch`) |
 | `--no-color` | — | Disable ANSI color output (also respects `NO_COLOR` env var) |
@@ -117,7 +118,7 @@ Tool configs define the five supported tools (`cc`, `codex`, `oc`, `gemini`, `co
 ### Snapshot vs History
 
 - **Snapshot**: fetches all entries, then filters to the one matching `currentLabel(period)` (today's date, the current week's Sunday, or the current month). `currentLabel` uses local-time date methods (the weekly case backs up to Sunday via `setDate(getDate() - getDay())`, normalizing month/year underflow). Shows a cross-tool table with one row per tool.
-- **History**: fetches all entries, shows full table with one row per date/month. Single-tool history shows token breakdown; all-tools history shows a cost pivot table (date rows x tool columns).
+- **History**: fetches all entries, shows a table with one row per date/month. Daily and weekly history default to the last 3 calendar months (an implicit `--since` floor at the first of the month two months back, disabled by `--full` or any explicit `--since`/`--until`); monthly history is never capped. When the cap is active the table heading carries a `last 3 months` hint. Single-tool history shows token breakdown; all-tools history shows a cost pivot table (date rows x tool columns).
 
 ## Output Formats
 
