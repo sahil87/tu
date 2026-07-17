@@ -102,6 +102,7 @@ Flags:
   --md                 Output data as Markdown (data commands only)
   --since / -s <date>  Only include entries on/after date (YYYY-MM-DD or YYYYMMDD, history display)
   --until <date>       Only include entries on/before date (YYYY-MM-DD or YYYYMMDD, history display)
+  --full               Show full history (default: last 3 months for daily/weekly history)
   --sync               Sync metrics before fetching (multi mode)
   --fresh / -f         Bypass cache, fetch fresh data (data commands only)
   --watch / -w         Persistent polling mode with live display (data commands only)
@@ -593,7 +594,21 @@ export interface GlobalFlags {
   byMachineFlag: boolean;
   sinceFlag: string | undefined; // normalized ISO YYYY-MM-DD
   untilFlag: string | undefined; // normalized ISO YYYY-MM-DD
+  fullFlag: boolean; // --full: disable the implicit 3-month cap on daily/weekly history
   filteredArgs: string[];
+}
+
+// Implicit 3-month cap floor: first day of the local month two calendar months
+// back, so the window covers 3 calendar months INCLUDING the current month
+// (e.g. 2026-07-17 → "2026-05-01": May, June, July). Uses local date methods
+// (usage labels are local-day based), and Date normalizes month underflow, so
+// year rollover is handled (2026-01-15 → "2025-11-01"). Returned as an ISO
+// YYYY-MM-01 string suitable as a defaulted sinceFlag.
+export function threeMonthFloor(now: Date = new Date()): string {
+  const floor = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  const y = floor.getFullYear();
+  const m = String(floor.getMonth() + 1).padStart(2, "0");
+  return `${y}-${m}-01`;
 }
 
 // Accepts YYYY-MM-DD or YYYYMMDD (consistent-dash shapes only); returns the
@@ -616,6 +631,7 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   const noColorFlag = rawArgs.includes("--no-color");
   const noRainFlag = rawArgs.includes("--no-rain");
   const byMachineFlag = rawArgs.includes("--by-machine");
+  const fullFlag = rawArgs.includes("--full");
 
   let watchInterval = 10;
   let hasIntervalFlag = false;
@@ -631,7 +647,7 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   const filteredArgs: string[] = [];
   for (let i = 0; i < rawArgs.length; i++) {
     const a = rawArgs[i];
-    if (a === "--json" || a === "-j" || a === "--csv" || a === "--md" || a === "--sync" || a === "--fresh" || a === "-f" || a === "--watch" || a === "-w" || a === "--no-color" || a === "--no-rain" || a === "--by-machine" || a === "--skip-brew-update") continue;
+    if (a === "--json" || a === "-j" || a === "--csv" || a === "--md" || a === "--sync" || a === "--fresh" || a === "-f" || a === "--watch" || a === "-w" || a === "--no-color" || a === "--no-rain" || a === "--by-machine" || a === "--full" || a === "--skip-brew-update") continue;
     if (a === "--interval" || a === "-i") {
       hasIntervalFlag = true;
       const next = rawArgs[i + 1];
@@ -744,7 +760,7 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   else if (csvFlag) outputFormat = "csv";
   else if (mdFlag) outputFormat = "md";
 
-  return { outputFormat, jsonFlag, syncFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, filteredArgs };
+  return { outputFormat, jsonFlag, syncFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, fullFlag, filteredArgs };
 }
 
 const KNOWN_SOURCES = new Set(["cc", "codex", "co", "oc", "gemini", "gem", "copilot", "cop", "all"]);
@@ -802,7 +818,7 @@ function renderTotalHistoryByFormat(
   switch (outputFormat) {
     case "json": emitJson(data); break;
     case "csv": emitCsv(data, "total-history", { period }); break;
-    case "md": emitMarkdown(data, "total-history", { period }); break;
+    case "md": emitMarkdown(data, "total-history", { period, capActive: fmtOpts?.capActive }); break;
     default: printTotalHistory(period, data, undefined, fmtOpts);
   }
 }
@@ -918,7 +934,7 @@ function renderHistoryByFormat(
   switch (outputFormat) {
     case "json": emitJson(machineCosts ? attachMachinesJson(entries, machineCosts) : entries); break;
     case "csv": emitCsv({ toolName, entries }, "history", { period, machineCosts }); break;
-    case "md": emitMarkdown({ toolName, entries }, "history", { period, machineCosts }); break;
+    case "md": emitMarkdown({ toolName, entries }, "history", { period, machineCosts, capActive: fmtOpts?.capActive }); break;
     default: printHistory(toolName, period, entries, undefined, opts);
   }
 }
@@ -1263,7 +1279,7 @@ function sumToolTotalsTokens(m: Map<string, UsageTotals>): number {
 async function main() {
   _mark("main() entered");
   const rawArgs = process.argv.slice(2);
-  let { outputFormat, syncFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, filteredArgs } = parseGlobalFlags(rawArgs);
+  let { outputFormat, syncFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, fullFlag, filteredArgs } = parseGlobalFlags(rawArgs);
 
   if (noColorFlag) setNoColor(true);
 
@@ -1337,13 +1353,42 @@ async function main() {
     untilFlag = undefined;
   }
 
+  // --full applies to daily/weekly history only. On a snapshot display it warns
+  // once and is ignored (mirrors the since/until guard above, so watch snapshot
+  // warns once at startup). On monthly history it is a silent vacuous no-op
+  // (monthly is never capped — full history is already shown), and combined with
+  // an explicit --since/--until it is silently accepted (both mean "no implicit
+  // cap"; the explicit window still applies).
+  if (fullFlag && display !== "history") {
+    process.stderr.write("Warning: --full applies to daily/weekly history — ignoring.\n");
+  }
+
+  // Implicit 3-month cap: daily/weekly history only, no explicit window, no
+  // --full. Default sinceFlag to the floor so the cap reuses the existing
+  // --since machinery (filterEntriesByRange) with zero new filtering logic;
+  // capActive drives the "last 3 months" heading hint. An explicit --since or
+  // --until disables the cap entirely (no intersection — otherwise a past
+  // --until would silently empty the output).
+  let capActive = false;
+  if (display === "history" && period !== "monthly" && sinceFlag === undefined && untilFlag === undefined && !fullFlag) {
+    sinceFlag = threeMonthFloor();
+    capActive = true;
+  }
+
+  // Merge the capActive heading hint into whatever FormatOptions a dispatch path
+  // uses, without overriding a caller's other options. Only the history renderers
+  // read capActive; snapshot paths pass it through harmlessly.
+  const withCap = (fmtOpts?: FormatOptions): FormatOptions | undefined =>
+    capActive ? { ...fmtOpts, capActive: true } : fmtOpts;
+
   if (watchFlag) {
     const action = async (skipCache: boolean, fmtOpts?: FormatOptions): Promise<string[]> => {
+      const opts = withCap(fmtOpts);
       if (source === "all") {
-        if (display === "history") { return dispatchAllHistoryLines(config, period, skipCache, fmtOpts, userFlag, sinceFlag, untilFlag); }
-        else { return dispatchAllSnapshotLines(config, period, skipCache, fmtOpts, userFlag, byMachineFlag, sinceFlag, untilFlag); }
+        if (display === "history") { return dispatchAllHistoryLines(config, period, skipCache, opts, userFlag, sinceFlag, untilFlag); }
+        else { return dispatchAllSnapshotLines(config, period, skipCache, opts, userFlag, byMachineFlag, sinceFlag, untilFlag); }
       } else {
-        return dispatchSingleToolLines(config, source, period, display, skipCache, fmtOpts, userFlag, byMachineFlag, sinceFlag, untilFlag);
+        return dispatchSingleToolLines(config, source, period, display, skipCache, opts, userFlag, byMachineFlag, sinceFlag, untilFlag);
       }
     };
     await runWatch({
@@ -1356,10 +1401,10 @@ async function main() {
     });
   } else {
     if (source === "all") {
-      if (display === "history") { await dispatchAllHistory(config, period, outputFormat, freshFlag, undefined, userFlag, sinceFlag, untilFlag); }
+      if (display === "history") { await dispatchAllHistory(config, period, outputFormat, freshFlag, withCap(undefined), userFlag, sinceFlag, untilFlag); }
       else { await dispatchAllSnapshot(config, period, outputFormat, freshFlag, undefined, userFlag, byMachineFlag); }
     } else {
-      await dispatchSingleTool(config, source, period, display, outputFormat, freshFlag, undefined, userFlag, byMachineFlag, sinceFlag, untilFlag);
+      await dispatchSingleTool(config, source, period, display, outputFormat, freshFlag, withCap(undefined), userFlag, byMachineFlag, sinceFlag, untilFlag);
     }
   }
 }

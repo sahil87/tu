@@ -705,6 +705,23 @@ describe("renderHistory", () => {
     assert.match(text, /Claude Code.*daily/);
     assert.match(text, /2026-02-14/);
   });
+
+  const capEntries: UsageEntry[] = [{
+    label: "2026-05-14", totalCost: 1.5, inputTokens: 100, outputTokens: 200,
+    cacheCreationTokens: 10, cacheReadTokens: 20, totalTokens: 330,
+  }];
+
+  it("appends 'last 3 months' to the heading when capActive is true", () => {
+    const text = renderHistory("Claude Code", "daily", capEntries, 140, { capActive: true }).join("\n");
+    assert.match(stripAnsi(text), /Claude Code \(daily, last 3 months\)/);
+  });
+
+  it("omits the hint when capActive is false/absent", () => {
+    const off = renderHistory("Claude Code", "daily", capEntries, 140, { capActive: false }).join("\n");
+    assert.doesNotMatch(stripAnsi(off), /last 3 months/);
+    const absent = renderHistory("Claude Code", "daily", capEntries, 140).join("\n");
+    assert.doesNotMatch(stripAnsi(absent), /last 3 months/);
+  });
 });
 
 describe("renderTotalHistory", () => {
@@ -718,6 +735,26 @@ describe("renderTotalHistory", () => {
     assert.ok(Array.isArray(lines));
     const text = lines.join("\n");
     assert.match(text, /Combined Cost History.*daily/);
+  });
+
+  it("appends 'last 3 months' to the pivot heading when capActive is true", () => {
+    const data = new Map<string, UsageEntry[]>([
+      ["Claude Code", [
+        { label: "2026-05-14", totalCost: 5, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 },
+      ]],
+    ]);
+    const text = renderTotalHistory("daily", data, 140, { capActive: true }).join("\n");
+    assert.match(stripAnsi(text), /Combined Cost History \(daily, last 3 months\)/);
+  });
+
+  it("omits the pivot hint when capActive is absent", () => {
+    const data = new Map<string, UsageEntry[]>([
+      ["Claude Code", [
+        { label: "2026-05-14", totalCost: 5, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 },
+      ]],
+    ]);
+    const text = renderTotalHistory("daily", data, 140).join("\n");
+    assert.doesNotMatch(stripAnsi(text), /last 3 months/);
   });
 });
 
@@ -1013,6 +1050,16 @@ describe("emitMarkdown", () => {
       assert.equal(lines[0], "## Claude Code (daily)");
     });
 
+    it("heading carries ', last 3 months' when capActive is true", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const entries: UsageEntry[] = [
+        { label: "2026-05-21", totalCost: 2.34, inputTokens: 80, outputTokens: 40, cacheCreationTokens: 20, cacheReadTokens: 5, totalTokens: 145 },
+      ];
+      emitMarkdown({ toolName: "Claude Code", entries }, "history", { period: "daily", capActive: true });
+      assert.equal(stdoutText().split("\n")[0], "## Claude Code (daily, last 3 months)");
+    });
+
     it("date column is left-aligned, numeric columns right-aligned", (t) => {
       captureStdout();
       t.after(restoreStdout);
@@ -1037,6 +1084,18 @@ describe("emitMarkdown", () => {
       ]);
       emitMarkdown(data, "total-history", { period: "daily" });
       assert.equal(stdoutText().split("\n")[0], "## Combined Cost History (daily)");
+    });
+
+    it("heading carries ', last 3 months' when capActive is true", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const data = new Map<string, UsageEntry[]>([
+        ["Claude Code", [
+          { label: "2026-05-21", totalCost: 2, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 },
+        ]],
+      ]);
+      emitMarkdown(data, "total-history", { period: "daily", capActive: true });
+      assert.equal(stdoutText().split("\n")[0], "## Combined Cost History (daily, last 3 months)");
     });
   });
 

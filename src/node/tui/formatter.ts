@@ -6,6 +6,15 @@ export interface FormatOptions {
   compact?: boolean;
   maxRows?: number;  // truncate history to most recent N data rows (watch mode)
   machineCosts?: Map<string, Map<string, number>>;  // key: label/toolName → (machine → cost)
+  capActive?: boolean;  // implicit 3-month history cap active → append "last 3 months" heading hint
+}
+
+// Build the parenthetical that follows a history title, e.g. "(daily)" or
+// "(daily, last 3 months)" when the implicit 3-month cap is active. Shared by
+// the ANSI renderers and the Markdown title helpers so the hint stays identical
+// across output formats.
+function periodLabel(period: string, capActive?: boolean): string {
+  return capActive ? `${period}, last 3 months` : period;
 }
 
 export function fmtNum(n: number): string {
@@ -101,7 +110,7 @@ export function renderBar(value: number, maxValue: number, barWidth: number): st
 export function renderHistory(toolName: string, period: string, entries: UsageEntry[], termWidth?: number, opts?: FormatOptions): string[] {
   const lines: string[] = [];
   lines.push("");
-  lines.push(boldWhite(`\u{1F4CA} ${toolName} (${period})`));
+  lines.push(boldWhite(`\u{1F4CA} ${toolName} (${periodLabel(period, opts?.capActive)})`));
   lines.push("");
 
   if (entries.length === 0) {
@@ -307,7 +316,7 @@ export function printTotal(period: string, toolTotals: Map<string, UsageTotals>,
 export function renderTotalHistory(period: string, allToolEntries: Map<string, UsageEntry[]>, termWidth?: number, opts?: FormatOptions): string[] {
   const lines: string[] = [];
   lines.push("");
-  lines.push(boldWhite(`\u{1F4CA} Combined Cost History (${period})`));
+  lines.push(boldWhite(`\u{1F4CA} Combined Cost History (${periodLabel(period, opts?.capActive)})`));
   lines.push("");
 
   const toolNames = [...allToolEntries.keys()];
@@ -506,6 +515,7 @@ export type EmitData =
 export interface EmitOptions {
   period: string;
   machineCosts?: Map<string, Map<string, number>>;
+  capActive?: boolean;  // implicit 3-month history cap active → append "last 3 months" heading hint
 }
 
 // --- CSV primitives ---
@@ -682,12 +692,12 @@ function titleForSnapshot(period: string): string {
   return `Combined Usage (${period})`;
 }
 
-function titleForHistory(toolName: string, period: string): string {
-  return `${toolName} (${period})`;
+function titleForHistory(toolName: string, period: string, capActive?: boolean): string {
+  return `${toolName} (${periodLabel(period, capActive)})`;
 }
 
-function titleForTotalHistory(period: string): string {
-  return `Combined Cost History (${period})`;
+function titleForTotalHistory(period: string, capActive?: boolean): string {
+  return `Combined Cost History (${periodLabel(period, capActive)})`;
 }
 
 function emitMarkdownSnapshot(toolTotals: Map<string, UsageTotals>, opts: EmitOptions): string {
@@ -739,7 +749,7 @@ function emitMarkdownHistory(toolName: string, entries: UsageEntry[], opts: Emit
   const header = ["Date", "Input", "Output", "Cache Write", "Cache Read", "Total", "Cost", ...machines];
 
   const lines: string[] = [];
-  lines.push(`## ${titleForHistory(toolName, opts.period)}`);
+  lines.push(`## ${titleForHistory(toolName, opts.period, opts.capActive)}`);
   lines.push("");
   lines.push(mdRow(header));
   lines.push(mdAlignRow(aligns));
@@ -821,7 +831,7 @@ function emitMarkdownTotalHistory(allToolEntries: Map<string, UsageEntry[]>, opt
   const header = ["Date", ...toolNames, "Cost", ...machines];
 
   const lines: string[] = [];
-  lines.push(`## ${titleForTotalHistory(opts.period)}`);
+  lines.push(`## ${titleForTotalHistory(opts.period, opts.capActive)}`);
   lines.push("");
   lines.push(mdRow(header));
   lines.push(mdAlignRow(aligns));
