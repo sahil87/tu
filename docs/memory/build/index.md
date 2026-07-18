@@ -4,4 +4,4 @@
 
 | File | Description |
 |------|-------------|
-| [toolchain](toolchain.md) | esbuild bundling, Node.js test runner, TypeScript config, Homebrew distribution, help-dump producer (shll.ai pulls; envelope without `captured_at`), toolkit-standards conformance posture, CI PR-gating via `ci-gate` required check + ruleset |
+| [toolchain](toolchain.md) | esbuild bundling, Node.js test runner, TypeScript config, Homebrew distribution, help-dump producer (shll.ai pulls; envelope without `captured_at`), `skill` bundle embed (`__SKILL_MD__` define + drift guard), toolkit-standards conformance posture, CI PR-gating via `ci-gate` required check + ruleset |

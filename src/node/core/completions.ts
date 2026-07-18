@@ -16,7 +16,7 @@ _tu_complete() {
   cur="\${COMP_WORDS[COMP_CWORD]}"
   prev="\${COMP_WORDS[COMP_CWORD-1]}"
 
-  local non_data_subcommands="help init-conf init-metrics sync status update shell-init"
+  local non_data_subcommands="help init-conf init-metrics sync status update shell-init skill"
   local sources="cc codex co oc gemini gem copilot cop all"
   local periods="d w m daily weekly monthly"
   local display="h history dh wh mh"
@@ -70,7 +70,7 @@ export const ZSH_COMPLETION = `# tu(1) zsh completion
 _tu() {
   local -a non_data_subcommands sources periods display long_flags short_flags shells
 
-  non_data_subcommands=(help init-conf init-metrics sync status update shell-init)
+  non_data_subcommands=(help init-conf init-metrics sync status update shell-init skill)
   sources=(cc codex co oc gemini gem copilot cop all)
   periods=(d w m daily weekly monthly)
   display=(h history dh wh mh)
@@ -150,6 +150,7 @@ complete -c tu -n '__fish_use_subcommand' -a 'sync' -d 'push/pull metrics'
 complete -c tu -n '__fish_use_subcommand' -a 'status' -d 'show config and sync state'
 complete -c tu -n '__fish_use_subcommand' -a 'update' -d 'update tu via Homebrew'
 complete -c tu -n '__fish_use_subcommand' -a 'shell-init' -d 'emit shell init script'
+complete -c tu -n '__fish_use_subcommand' -a 'skill' -d 'print agent usage bundle'
 
 # Sources (first positional only)
 complete -c tu -n '__fish_use_subcommand' -a 'cc' -d 'Claude Code'

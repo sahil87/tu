@@ -72,6 +72,7 @@ const NON_DATA_SUBCOMMANDS = [
   "status",
   "update",
   "shell-init",
+  "skill",
 ];
 
 // ---------------------------------------------------------------------------
