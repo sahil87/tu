@@ -91,7 +91,7 @@ Per-subcommand exit codes:
 
 | Command | `0` | `1` | `2` |
 |---------|-----|-----|-----|
-| `tu [source] [period] [display]` (data commands, incl. `--watch`) | success | unexpected runtime error | unknown argument/tool, bad flag value, incompatible format flags (`--json`/`--csv`/`--md`/`--watch`), bad/inverted `--since`/`--until`, bad `--interval`, missing `-u` value |
+| `tu [source] [period] [display]` (data commands, incl. `--watch`) | success | unexpected runtime error | unknown argument/tool, bad flag value, incompatible format flags (`--json`/`--csv`/`--md`/`--watch`), bad/inverted `--since`/`--until`, bad `--interval`, missing `-u` value, `--dry-run` without `tu sync` |
 | `tu sync` | success | `metrics_repo` unset, clone/sync failure | — |
 | `tu init-metrics` | success | `metrics_repo` unset, metrics dir exists but is not a git repo | — |
 | `tu update` | success (incl. non-Homebrew install message, "already up to date") | `brew update`/`brew info`/`brew upgrade` failure | — |

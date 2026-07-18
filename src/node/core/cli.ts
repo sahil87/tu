@@ -1401,7 +1401,7 @@ async function main() {
   // a surprise mutation.
   if (dryRunFlag && filteredArgs[0] !== "sync") {
     console.error("Error: --dry-run is supported only with 'tu sync' — run 'tu sync --dry-run' to preview a sync.");
-    process.exit(1);
+    process.exit(EXIT_USAGE);
   }
 
   // Non-data commands — dispatch before grammar parsing

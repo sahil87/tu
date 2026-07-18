@@ -25,7 +25,7 @@ function writeConf(name: string, content: string): string {
 
 // ---------------------------------------------------------------------------
 // Misuse guard (main()): --dry-run is honored only by `tu sync`; any other
-// invocation carrying it fails fast on stderr, exit 1. Exercised end-to-end via
+// invocation carrying it fails fast on stderr, exit 2 (usage error). Exercised end-to-end via
 // the real CLI (the guard lives in main(), the only faithful surface). The env
 // strips TU_METRICS_REPO so the guard result never depends on the dev shell.
 // ---------------------------------------------------------------------------
@@ -51,21 +51,21 @@ describe("--dry-run misuse guard", () => {
     }
   }
 
-  it("errors and exits 1 for `tu cc --dry-run` (data command)", () => {
+  it("errors and exits 2 for `tu cc --dry-run` (data command)", () => {
     const r = runCli(["cc", "--dry-run"]);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.ok(r.stderr.includes(EXPECTED), `stderr: ${r.stderr}`);
   });
 
-  it("errors and exits 1 for `tu cc --sync --dry-run` (combined)", () => {
+  it("errors and exits 2 for `tu cc --sync --dry-run` (combined)", () => {
     const r = runCli(["cc", "--sync", "--dry-run"]);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.ok(r.stderr.includes(EXPECTED), `stderr: ${r.stderr}`);
   });
 
-  it("errors and exits 1 for bare `tu --dry-run` (no subcommand)", () => {
+  it("errors and exits 2 for bare `tu --dry-run` (no subcommand)", () => {
     const r = runCli(["--dry-run"]);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.ok(r.stderr.includes(EXPECTED), `stderr: ${r.stderr}`);
   });
 });
