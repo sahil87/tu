@@ -79,6 +79,27 @@ Flag parsing strips all flags before positional argument parsing. Unknown positi
 
 Setup commands are dispatched before positional argument parsing; they ignore `--json`/`--fresh`/`--watch`.
 
+## Exit Codes
+
+`tu` follows the sahil87 toolkit convention (principle №4 — *fail fast with actionable errors*):
+
+- **`0`** — success. The command did what was asked (this includes benign no-op outcomes, e.g. `tu update` on a non-Homebrew install, "already up to date", or `tu shell-init` with no argument printing its usage listing).
+- **`1`** — operational failure. The invocation was well-formed but the operation could not complete: a network/git/Homebrew failure, a missing/misconfigured metrics repo, or an unexpected runtime error. The caller's recovery is to retry or fix the environment/config, not the command line.
+- **`2`** — usage error. The invocation itself was wrong: an unknown argument or tool, an unknown shell, a bad flag value, or incompatible format flags. The caller's recovery is to fix the arguments. Error text (and, for the data commands, a short usage hint) is written to stderr.
+
+Per-subcommand exit codes:
+
+| Command | `0` | `1` | `2` |
+|---------|-----|-----|-----|
+| `tu [source] [period] [display]` (data commands, incl. `--watch`) | success | unexpected runtime error | unknown argument/tool, bad flag value, incompatible format flags (`--json`/`--csv`/`--md`/`--watch`), bad/inverted `--since`/`--until`, bad `--interval`, missing `-u` value, `--dry-run` without `tu sync` |
+| `tu sync` | success | `metrics_repo` unset, clone/sync failure | — |
+| `tu init-metrics` | success | `metrics_repo` unset, metrics dir exists but is not a git repo | — |
+| `tu update` | success (incl. non-Homebrew install message, "already up to date") | `brew update`/`brew info`/`brew upgrade` failure | — |
+| `tu shell-init [shell]` | success (script emitted; no-arg usage listing) | — | unknown shell |
+| `tu init-conf`, `tu status`, `tu help`, `tu --version` | success | unexpected runtime error | — |
+
+Diagnostics on any error path go to stderr; stdout carries data only (principle №2).
+
 ## Data Model
 
 All data flows through two core interfaces:

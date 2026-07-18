@@ -64,9 +64,10 @@ pivot), `tu cc mh` (Claude Code monthly history), `tu wh` (weekly history).
 
 - **stdout is data; stderr is diagnostics.** Parse stdout; treat stderr as
   warnings/errors. Success writes results to stdout with nothing on stderr.
-- **Exit codes:** `0` on success; `1` on any error (bad grammar, incompatible
-  flags, unknown shell, and other failures). There is no other convention — do
-  not assume a distinct code for usage errors vs. runtime errors.
+- **Exit codes:** `0` on success; `1` on operational failure (network, git,
+  Homebrew, missing/misconfigured metrics repo — retry or fix the
+  environment); `2` on usage error (bad grammar, unknown tool/shell,
+  incompatible flags, bad flag values — fix the command line).
 - **Graceful degradation:** when a data source is unavailable, `tu` warns on
   stderr and falls back to the best available data (cached, local-only, or
   zero) rather than crashing — so a non-empty stderr can accompany exit 0.
