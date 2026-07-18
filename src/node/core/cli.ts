@@ -64,7 +64,7 @@ function tildefy(p: string): string {
   return p.startsWith(home) ? "~" + p.slice(home.length) : p;
 }
 
-// Exit-code convention (sahil87 toolkit principle №4): 0 = success,
+// Exit-code convention (shll toolkit principle №4): 0 = success,
 // 1 = operational failure (retry / check env), 2 = usage error (fix the
 // invocation). Usage-error sites exit with EXIT_USAGE; operational failures
 // keep their literal 1.

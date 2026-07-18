@@ -81,7 +81,7 @@ Setup commands are dispatched before positional argument parsing; they ignore `-
 
 ## Exit Codes
 
-`tu` follows the sahil87 toolkit convention (principle №4 — *fail fast with actionable errors*):
+`tu` follows the shll toolkit convention (principle №4 — *fail fast with actionable errors*):
 
 - **`0`** — success. The command did what was asked (this includes benign no-op outcomes, e.g. `tu update` on a non-Homebrew install, "already up to date", or `tu shell-init` with no argument printing its usage listing).
 - **`1`** — operational failure. The invocation was well-formed but the operation could not complete: a network/git/Homebrew failure, a missing/misconfigured metrics repo, or an unexpected runtime error. The caller's recovery is to retry or fix the environment/config, not the command line.
