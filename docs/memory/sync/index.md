@@ -4,4 +4,4 @@
 
 | File | Description |
 |------|-------------|
-| [multi-machine](multi-machine.md) | Git-based metrics sync, JSONL high-water-mark storage (never-shrink writes, self-view max-merge), remote merging, auto-clone, repair script |
+| [multi-machine](multi-machine.md) | Git-based metrics sync, JSONL high-water-mark storage (never-shrink writes, self-view max-merge), remote merging, auto-clone, repair script, dry-run preview (shared decision path, no-mutation, local git preview) |

@@ -19,6 +19,25 @@ function execFileAsync(file: string, args: string[]): Promise<string> {
   });
 }
 
+// The commit message for a metrics-repo commit: `# {user}: update {date}`
+// with today's UTC date. Derived in ONE place so the live commit (syncMetrics)
+// and the dry-run preview (fullSync) can never drift (toolkit principle №5).
+function commitMessage(user: string): string {
+  const date = new Date().toISOString().slice(0, 10);
+  return `# ${user}: update ${date}`;
+}
+
+// A per-file decision produced by writeMetrics. Returned in both live and
+// dry-run mode so a dry-run preview shares the exact decision path as the live
+// write (toolkit principle №5: an accurate preview must not drift from the live
+// path). In live mode the return value is ignored by existing callers.
+export interface WriteDecision {
+  filePath: string; // day-file path, `join(metricsDir, ...)` — absolute when metricsDir is (the default `~/…` resolves absolute), relative when a relative metrics_dir is configured
+  action: "write" | "skip"; // skip = never-shrink guard would skip this write
+  incomingCost: number;
+  existingCost?: number; // present only when an existing parseable file was read
+}
+
 // Never-shrink guard: day-file snapshots are high-water marks of complete
 // data. Claude Code purges transcripts older than ~30 days, so a live fetch
 // for an old date collapses toward zero — overwriting would silently destroy
@@ -27,39 +46,64 @@ function execFileAsync(file: string, args: string[]): Promise<string> {
 // one's. Absent/empty/unparseable files are treated as absent, matching the
 // read path's skip-silently posture; equal values still write so today's
 // file keeps refreshing as the day grows.
-function isShrinkingWrite(filePath: string, incoming: UsageEntry): boolean {
+//
+// Returns both the shrink verdict and the parsed existing cost (when a valid
+// existing file was read) in one pass, so writeMetrics can populate a
+// WriteDecision without a second file read.
+function readShrinkState(
+  filePath: string,
+  incoming: UsageEntry,
+): { shrinking: boolean; existingCost?: number } {
   let raw: string;
   try {
     raw = readFileSync(filePath, "utf-8").trim();
   } catch {
-    return false; // file absent or unreadable → write
+    return { shrinking: false }; // file absent or unreadable → write
   }
-  if (!raw) return false; // empty file → treat as absent
+  if (!raw) return { shrinking: false }; // empty file → treat as absent
   try {
     const existing = JSON.parse(raw) as Partial<UsageEntry>;
     const existingCost = Number(existing?.totalCost);
-    if (!Number.isFinite(existingCost)) return false; // not a UsageEntry → treat as absent
-    return incoming.totalCost < existingCost;
+    if (!Number.isFinite(existingCost)) return { shrinking: false }; // not a UsageEntry → treat as absent
+    return { shrinking: incoming.totalCost < existingCost, existingCost };
   } catch {
-    return false; // unparseable → treat as absent
+    return { shrinking: false }; // unparseable → treat as absent
   }
 }
 
+// Writes local entries to the metrics directory, honoring the never-shrink
+// guard. Returns a per-file WriteDecision[] describing what was (or, in dry-run
+// mode, WOULD be) written or skipped. When dryRun is true the decision logic
+// runs identically but no directory is created and no file is written — the
+// shared decision path is exactly what makes the dry-run preview accurate.
 export function writeMetrics(
   metricsDir: string,
   user: string,
   machine: string,
   toolKey: string,
   entries: UsageEntry[],
-): void {
+  dryRun = false,
+): WriteDecision[] {
+  const decisions: WriteDecision[] = [];
   for (const entry of entries) {
     const yyyy = entry.label.slice(0, 4);
     const dir = join(metricsDir, user, yyyy, machine);
-    mkdirSync(dir, { recursive: true });
     const filePath = join(dir, `${toolKey}-${entry.label}.jsonl`);
-    if (isShrinkingWrite(filePath, entry)) continue;
-    writeFileSync(filePath, JSON.stringify(entry) + "\n");
+    const { shrinking, existingCost } = readShrinkState(filePath, entry);
+    const decision: WriteDecision = {
+      filePath,
+      action: shrinking ? "skip" : "write",
+      incomingCost: entry.totalCost,
+    };
+    if (existingCost !== undefined) decision.existingCost = existingCost;
+    decisions.push(decision);
+    if (shrinking) continue;
+    if (!dryRun) {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, JSON.stringify(entry) + "\n");
+    }
   }
+  return decisions;
 }
 
 export async function syncMetrics(metricsDir: string, user: string): Promise<boolean> {
@@ -87,8 +131,7 @@ export async function syncMetrics(metricsDir: string, user: string): Promise<boo
     }
     const status = await git(["status", "--porcelain", `${user}/`]);
     if (status.trim()) {
-      const date = new Date().toISOString().slice(0, 10);
-      await git(["commit", "-m", `# ${user}: update ${date}`]);
+      await git(["commit", "-m", commitMessage(user)]);
     }
   } catch {
     return false;
@@ -208,9 +251,77 @@ export function touchLastSync(dir: string): void {
   writeFileSync(join(dir, ".last-sync"), new Date().toISOString() + "\n");
 }
 
-export async function fullSync(config: TuConfig, tuHome: string = TU_HOME): Promise<boolean> {
+// Per-tool dry-run write decisions, keyed by tool.
+export interface ToolWriteReport {
+  toolKey: string;
+  decisions: WriteDecision[];
+}
+
+// The structured preview a dry-run fullSync returns instead of a boolean.
+// Everything here is computed WITHOUT touching the working tree, the metrics
+// repo, or the network: writes come from writeMetrics' dry-run decisions, and
+// the commit decision from would-be writes + a read-only `git status
+// --porcelain`. pull/push are reported as the operations that WOULD follow,
+// never executed or probed.
+export interface DrySyncReport {
+  metricsDir: string;
+  user: string;
+  machine: string;
+  tools: ToolWriteReport[];
+  wouldCommit: boolean; // true if any would-write or the user dir is already dirty
+  commitMessage: string; // the same `# {user}: update {date}` string a live commit uses
+}
+
+export async function fullSync(config: TuConfig, tuHome?: string, dryRun?: false): Promise<boolean>;
+export async function fullSync(config: TuConfig, tuHome: string | undefined, dryRun: true): Promise<DrySyncReport>;
+export async function fullSync(
+  config: TuConfig,
+  tuHome: string = TU_HOME,
+  dryRun = false,
+): Promise<boolean | DrySyncReport> {
   const toolKeys = Object.keys(TOOLS);
   const allLocal = await Promise.all(toolKeys.map((k) => fetchHistory(k, "daily", [])));
+
+  if (dryRun) {
+    const tools: ToolWriteReport[] = [];
+    let anyWouldWrite = false;
+    for (let i = 0; i < toolKeys.length; i++) {
+      const decisions = writeMetrics(config.metricsDir, config.user, config.machine, toolKeys[i], allLocal[i], true);
+      if (decisions.some((d) => d.action === "write")) anyWouldWrite = true;
+      tools.push({ toolKey: toolKeys[i], decisions });
+    }
+    // Read-only check of already-staged/dirty files under the user dir, so an
+    // existing dirty working tree is reflected in the would-commit decision.
+    // Mirrors live syncMetrics, which runs `git status --porcelain <user>/`
+    // UNCONDITIONALLY (only its `git add` is gated on the dir existing) — so the
+    // preview must run the status even when the dir is absent on disk, or a
+    // tracked-but-deleted user dir (dir gone, but `git status` still reports the
+    // deletions) would under-report the commit. No network, no mutation. A
+    // non-git repo or any git failure is treated as "no dirty files" — the
+    // dry-run must never crash on an un-synced setup.
+    let dirty = false;
+    try {
+      const status = await execFileAsync("git", ["-C", config.metricsDir, "status", "--porcelain", `${config.user}/`]);
+      dirty = status.trim().length > 0;
+    } catch {
+      dirty = false;
+    }
+    return {
+      metricsDir: config.metricsDir,
+      user: config.user,
+      machine: config.machine,
+      tools,
+      // Plan-sanctioned heuristic (Design Decision 3): in steady state this can
+      // over-predict. An equal-cost incoming entry writes a byte-identical
+      // day-file, so a would-write here can still leave the live tree clean —
+      // live syncMetrics' `git status` then finds nothing and skips the commit
+      // while the preview said "Would commit". The preview errs toward showing
+      // the commit; it never under-reports one that would happen.
+      wouldCommit: anyWouldWrite || dirty,
+      commitMessage: commitMessage(config.user),
+    };
+  }
+
   for (let i = 0; i < toolKeys.length; i++) {
     writeMetrics(config.metricsDir, config.user, config.machine, toolKeys[i], allLocal[i]);
   }

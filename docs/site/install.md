@@ -105,7 +105,7 @@ Clones `metrics_repo` into `metrics_dir` (defaulting to `~/.tu/metrics_repo`). I
 tu sync
 ```
 
-Pushes your local metrics up and pulls everyone else's down. Because `auto_sync` no longer triggers automatically, run `tu sync` (or pass `--sync` to a data command, e.g. `tu --sync`) whenever you want fresh cross-machine data before a fetch.
+Pushes your local metrics up and pulls everyone else's down. Because `auto_sync` no longer triggers automatically, run `tu sync` (or pass `--sync` to a data command, e.g. `tu --sync`) whenever you want fresh cross-machine data before a fetch. To preview what a sync would write, commit, and push without changing anything, run `tu sync --dry-run`.
 
 ### 5. Check status
 

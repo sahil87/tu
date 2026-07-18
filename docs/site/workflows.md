@@ -71,11 +71,13 @@ tu -w --no-rain      # live, without the matrix rain animation
 When multi mode is configured (see the [install guide](install.md)), these flags control cross-machine aggregation:
 
 - `--sync` — sync metrics before fetching (multi mode)
+- `--dry-run` — preview a sync without writing (`tu sync --dry-run` only)
 - `--user` / `-u <user>` — show usage for a specific user (multi mode only)
 - `--by-machine` — show per-machine cost breakdown (data commands only)
 
 ```bash
 tu --sync            # pull/push metrics, then show today's cost
+tu sync --dry-run    # preview what a sync would write/commit, no changes
 tu -u alice          # show usage recorded under the 'alice' profile
 tu --by-machine      # break today's cost down per machine
 ```
