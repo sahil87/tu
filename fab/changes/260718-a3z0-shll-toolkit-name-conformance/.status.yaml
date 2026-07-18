@@ -1,0 +1,57 @@
+id: a3z0
+name: 260718-a3z0-shll-toolkit-name-conformance
+created: 2026-07-18T12:11:54Z
+created_by: sahil-noon
+change_type: docs
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
+plan:
+    generated: true
+    task_count: 8
+    acceptance_count: 10
+    acceptance_completed: 10
+confidence:
+    certain: 3
+    confident: 3
+    tentative: 0
+    unresolved: 0
+    score: 4.9
+    fuzzy: true
+    dimensions:
+        signal: 78.3
+        reversibility: 92.5
+        competence: 90.0
+        disambiguation: 81.7
+stage_metrics:
+    intake: {started_at: "2026-07-18T12:11:54Z", driver: fab-new, iterations: 1, completed_at: "2026-07-18T12:14:37Z"}
+    apply: {started_at: "2026-07-18T12:14:37Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-18T12:24:43Z"}
+    review: {started_at: "2026-07-18T12:24:43Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-18T12:32:16Z"}
+    hydrate: {started_at: "2026-07-18T12:32:16Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-18T12:34:50Z"}
+    ship: {started_at: "2026-07-18T12:34:50Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-18T12:36:54Z"}
+    review-pr: {started_at: "2026-07-18T12:36:54Z", driver: git-pr, iterations: 1, completed_at: "2026-07-18T12:44:03Z"}
+prs:
+    - https://github.com/sahil87/tu/pull/55
+change_type_source: explicit
+true_impact:
+    added: 316
+    deleted: 9
+    net: 307
+    excluding:
+        added: 5
+        deleted: 5
+        net: 0
+    tests:
+        added: 1
+        deleted: 1
+        net: 0
+    computed_at: "2026-07-18T12:36:54Z"
+    computed_at_stage: ship
+summary: 'Conform repo prose to the toolkit''s standardized name (shll toolkit): README head blockquote, docs/specs, code comments, constitution, and memory naming-baseline note'
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-07-18T12:44:03Z

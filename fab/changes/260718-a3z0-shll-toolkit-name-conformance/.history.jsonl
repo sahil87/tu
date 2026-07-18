@@ -1,0 +1,12 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-07-18T12:11:54Z"}
+{"args":"Conform repo to the toolkit's standardized name — shll toolkit: README blockquote (byte-exact), prose sweep sahil87 toolkit-\u003eshll toolkit, constitution cosmetic amendment; identifiers untouched","cmd":"fab-new","event":"command","ts":"2026-07-18T12:11:54Z"}
+{"delta":"+4.9","event":"confidence","score":4.9,"trigger":"calc-score","ts":"2026-07-18T12:13:18Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-07-18T12:14:26Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-18T12:14:37Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-18T12:24:43Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-07-18T12:32:16Z"}
+{"event":"review","result":"passed","ts":"2026-07-18T12:32:16Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-07-18T12:32:58Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-07-18T12:34:50Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-07-18T12:36:54Z"}
+{"event":"review","result":"passed","ts":"2026-07-18T12:44:03Z"}

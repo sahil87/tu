@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 // ---------------------------------------------------------------------------
-// End-to-end exit-code contract (sahil87 toolkit principle №4):
+// End-to-end exit-code contract (shll toolkit principle №4):
 //   0 = success, 1 = operational failure, 2 = usage error.
 //
 // These assertions run the real CLI as a subprocess (via tsx) so they exercise

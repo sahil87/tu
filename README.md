@@ -1,6 +1,6 @@
 # tu
 
-> Part of [@sahil87's open source toolkit](https://shll.ai) — see all projects there.
+> Part of the [shll toolkit](https://shll.ai) — see all projects there.
 
 [![Latest release](https://img.shields.io/github/v/release/sahil87/tu)](https://github.com/sahil87/tu/releases) [![Downloads](https://img.shields.io/github/downloads/sahil87/tu/total)](https://github.com/sahil87/tu/releases) [![Stars](https://img.shields.io/github/stars/sahil87/tu?style=social)](https://github.com/sahil87/tu/stargazers)
 
@@ -13,7 +13,7 @@ Track your token usage in style!
 curl -fsSL https://shll.ai/install | sh -s -- tu
 ```
 
-Installs tu (plus the shll meta-CLI) via Homebrew, handling tap trust automatically. To install the entire sahil87 toolkit instead:
+Installs tu (plus the shll meta-CLI) via Homebrew, handling tap trust automatically. To install the entire shll toolkit instead:
 
 ```sh
 curl -fsSL https://shll.ai/install | sh
@@ -36,7 +36,7 @@ echo 'eval "$(tu shell-init zsh)"' >> ~/.zshrc
 tu shell-init fish > ~/.config/fish/completions/tu.fish
 ```
 
-> 💡 Have other sahil87 tools? [`shll shell-install`](https://github.com/sahil87/shll#shll-shell-install--wire-the-rc-file-recommended) handles all of their shell integrations and autocompletions at once.
+> 💡 Have other shll tools? [`shll shell-install`](https://github.com/sahil87/shll#shll-shell-install--wire-the-rc-file-recommended) handles all of their shell integrations and autocompletions at once.
 
 ## Update
 
