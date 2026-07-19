@@ -314,8 +314,12 @@ Install:
 
 export function runShellInit(shell: string | undefined): void {
   if (shell === undefined) {
-    console.log(SHELL_INIT_USAGE);
-    return;
+    // Toolkit `shell-init` standard: a missing shell arg is a usage error —
+    // usage on stderr, exit 2, stdout EMPTY. stdout may be eval'd by shells
+    // (`eval "$(tu shell-init …)"`), so usage text must never reach it.
+    console.error(SHELL_INIT_USAGE);
+    process.exit(EXIT_USAGE);
+    return; // unreachable at runtime; keeps mocked-exit unit tests from falling through
   }
   switch (shell) {
     case "bash":
@@ -344,7 +348,10 @@ export function runUpdate(skipBrewUpdate = false): void {
 
   if (!skipBrewUpdate) {
     try {
-      execSync("brew update --quiet", { stdio: "pipe", timeout: 30_000 });
+      // Generous bound sized for a network transfer (toolkit `update` standard
+      // SHOULD) — piped call, so a bound guards against a silent hang; Node's
+      // default SIGTERM killSignal terminates gracefully.
+      execSync("brew update --quiet", { stdio: "pipe", timeout: 600_000 });
     } catch {
       console.error("Error: could not check for updates (brew update failed). Check your network connection.");
       process.exit(1);
@@ -353,7 +360,7 @@ export function runUpdate(skipBrewUpdate = false): void {
 
   let latest: string;
   try {
-    const infoRaw = execSync("brew info --json=v2 tu", { stdio: "pipe", timeout: 10_000 });
+    const infoRaw = execSync("brew info --json=v2 tu", { stdio: "pipe", timeout: 60_000 });
     const info = JSON.parse(infoRaw.toString());
     const stable = info?.formulae?.[0]?.versions?.stable;
     if (typeof stable !== "string" || stable.trim() === "") {
@@ -373,7 +380,10 @@ export function runUpdate(skipBrewUpdate = false): void {
   console.log(`Updating v${PKG_VERSION} → v${latest}...`);
 
   try {
-    execSync("brew upgrade tu", { stdio: "inherit", timeout: 120_000 });
+    // NO timeout here (toolkit `update` standard MUST NOT): killing brew
+    // mid-transaction corrupts the keg mid-swap. The call is interactive
+    // (stdio: "inherit") — the user can Ctrl-C a genuinely stuck upgrade.
+    execSync("brew upgrade tu", { stdio: "inherit" });
   } catch {
     console.error("Error: brew upgrade failed.");
     process.exit(1);
@@ -1411,7 +1421,14 @@ async function main() {
     if (cmd === "init-metrics") { runInitMetrics(); return; }
     if (cmd === "sync") { await runSync(CONFIG_PATH, TU_HOME, DEFAULT_CONFIG_PATH, dryRunFlag); return; }
     if (cmd === "status") { runStatus(); return; }
-    if (cmd === "update") { runUpdate(process.argv.includes("--skip-brew-update")); return; }
+    if (cmd === "update") {
+      // Toolkit `update` standard: `tu update --help` MUST print help (advertising
+      // the literal --skip-brew-update flag) instead of running a real update —
+      // shll update's flag-discovery probe depends on it. Scoped to `update` only.
+      if (rawArgs.includes("--help") || rawArgs.includes("-h")) { console.log(FULL_HELP); return; }
+      runUpdate(process.argv.includes("--skip-brew-update"));
+      return;
+    }
     if (cmd === "shell-init") { runShellInit(filteredArgs[1]); return; }
     if (cmd === "help-dump") { runHelpDump(); return; }
     if (cmd === "skill") { runSkill(); return; }

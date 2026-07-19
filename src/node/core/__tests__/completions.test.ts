@@ -7,8 +7,9 @@ import { BASH_COMPLETION, ZSH_COMPLETION, FISH_COMPLETION } from "../completions
 // ---------------------------------------------------------------------------
 // Helpers: capture stdout, stderr, and process.exit for `runShellInit`.
 // runShellInit writes the script to process.stdout.write (not console.log)
-// for bash/zsh/fish, prints usage via console.log for the no-arg case, and
-// prints the error to console.error + calls process.exit(1) for unknown shells.
+// for bash/zsh/fish; usage errors (no arg, unknown shell) print to
+// console.error and call process.exit(2), leaving stdout empty — per the
+// toolkit shell-init standard (stdout may be eval'd by shells).
 // ---------------------------------------------------------------------------
 
 interface Capture {
@@ -116,16 +117,20 @@ describe("runShellInit: fish", () => {
 });
 
 describe("runShellInit: no argument", () => {
-  it("prints usage + install examples and does not exit with failure", (t) => {
+  // Toolkit shell-init standard: missing shell arg is a usage error — usage on
+  // stderr, exit 2, stdout EMPTY (stdout may be eval'd by shells).
+  it("prints usage + install examples to stderr, exits 2, and emits nothing on stdout", (t) => {
     t.after(restore);
     const cap = captureIo();
     runShellInit(undefined);
-    const out = cap.logs.join("\n");
-    assert.ok(out.includes("Usage: tu shell-init <bash|zsh|fish>"), "usage heading");
-    assert.ok(out.includes("bash"), "mentions bash install");
-    assert.ok(out.includes("zsh"), "mentions zsh install");
-    assert.ok(out.includes("fish"), "mentions fish install");
-    assert.notEqual(cap.exitCode, 1);
+    const err = cap.errors.join("\n");
+    assert.ok(err.includes("Usage: tu shell-init <bash|zsh|fish>"), "usage heading on stderr");
+    assert.ok(err.includes("bash"), "mentions bash install");
+    assert.ok(err.includes("zsh"), "mentions zsh install");
+    assert.ok(err.includes("fish"), "mentions fish install");
+    assert.equal(cap.exitCode, 2);
+    assert.deepEqual(cap.stdout, [], "stdout must be empty");
+    assert.deepEqual(cap.logs, [], "console.log must not be used");
   });
 });
 
