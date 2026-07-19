@@ -29,10 +29,10 @@ The auto-regenerated reference fence in `fab/project/config.yaml` SHALL identify
 - **AND** all content above the fence (project identity, `source_paths`, `test_paths`, `true_impact_exclude`) is byte-identical to before the upgrade
 
 #### R3: Change scope is exactly the three stamp/fence lines
-The git working-tree diff for this change SHALL consist of exactly three tracked files — `fab/.fab-version`, `fab/.kit-migration-version`, `fab/project/config.yaml` — with no stray edits to source, tests, or other tracked files.
+The mechanical diff produced by `fab upgrade-repo` SHALL consist of exactly three tracked files — `fab/.fab-version`, `fab/.kit-migration-version`, `fab/project/config.yaml` — with no stray edits to source, tests, or other tracked files. This scope is about the upgrade-repo diff only; it excludes the pipeline change-record files under `fab/changes/**`, which this PR also (correctly) tracks.
 
 - **GIVEN** `fab upgrade-repo` was the only mechanical operation applied
-- **WHEN** the working-tree diff against `HEAD` is inspected (excluding the untracked change folder)
+- **WHEN** the working-tree diff against `HEAD` is inspected (excluding the `fab/changes/**` change-record files)
 - **THEN** exactly those three files appear, three insertions and three deletions total
 - **AND** `src/` and `tests` are untouched
 
@@ -53,12 +53,12 @@ The project test suite SHALL pass under kit `2.16.4`, confirming the upgrade int
 
 ### Phase 1: Verification
 
-- [x] T001 Verify the working-tree diff against `HEAD` is exactly `fab/.fab-version`, `fab/.kit-migration-version`, and `fab/project/config.yaml` (3 files, 3 insertions, 3 deletions) with no stray tracked edits (`git diff --stat HEAD`). <!-- R3 -->
+- [x] T001 Verify the upgrade-repo diff against `HEAD` is exactly `fab/.fab-version`, `fab/.kit-migration-version`, and `fab/project/config.yaml` (3 files, 3 insertions, 3 deletions) with no stray tracked edits — inspect via `git diff --stat HEAD -- . ':(exclude)fab/changes/**'` so the pipeline change-record files this PR tracks under `fab/changes/**` are excluded from the scope check. <!-- R3 -->
 - [x] T002 [P] Validate version-stamp consistency: `fab/.fab-version` and `fab/.kit-migration-version` both read `2.16.4`, the `fab/project/config.yaml` fence header reads `# >>> fab reference (kit 2.16.4) >>>`, and content above the fence is unchanged; cross-check against `fab --version` reporting `project: 2.16.4`. <!-- R1, R2 -->
 
 ### Phase 2: Health Check
 
-- [x] T003 Run the canonical test suite (`npm test`) and confirm all tests pass under the upgraded kit. Under a clean HOME (no real `~/.tu.conf` leak) all 808 tests pass, 0 failures. The 14 failures seen in the raw run are pre-existing environment-specific test pollution (the developer's `~/.tu.conf` has `mode = multi`), fail identically on the pre-upgrade `2.16.0` tree, and are unrelated to this kit bump — out of scope per the change's non-goals. <!-- R4 -->
+- [x] T003 Run the canonical test suite (`npm test`) and confirm all tests pass under the upgraded kit. Under a clean HOME (no real `~/.tu.conf` leak) all 808 tests pass, 0 failures. The config/sync failures seen in a raw run are pre-existing environment-specific test pollution (the developer's `~/.tu.conf` has `mode = multi`), fail identically on the pre-upgrade `2.16.0` tree, and are unrelated to this kit bump — out of scope per the change's non-goals. <!-- R4 -->
 
 ## Acceptance
 
@@ -66,7 +66,7 @@ The project test suite SHALL pass under kit `2.16.4`, confirming the upgrade int
 
 - [x] A-001 R1: `fab/.fab-version` and `fab/.kit-migration-version` both contain `2.16.4`.
 - [x] A-002 R2: The `fab/project/config.yaml` reference fence header reads `# >>> fab reference (kit 2.16.4) >>>` and all user-owned config above the fence is unchanged.
-- [x] A-003 R3: The working-tree diff against `HEAD` is exactly the three files above (3 insertions, 3 deletions), with `src/` and tests untouched.
+- [x] A-003 R3: The upgrade-repo diff against `HEAD` (excluding the `fab/changes/**` change-record files this PR tracks) is exactly the three files above (3 insertions, 3 deletions), with `src/` and tests untouched.
 
 ### Behavioral Correctness
 
@@ -74,7 +74,7 @@ The project test suite SHALL pass under kit `2.16.4`, confirming the upgrade int
 
 ### Scenario Coverage
 
-- [x] A-005 R4: The canonical test suite (`npm test`) runs to completion with zero failing tests. Verified at review: 808/808 pass, exit 0, under a clean env (`HOME` pointed at an empty dir AND `TU_METRICS_REPO` unset — the profile-exported `TU_METRICS_REPO` is a second dev-env pollution source beyond `~/.tu.conf`; with either present, 15 config/sync tests fail from mode=multi leakage, unrelated to this change).
+- [x] A-005 R4: The canonical test suite (`npm test`) runs to completion with zero failing tests. Verified at review: 808/808 pass, exit 0, under a clean env (`HOME` pointed at an empty dir AND `TU_METRICS_REPO` unset — the profile-exported `TU_METRICS_REPO` is a second dev-env pollution source beyond `~/.tu.conf`; with either present, the config/sync tests fail from mode=multi leakage, unrelated to this change).
 
 ### Code Quality
 
