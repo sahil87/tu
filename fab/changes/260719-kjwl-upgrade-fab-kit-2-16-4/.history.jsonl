@@ -1,0 +1,10 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-07-19T15:16:37Z"}
+{"args":"Upgrade fab-kit from 2.16.0 to 2.16.4 via fab upgrade-repo, drive through full pipeline","cmd":"fab-new","event":"command","ts":"2026-07-19T15:16:37Z"}
+{"delta":"+5.0","event":"confidence","score":5,"trigger":"calc-score","ts":"2026-07-19T15:17:35Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-07-19T15:18:08Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-19T15:18:14Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-19T15:22:49Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-07-19T15:24:12Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-07-19T15:28:02Z"}
+{"event":"review","result":"passed","ts":"2026-07-19T15:28:02Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-07-19T15:29:57Z"}

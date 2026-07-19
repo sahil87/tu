@@ -1,0 +1,54 @@
+id: kjwl
+name: 260719-kjwl-upgrade-fab-kit-2-16-4
+created: 2026-07-19T15:16:37Z
+created_by: Sahil Ahuja
+change_type: chore
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
+    review-pr: pending
+plan:
+    generated: true
+    task_count: 3
+    acceptance_count: 8
+    acceptance_completed: 8
+confidence:
+    certain: 3
+    confident: 1
+    tentative: 0
+    unresolved: 0
+    score: 5.0
+    fuzzy: true
+    dimensions:
+        signal: 78.8
+        reversibility: 90.0
+        competence: 88.8
+        disambiguation: 85.0
+stage_metrics:
+    intake: {started_at: "2026-07-19T15:16:37Z", driver: fab-new, iterations: 1, completed_at: "2026-07-19T15:18:14Z"}
+    apply: {started_at: "2026-07-19T15:18:14Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-19T15:22:49Z"}
+    review: {started_at: "2026-07-19T15:22:49Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-19T15:28:02Z"}
+    hydrate: {started_at: "2026-07-19T15:28:02Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-19T15:29:57Z"}
+    ship: {started_at: "2026-07-19T15:29:57Z", driver: fab-fff, iterations: 1}
+prs: []
+change_type_source: explicit
+true_impact:
+    added: 0
+    deleted: 0
+    net: 0
+    excluding:
+        added: 0
+        deleted: 0
+        net: 0
+    tests:
+        added: 0
+        deleted: 0
+        net: 0
+    computed_at: "2026-07-19T15:29:57Z"
+    computed_at_stage: hydrate
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-07-19T15:29:57Z
