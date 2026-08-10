@@ -81,7 +81,7 @@ Run 'tu help' for all commands.`;
 
 export const FULL_HELP = `Usage: tu [source] [period] [display]
 
-Sources: cc (Claude Code), codex/co (Codex), oc (OpenCode), gemini/gem (Gemini), copilot/cop (Copilot), all (default)
+Sources: cc (Claude Code), codex/co (Codex), oc (OpenCode), gemini/gem (Gemini), copilot/cop (Copilot), kimi/ki (Kimi), all (default)
 Periods: d/daily (default), w/weekly, m/monthly
 Display: (bare) = snapshot, h/history = history
 Combined: dh (daily history), wh (weekly history), mh (monthly history)
@@ -866,8 +866,8 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   return { outputFormat, jsonFlag, syncFlag, dryRunFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, fullFlag, filteredArgs };
 }
 
-const KNOWN_SOURCES = new Set(["cc", "codex", "co", "oc", "gemini", "gem", "copilot", "cop", "all"]);
-const SOURCE_ALIASES: Record<string, string> = { co: "codex", gem: "gemini", cop: "copilot" };
+const KNOWN_SOURCES = new Set(["cc", "codex", "co", "oc", "gemini", "gem", "copilot", "cop", "kimi", "ki", "all"]);
+const SOURCE_ALIASES: Record<string, string> = { co: "codex", gem: "gemini", cop: "copilot", ki: "kimi" };
 
 export interface DataArgs {
   source: string;

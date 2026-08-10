@@ -61,6 +61,18 @@ describe("parseDataArgs", () => {
       assert.equal(result.source, "copilot");
     });
 
+    it("recognizes kimi as source", () => {
+      const result = parseDataArgs(["kimi", "mh"]);
+      assert.equal(result.source, "kimi");
+      assert.equal(result.period, "monthly");
+      assert.equal(result.display, "history");
+    });
+
+    it("resolves ki alias to kimi", () => {
+      const result = parseDataArgs(["ki"]);
+      assert.equal(result.source, "kimi");
+    });
+
     it("recognizes all as explicit source", () => {
       const result = parseDataArgs(["all", "mh"]);
       assert.equal(result.source, "all");

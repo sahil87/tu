@@ -474,35 +474,36 @@ describe("printTotalHistory", () => {
     assert.ok(dataLine!.includes("\u2588"), "expected bars in data row");
   });
 
-  it("5-tool pivot full data row (through the Cost cell) is 79 chars and fits within 80 columns", (t) => {
+  it("6-tool pivot full data row (through the Cost cell) is 90 chars and fits within 91 columns", (t) => {
     t.after(restoreLog);
     const mk = (cost: number): UsageEntry[] => [
       { label: "2026-07-01", totalCost: cost, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 },
     ];
-    // Full 5-tool registry order, including zero-data gemini/copilot columns.
+    // Full 6-tool registry order, including zero-data gemini/copilot/kimi columns.
     const data = new Map<string, UsageEntry[]>([
       ["Claude Code", mk(123.45)],
       ["Codex", mk(0.12)],
       ["OpenCode", mk(4.56)],
       ["Gemini", mk(0)],
       ["Copilot", mk(0)],
+      ["Kimi", mk(0)],
     ]);
-    printTotalHistory("daily", data, 80);
+    printTotalHistory("daily", data, 91);
     const output = logged.join("\n");
 
-    // All five tool columns render (zero-data ones are NOT omitted).
-    for (const name of ["Claude Code", "Codex", "OpenCode", "Gemini", "Copilot"]) {
+    // All six tool columns render (zero-data ones are NOT omitted).
+    for (const name of ["Claude Code", "Codex", "OpenCode", "Gemini", "Copilot", "Kimi"]) {
       assert.match(output, new RegExp(name));
     }
     // Zero-data tools show $0.00, not a blank/omitted column.
     assert.match(output, /\$0\.00/);
 
-    // The FULL rendered data row \u2014 Date + the five tool columns + the 3-char
-    // gutter + the 8-wide Cost cell \u2014 must fit within 80 cols. Per-column
-    // widths: Date 10, Claude Code max(11,8)=11, the other four max(<=8,8)=8. So
-    // the row is 10 + (11+8+8+8+8) + 5x3 (the " | " before each tool column) + 3
-    // (gutter) + 8 (Cost) = 79 (vs. the old fixed-14 layout's ~108, and the prior
-    // max(name,9)+Date-12 body-only "fit" that still rendered an 85-char row).
+    // The FULL rendered data row \u2014 Date + the six tool columns + the 3-char
+    // gutter + the 8-wide Cost cell \u2014 must fit within 91 cols. Per-column
+    // widths: Date 10, Claude Code max(11,8)=11, the other five max(<=8,8)=8. So
+    // the row is 10 + (11+8+8+8+8+8) + 6x3 (the " | " before each tool column) + 3
+    // (gutter) + 8 (Cost) = 90 (the 80-col fit ended when the pivot grew to 6
+    // tools \u2014 the 8-char cost-cell floor leaves no slack to reclaim).
     // Measure the ACTUAL rendered data row through the Cost cell \u2014 not the
     // body, not recomputed arithmetic against a constant.
     const dataLine = logged.find((l) => stripAnsi(l).includes("2026-07-01"));
@@ -512,21 +513,21 @@ describe("printTotalHistory", () => {
     const costCell = "$128.13";
     const costEnd = stripped.indexOf(costCell) + costCell.length;
     const fullRow = stripped.slice(0, costEnd);
-    assert.equal(fullRow.length, 79, `full data row must be 79 chars (got ${fullRow.length}): "${fullRow}"`);
-    assert.ok(fullRow.length <= 80, `full data row exceeds 80 cols (${fullRow.length})`);
-    // And no inline bar renders at 80 cols (barWidth = 80 - 71 - 3 - 8 - 1 < 0).
-    assert.ok(!output.includes("\u2588"), "expected no inline bars for the 5-tool pivot at 80 cols");
+    assert.equal(fullRow.length, 90, `full data row must be 90 chars (got ${fullRow.length}): "${fullRow}"`);
+    assert.ok(fullRow.length <= 91, `full data row exceeds 91 cols (${fullRow.length})`);
+    // And no inline bar renders at 91 cols (barWidth = 91 - 79 - 3 - 8 - 1 = 0 < MIN_BAR_AREA).
+    assert.ok(!output.includes("\u2588"), "expected no inline bars for the 6-tool pivot at 91 cols");
 
     // Watch mode: with prevCosts set (watch.ts populates it after the first
     // poll) the row appends a delta indicator after the Cost cell. In this pivot
     // it is rendered WITHOUT its leading space (the arrow abuts the cost \u2014
-    // "$128.13\u2191", 1 visible char) so the row is 79 + 1 = 80 exactly and
-    // does NOT wrap at 80 cols. The spaced form ( \u2191, 2 chars) would render
-    // 81 and wrap, corrupting the watch compositor's line-counting.
+    // "$128.13\u2191", 1 visible char) so the row is 90 + 1 = 91 exactly and
+    // does NOT wrap at 91 cols. The spaced form ( \u2191, 2 chars) would render
+    // 92 and wrap, corrupting the watch compositor's line-counting.
     captureLog();
     // Row total for 2026-07-01 is 123.45 + 0.12 + 4.56 = 128.13; a lower prev
     // triggers the up-arrow (\u2191).
-    printTotalHistory("daily", data, 80, { prevCosts: new Map([["total:2026-07-01", 100]]) });
+    printTotalHistory("daily", data, 91, { prevCosts: new Map([["total:2026-07-01", 100]]) });
     const watchOutput = logged.join("\n");
     const watchLine = logged.find((l) => stripAnsi(l).includes("2026-07-01"));
     assert.ok(watchLine, "expected the 2026-07-01 watch-mode data row");
@@ -536,39 +537,40 @@ describe("printTotalHistory", () => {
     // Measure the full row through the indicator (the arrow is the last glyph).
     const arrowEnd = watchStripped.indexOf("\u2191") + 1;
     const watchRow = watchStripped.slice(0, arrowEnd);
-    assert.equal(watchRow.length, 80, `watch-mode row (through the delta indicator) must be 80 chars (got ${watchRow.length}): "${watchRow}"`);
-    assert.ok(watchRow.length <= 80, `watch-mode row exceeds 80 cols (${watchRow.length})`);
-    // Still no inline bar at 80 cols in watch mode.
-    assert.ok(!watchOutput.includes("\u2588"), "expected no inline bars for the 5-tool watch pivot at 80 cols");
+    assert.equal(watchRow.length, 91, `watch-mode row (through the delta indicator) must be 91 chars (got ${watchRow.length}): "${watchRow}"`);
+    assert.ok(watchRow.length <= 91, `watch-mode row exceeds 91 cols (${watchRow.length})`);
+    // Still no inline bar at 91 cols in watch mode.
+    assert.ok(!watchOutput.includes("\u2588"), "expected no inline bars for the 6-tool watch pivot at 91 cols");
   });
 
-  it("5-tool watch-mode pivot: no line exceeds terminal width across the bars band (90/100/110)", (t) => {
+  it("6-tool watch-mode pivot: no line exceeds terminal width across the bars band (101/110/120)", (t) => {
     t.after(restoreLog);
     const mk = (cost: number): UsageEntry[] => [
       { label: "2026-07-01", totalCost: cost, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 },
     ];
-    // Full 5-tool registry order; the max-cost row is the one that renders the
+    // Full 6-tool registry order; the max-cost row is the one that renders the
     // longest bar (full width) — it is the wrap risk once a delta indicator is
-    // appended. tableWidth = 68, so bars render from ~width 90 (barWidth >= 10).
+    // appended. tableWidth = 79, so bars render from ~width 101 (barWidth >= 10).
     const data = new Map<string, UsageEntry[]>([
       ["Claude Code", mk(123.45)],
       ["Codex", mk(0.12)],
       ["OpenCode", mk(4.56)],
       ["Gemini", mk(0)],
       ["Copilot", mk(0)],
+      ["Kimi", mk(0)],
     ]);
     // A lower prev triggers the up-arrow (row total 128.13 > 100), exercising the
     // watch-mode delta indicator on the max-cost row.
     const prevCosts = new Map([["total:2026-07-01", 100]]);
-    for (const termWidth of [90, 100, 110]) {
+    for (const termWidth of [101, 110, 120]) {
       captureLog();
       printTotalHistory("daily", data, termWidth, { prevCosts });
       // Reserving the indicator char shifts the bars threshold up by one: with
-      // tableWidth 68, barWidth = width - 68 - 3 - 8 - 1 - 1 (indicator reserve),
-      // so bars render from width 91 (>=10). 90 is the last no-bar width; 100/110
+      // tableWidth 79, barWidth = width - 79 - 3 - 8 - 1 - 1 (indicator reserve),
+      // so bars render from width 102 (>=10). 101 is the last no-bar width; 110/120
       // render bars and exercise the bar + indicator interaction on the max-cost
       // row (the historical width+1 wrap).
-      if (termWidth >= 91) {
+      if (termWidth >= 102) {
         assert.ok(logged.join("\n").includes("█"), `expected inline bars at ${termWidth} cols`);
       }
       // EVERY rendered line — headers, dividers, data rows (bar + indicator),

@@ -106,8 +106,8 @@ describe("--skip-brew-update flag: parseGlobalFlags filtering", () => {
 
   it("does not surface --skip-brew-update on the GlobalFlags object", () => {
     const result = parseGlobalFlags(["update", "--skip-brew-update"]);
-    assert.equal((result as Record<string, unknown>).skipBrewUpdate, undefined);
-    assert.equal((result as Record<string, unknown>)["--skip-brew-update"], undefined);
+    assert.equal((result as unknown as Record<string, unknown>).skipBrewUpdate, undefined);
+    assert.equal((result as unknown as Record<string, unknown>)["--skip-brew-update"], undefined);
   });
 
   it("leaves filteredArgs unchanged when the flag is absent", () => {

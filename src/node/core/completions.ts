@@ -17,7 +17,7 @@ _tu_complete() {
   prev="\${COMP_WORDS[COMP_CWORD-1]}"
 
   local non_data_subcommands="help init-conf init-metrics sync status update shell-init skill"
-  local sources="cc codex co oc gemini gem copilot cop all"
+  local sources="cc codex co oc gemini gem copilot cop kimi ki all"
   local periods="d w m daily weekly monthly"
   local display="h history dh wh mh"
   local long_flags="--json --csv --md --since --until --full --sync --dry-run --fresh --watch --interval --user --by-machine --skip-brew-update --no-color --no-rain --version --help"
@@ -71,7 +71,7 @@ _tu() {
   local -a non_data_subcommands sources periods display long_flags short_flags shells
 
   non_data_subcommands=(help init-conf init-metrics sync status update shell-init skill)
-  sources=(cc codex co oc gemini gem copilot cop all)
+  sources=(cc codex co oc gemini gem copilot cop kimi ki all)
   periods=(d w m daily weekly monthly)
   display=(h history dh wh mh)
   long_flags=(--json --csv --md --since --until --full --sync --dry-run --fresh --watch --interval --user --by-machine --skip-brew-update --no-color --no-rain --version --help)
@@ -162,6 +162,8 @@ complete -c tu -n '__fish_use_subcommand' -a 'gemini' -d 'Gemini'
 complete -c tu -n '__fish_use_subcommand' -a 'gem' -d 'Gemini (alias)'
 complete -c tu -n '__fish_use_subcommand' -a 'copilot' -d 'Copilot'
 complete -c tu -n '__fish_use_subcommand' -a 'cop' -d 'Copilot (alias)'
+complete -c tu -n '__fish_use_subcommand' -a 'kimi' -d 'Kimi'
+complete -c tu -n '__fish_use_subcommand' -a 'ki' -d 'Kimi (alias)'
 complete -c tu -n '__fish_use_subcommand' -a 'all' -d 'all tools (default)'
 
 # Periods + display (any positional)

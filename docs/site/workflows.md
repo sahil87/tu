@@ -16,6 +16,7 @@ tu [source] [period] [display]
   - `oc` — OpenCode
   - `gemini` / `gem` — Gemini
   - `copilot` / `cop` — Copilot
+  - `kimi` / `ki` — Kimi
   - `all` — every source (default)
 - **Period** — the time window:
   - `d` / `daily` — daily (default)

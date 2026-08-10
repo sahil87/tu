@@ -59,7 +59,7 @@ function writeCache(toolKey: string, entries: UsageEntry[]): void {
 // node interpreter); in dev mode it is the npm launcher at node_modules/.bin/ccusage
 // (a JS shim that resolves the host's optional native package). Per-tool
 // subcommands are expressed via prefixArgs: cc→claude, codex→codex, oc→opencode,
-// gemini→gemini, copilot→copilot. Bare `ccusage daily` is a v20 all-agents
+// gemini→gemini, copilot→copilot, kimi→kimi. Bare `ccusage daily` is a v20 all-agents
 // aggregate, so every tool must use its per-agent subcommand to avoid
 // over/double-counting other agents. All per-agent subcommands emit the ISO
 // daily label under "date"; only the bare all-agents aggregate (which tu never
@@ -99,6 +99,13 @@ export const TOOLS: Record<string, ToolConfig> = {
     name: "Copilot",
     binary: CCUSAGE,
     prefixArgs: ["copilot"],
+    labelKey: "date",
+    needsFilter: false,
+  },
+  kimi: {
+    name: "Kimi",
+    binary: CCUSAGE,
+    prefixArgs: ["kimi"],
     labelKey: "date",
     needsFilter: false,
   },
@@ -173,7 +180,7 @@ export function toUsageEntry(t: Record<string, unknown>, labelKey: string): Usag
 
 // The JSON key carrying an entry's ISO date label lives per-tool as
 // ToolConfig.labelKey. All per-agent subcommands (claude/codex/opencode/
-// gemini/copilot) emit it under "date"; only the bare all-agents aggregate
+// gemini/copilot/kimi) emit it under "date"; only the bare all-agents aggregate
 // (which tu never calls) emits "period". The mechanism is kept because the
 // key varies by serializer, so a future divergence stays a data-only change.
 // normalizeLabel passes ISO labels through unchanged for either spelling.

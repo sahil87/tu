@@ -17,9 +17,10 @@ tu [source] [period] [display] [flags]
 | `oc` | OpenCode | `ccusage opencode` |
 | `gemini`, `gem` | Gemini | `ccusage gemini` |
 | `copilot`, `cop` | Copilot | `ccusage copilot` |
-| `all` (default) | All five tools | — |
+| `kimi`, `ki` | Kimi | `ccusage kimi` |
+| `all` (default) | All six tools | — |
 
-`co` → `codex`, `gem` → `gemini`, `cop` → `copilot` are aliases. When no source is given, defaults to `all`.
+`co` → `codex`, `gem` → `gemini`, `cop` → `copilot`, `ki` → `kimi` are aliases. When no source is given, defaults to `all`.
 
 ### Periods
 
@@ -119,7 +120,7 @@ interface UsageEntry extends UsageTotals {
 }
 ```
 
-Tool configs define the five supported tools (`cc`, `codex`, `oc`, `gemini`, `copilot`), each with a display name, binary command path, a per-tool `labelKey` (the JSON key carrying the ISO date label — all per-agent subcommands emit `"date"`), and a `needsFilter` flag (Codex/OpenCode retain the flag for defensive noise stripping; v20 emits clean JSON).
+Tool configs define the six supported tools (`cc`, `codex`, `oc`, `gemini`, `copilot`, `kimi`), each with a display name, binary command path, a per-tool `labelKey` (the JSON key carrying the ISO date label — all per-agent subcommands emit `"date"`), and a `needsFilter` flag (Codex/OpenCode retain the flag for defensive noise stripping; v20 emits clean JSON).
 
 ## Data Flow
 

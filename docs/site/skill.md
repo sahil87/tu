@@ -12,14 +12,14 @@ for it, what each command does, how it composes, and how to read its output.
 Reach for `tu` to answer cost/usage questions about AI coding assistants on
 **this machine**:
 
-- "How much did Claude Code / Codex / OpenCode / Gemini / Copilot cost today?"
+- "How much did Claude Code / Codex / OpenCode / Gemini / Copilot / Kimi cost today?"
 - Daily, weekly, or monthly spend, as a snapshot or as history.
 - Per-machine breakdowns (multi mode) and per-user views.
 
 Do NOT reach for `tu` for:
 
 - Billing management or payment — it only reports usage, it changes nothing.
-- Tools it does not track (only the five sources below).
+- Tools it does not track (only the six sources below).
 - Per-request granularity beyond what `ccusage` emits — `tu` aggregates by day.
 
 ## Capabilities map
@@ -27,7 +27,8 @@ Do NOT reach for `tu` for:
 ### Data grammar: `tu [source] [period] [display]`
 
 - **source** — `cc` (Claude Code), `codex`/`co` (Codex), `oc` (OpenCode),
-  `gemini`/`gem` (Gemini), `copilot`/`cop` (Copilot); omit for `all` (default).
+  `gemini`/`gem` (Gemini), `copilot`/`cop` (Copilot), `kimi`/`ki` (Kimi);
+  omit for `all` (default).
 - **period** — `d`/`daily` (default), `w`/`weekly`, `m`/`monthly`.
 - **display** — bare = snapshot (current period); `h`/`history` = time series.
 - **combined shorthands** — `dh` (daily history), `wh` (weekly history),
@@ -51,7 +52,7 @@ pivot), `tu cc mh` (Claude Code monthly history), `tu wh` (weekly history).
 ## Composition patterns
 
 - **Shells out to `ccusage`** (vendored) to read local usage data — no separate
-  install needed; a single `ccusage` binary serves all five sources.
+  install needed; a single `ccusage` binary serves all six sources.
 - **Shells out to `git`** in multi mode to sync per-machine metrics through a
   shared repo, so cost aggregates across machines.
 - **Shells out to `brew`** for `tu update` (Homebrew-installed builds only).
