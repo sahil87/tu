@@ -21,7 +21,7 @@ curl -fsSL https://shll.ai/install | sh
 
 > 📖 Full walkthrough: the [install guide](docs/site/install.md) covers install, shell completions, and multi-machine setup in depth.
 
-<img width="1025" height="675" alt="tu terminal output showing today's AI coding assistant costs across Claude Code, Codex, OpenCode, Gemini, and Copilot" src="https://github.com/user-attachments/assets/d6d1c930-8230-4910-ba1b-985e7df17e7c" />
+<img width="1025" height="675" alt="tu terminal output showing today's AI coding assistant costs across Claude Code, Codex, OpenCode, Gemini, Copilot, and Kimi" src="https://github.com/user-attachments/assets/d6d1c930-8230-4910-ba1b-985e7df17e7c" />
 
 ### Shell completions
 
@@ -58,7 +58,7 @@ tu cc mh             # Monthly cost history, Claude Code
 tu m                 # This month's cost, all tools
 ```
 
-Sources: `cc` (Claude Code), `codex`/`co` (Codex), `oc` (OpenCode), `gemini`/`gem` (Gemini), `copilot`/`cop` (Copilot), `all` (default)
+Sources: `cc` (Claude Code), `codex`/`co` (Codex), `oc` (OpenCode), `gemini`/`gem` (Gemini), `copilot`/`cop` (Copilot), `kimi`/`ki` (Kimi), `all` (default)
 
 ### Flags
 

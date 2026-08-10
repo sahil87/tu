@@ -317,8 +317,8 @@ describe("pickCurrentEntry", () => {
 
 // ---------------------------------------------------------------------------
 // Per-tool label key: the mechanism handles both "date" and "period" key
-// spellings. All five per-agent subcommands emit the ISO label under "date"
-// at ccusage v20.0.14; only the bare all-agents aggregate (which tu never
+// spellings. All per-agent subcommands emit the ISO label under "date"
+// at ccusage v20; only the bare all-agents aggregate (which tu never
 // calls) emits "period". The per-tool ToolConfig.labelKey is therefore "date"
 // for every tool — the "period" support is kept because the key varies by
 // serializer (a future divergence stays a data-only change).
@@ -402,26 +402,28 @@ describe("per-tool label key (date vs period)", () => {
 // TOOLS registry
 // ---------------------------------------------------------------------------
 describe("TOOLS", () => {
-  const ALL_TOOLS = () => [TOOLS.cc, TOOLS.codex, TOOLS.oc, TOOLS.gemini, TOOLS.copilot];
+  const ALL_TOOLS = () => [TOOLS.cc, TOOLS.codex, TOOLS.oc, TOOLS.gemini, TOOLS.copilot, TOOLS.kimi];
 
-  it("has entries for cc, codex, oc, gemini, and copilot", () => {
+  it("has entries for cc, codex, oc, gemini, copilot, and kimi", () => {
     assert.ok(TOOLS.cc);
     assert.ok(TOOLS.codex);
     assert.ok(TOOLS.oc);
     assert.ok(TOOLS.gemini);
     assert.ok(TOOLS.copilot);
+    assert.ok(TOOLS.kimi);
   });
 
-  it("registry order is cc, codex, oc, gemini, copilot (column order in all-tools views)", () => {
+  it("registry order is cc, codex, oc, gemini, copilot, kimi (column order in all-tools views)", () => {
     // Insertion order determines column order; new tools are appended so the
     // existing columns keep their positions (Output Stability).
-    assert.deepEqual(Object.keys(TOOLS), ["cc", "codex", "oc", "gemini", "copilot"]);
+    assert.deepEqual(Object.keys(TOOLS), ["cc", "codex", "oc", "gemini", "copilot", "kimi"]);
   });
 
-  it("cc, gemini, and copilot do not need filtering", () => {
+  it("cc, gemini, copilot, and kimi do not need filtering", () => {
     assert.equal(TOOLS.cc.needsFilter, false);
     assert.equal(TOOLS.gemini.needsFilter, false);
     assert.equal(TOOLS.copilot.needsFilter, false);
+    assert.equal(TOOLS.kimi.needsFilter, false);
   });
 
   it("codex and oc need filtering", () => {
@@ -429,9 +431,10 @@ describe("TOOLS", () => {
     assert.equal(TOOLS.oc.needsFilter, true);
   });
 
-  it("gemini and copilot carry the expected display names", () => {
+  it("gemini, copilot, and kimi carry the expected display names", () => {
     assert.equal(TOOLS.gemini.name, "Gemini");
     assert.equal(TOOLS.copilot.name, "Copilot");
+    assert.equal(TOOLS.kimi.name, "Kimi");
   });
 
   // --- ccusage@20 shape: one binary, per-tool subcommand prefixArgs ---
@@ -445,7 +448,7 @@ describe("TOOLS", () => {
 
   it("no entry still carries a legacy `command` field (migration complete)", () => {
     for (const tool of ALL_TOOLS()) {
-      assert.equal((tool as Record<string, unknown>).command, undefined);
+      assert.equal((tool as unknown as Record<string, unknown>).command, undefined);
     }
   });
 
@@ -482,10 +485,11 @@ describe("TOOLS", () => {
     assert.deepEqual(TOOLS.oc.prefixArgs, ["opencode"]);
     assert.deepEqual(TOOLS.gemini.prefixArgs, ["gemini"]);
     assert.deepEqual(TOOLS.copilot.prefixArgs, ["copilot"]);
+    assert.deepEqual(TOOLS.kimi.prefixArgs, ["kimi"]);
   });
 
   it("every tool's labelKey is 'date' (all per-agent subcommands emit 'date')", () => {
-    // All five per-agent subcommands (claude/codex/opencode/gemini/copilot) emit
+    // All per-agent subcommands (claude/codex/opencode/gemini/copilot/kimi) emit
     // the ISO label under "date" at ccusage v20.0.14; only the bare all-agents
     // aggregate (which tu never calls) emits "period". codex/oc were corrected
     // from the ccfx-era "period" here.

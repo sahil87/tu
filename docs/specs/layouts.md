@@ -70,18 +70,18 @@ Total        |    1,259,246 |    1,592,469 |       79,134 |       40,801 |    2,
 ```
 📊 Combined Cost History (daily)
 
-Date       | Claude Code |    Codex | OpenCode |   Gemini |  Copilot |     Cost
-───────────|─────────────|──────────|──────────|──────────|──────────|─────────
-2026-03-04 |       $1.50 |    $6.10 |    $1.20 |    $0.00 |    $0.00 |    $8.80
-2026-03-05 |       $2.10 |    $3.20 |    $0.45 |    $0.00 |    $0.00 |    $5.75
-2026-03-06 |       $2.85 |    $5.45 |    $0.67 |    $0.00 |    $0.00 |    $8.97
-───────────|─────────────|──────────|──────────|──────────|──────────|─────────
-Total      |       $6.45 |   $14.75 |    $2.32 |    $0.00 |    $0.00 |   $23.52
+Date       | Claude Code |    Codex | OpenCode |   Gemini |  Copilot |     Kimi |     Cost
+───────────|─────────────|──────────|──────────|──────────|──────────|──────────|─────────
+2026-03-04 |       $1.50 |    $6.10 |    $1.20 |    $0.00 |    $0.00 |    $0.00 |    $8.80
+2026-03-05 |       $2.10 |    $3.20 |    $0.45 |    $0.00 |    $0.00 |    $0.00 |    $5.75
+2026-03-06 |       $2.85 |    $5.45 |    $0.67 |    $0.00 |    $0.00 |    $0.00 |    $8.97
+───────────|─────────────|──────────|──────────|──────────|──────────|──────────|─────────
+Total      |       $6.45 |   $14.75 |    $2.32 |    $0.00 |    $0.00 |    $0.00 |   $23.52
 ```
 
 - **Columns:** Date (10 left-aligned — ISO daily labels are 10 chars, monthly 7), one per tool sized to `max(toolName.length, 8)` right-aligned (variable per-tool width — e.g. `Claude Code` → 11, all shorter names floor to 8), row Cost (8 right-aligned)
-- Variable-width columns keep the **full 5-tool data row — Date + tool columns + the 3-char gutter + the 8-wide Cost cell = 79 chars** — within 80 cols: `10 + (11+8+8+8+8) + 5×3 + 3 + 8 = 79`. The old fixed-14 layout was ~108 and overflowed; a prior `max(name, 9)` + Date-12 attempt fit the 74-char body but still rendered an 85-char full row that wrapped every line. At 80 cols the inline bar is suppressed (its remaining area is 0, below the `MIN_BAR_AREA` threshold) so no line exceeds 79
-- **Watch mode** appends a delta indicator (`↑`/`↓`) after the Cost cell when `prevCosts` is set. In this pivot only, the indicator is rendered **without its leading space** (`$8.97↑` — 1 visible char), so the watch-mode row is 79 + 1 = **80 chars** and still fits an 80-col terminal without wrapping (the spaced ` ↑` form would be 81 and wrap, corrupting the watch compositor's line-counting). Other renderers keep the spaced form (they have width headroom)
+- Variable-width columns keep the **full 6-tool data row — Date + tool columns + the 3-char gutter + the 8-wide Cost cell — at 90 chars**: `10 + (11+8+8+8+8+8) + 6×3 + 3 + 8 = 90`, so the full pivot needs a ≥90-col terminal (the 80-col fit ended when the pivot grew to 6 tools — the 8-char cost-cell floor leaves no slack to reclaim; the old fixed-14 layout was ~108). On narrower terminals the row wraps. At 90–100 cols the inline bar is suppressed (its remaining area is below the `MIN_BAR_AREA` threshold) so no line exceeds 90
+- **Watch mode** appends a delta indicator (`↑`/`↓`) after the Cost cell when `prevCosts` is set. In this pivot only, the indicator is rendered **without its leading space** (`$8.97↑` — 1 visible char), so the watch-mode row is 90 + 1 = **91 chars** and fits a ≥91-col terminal without wrapping (the spaced ` ↑` form would add one more char and wrap, corrupting the watch compositor's line-counting). Other renderers keep the spaced form (they have width headroom)
 - Bars scale to row total cost, same rendering as Layout 3, when terminal width leaves room
 - All registry tools get a column (fetchers iterate the whole `TOOLS` registry); tools with no data show `$0.00` rather than being omitted
 
@@ -100,13 +100,13 @@ Enters alternate screen buffer. Layout adapts to terminal dimensions:
 ─────────────────────────────────────────────
 📊 Combined Cost History (daily)
 
-Date       | Claude Code |    Codex | OpenCode |   Gemini |  Copilot |     Cost
-───────────|─────────────|──────────|──────────|──────────|──────────|─────────
-2026-03-04 |       $1.50 |    $6.10 |    $1.20 |    $0.00 |    $0.00 |    $8.80
-2026-03-05 |       $2.10 |    $3.20 |    $0.45 |    $0.00 |    $0.00 |    $5.75
-2026-03-06 |       $2.85 |    $5.45 |    $0.67 |    $0.00 |    $0.00 |    $8.97↑
-───────────|─────────────|──────────|──────────|──────────|──────────|─────────
-Total      |       $6.45 |   $14.75 |    $2.32 |    $0.00 |    $0.00 |   $23.52
+Date       | Claude Code |    Codex | OpenCode |   Gemini |  Copilot |     Kimi |     Cost
+───────────|─────────────|──────────|──────────|──────────|──────────|──────────|─────────
+2026-03-04 |       $1.50 |    $6.10 |    $1.20 |    $0.00 |    $0.00 |    $0.00 |    $8.80
+2026-03-05 |       $2.10 |    $3.20 |    $0.45 |    $0.00 |    $0.00 |    $0.00 |    $5.75
+2026-03-06 |       $2.85 |    $5.45 |    $0.67 |    $0.00 |    $0.00 |    $0.00 |    $8.97↑
+───────────|─────────────|──────────|──────────|──────────|──────────|──────────|─────────
+Total      |       $6.45 |   $14.75 |    $2.32 |    $0.00 |    $0.00 |    $0.00 |   $23.52
 
                   ﾗ0ﾑa                    7ﾘ
                   ﾗ                        ﾘk
@@ -270,7 +270,7 @@ Metrics:     ~/.tu/metrics_repo (NOT FOUND — run 'tu init-metrics')
 ```
 Usage: tu [source] [period] [display]
 
-Sources: cc (Claude Code), codex/co (Codex), oc (OpenCode), gemini/gem (Gemini), copilot/cop (Copilot), all (default)
+Sources: cc (Claude Code), codex/co (Codex), oc (OpenCode), gemini/gem (Gemini), copilot/cop (Copilot), kimi/ki (Kimi), all (default)
 Periods: d/daily (default), m/monthly
 Display: (bare) = snapshot, h/history = history
 Combined: dh (daily history), mh (monthly history)

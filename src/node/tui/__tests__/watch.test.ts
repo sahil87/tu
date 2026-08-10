@@ -104,6 +104,7 @@ function makeSession(overrides: Partial<WatchSession> = {}): WatchSession {
   return {
     startTime: 0,
     startCost: 0,
+    startTokens: 0,
     previousCosts: new Map(),
     pollHistory: [],
     totalTokens: 0,

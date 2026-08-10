@@ -20,10 +20,10 @@
     "node": ">=18"
   },
   "devDependencies": {
-    "@types/node": "^25.2.2",
-    "ccusage": "^20.0.14",
-    "esbuild": "^0.28.1",
-    "tsx": "^4.22.4",
-    "typescript": "^5.0.0"
+    "@types/node": "^26.2.0",
+    "ccusage": "^20.0.19",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.11",
+    "typescript": "^7.0.2"
   }
 }

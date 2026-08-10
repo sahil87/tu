@@ -69,8 +69,9 @@ const COST_WIDTH = 8;
 // column is sized to its tool name but never narrower than this. 8 chars holds
 // a typical cost cell ($9999.99 is 8; $99999.99 — a five-figure daily total —
 // would overflow its cell and widen the row via padStart, but that is far beyond
-// any realistic single-day/tool cost). This floor keeps the FULL 5-tool data row
-// (Date + tool columns + gutter + Cost) within 80 cols: 10 + (11+8+8+8+8) + 5×3 + 3 + 8 = 79.
+// any realistic single-day/tool cost). With this floor the FULL 6-tool data row
+// (Date + tool columns + gutter + Cost) is 10 + (11+8+8+8+8+8) + 6×3 + 3 + 8 = 90,
+// so the full pivot needs a ≥90-col terminal (the 80-col fit ended at 6 tools).
 const MIN_TOOL_COL_WIDTH = 8;
 // Date column width in the cross-tool pivot: ISO daily labels are 10 chars
 // ("2026-07-01"), monthly 7 ("2026-07"), the "Date" header 4 — 10 fits all.
@@ -363,7 +364,8 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
   // Variable per-tool column width: each tool column is sized to its name, with
   // a floor of MIN_TOOL_COL_WIDTH (see the constant for the full-row math).
   // Fixed-width columns overflowed 80-col terminals once the pivot grew to 5
-  // tools; sizing per column keeps the full 5-tool data row within 80 cols.
+  // tools; sizing per column keeps the full data row as narrow as the cost
+  // cells allow (90 cols at 6 tools).
   const toolWidths = toolNames.map((name) => Math.max(name.length, MIN_TOOL_COL_WIDTH));
   // Date + each tool column + the " | " (3-char) separator before each column.
   const tableWidth = D + toolWidths.reduce((sum, w) => sum + w + 3, 0);
