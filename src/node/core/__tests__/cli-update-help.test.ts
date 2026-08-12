@@ -73,6 +73,10 @@ describe("brew upgrade: Homebrew 6 ask mode suppressed (source-level pin)", () =
       `brew upgrade MUST carry HOMEBREW_NO_ASK: "1" in its env (Homebrew 6 ask mode would block the update); call site: ${callSites[0]}`,
     );
     assert.ok(
+      callSites[0].includes("...process.env"),
+      `brew upgrade env MUST spread ...process.env (a bare env object would drop PATH and user Homebrew settings); call site: ${callSites[0]}`,
+    );
+    assert.ok(
       callSites[0].includes('stdio: "inherit"'),
       `brew upgrade MUST keep stdio: "inherit" (progress visible, Ctrl-C works); call site: ${callSites[0]}`,
     );
