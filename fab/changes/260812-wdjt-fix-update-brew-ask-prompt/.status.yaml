@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 2
@@ -33,23 +33,25 @@ stage_metrics:
     apply: {started_at: "2026-08-12T15:46:18Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-12T15:52:03Z"}
     review: {started_at: "2026-08-12T15:52:03Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-12T15:57:07Z"}
     hydrate: {started_at: "2026-08-12T15:57:07Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-12T16:01:07Z"}
-    ship: {started_at: "2026-08-12T16:01:07Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-08-12T16:01:07Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-12T16:04:40Z"}
+    review-pr: {started_at: "2026-08-12T16:04:40Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/tu/pull/61
 change_type_source: explicit
 true_impact:
-    added: 0
-    deleted: 0
-    net: 0
+    added: 325
+    deleted: 3
+    net: 322
     excluding:
-        added: 0
-        deleted: 0
-        net: 0
+        added: 28
+        deleted: 1
+        net: 27
     tests:
-        added: 0
+        added: 21
         deleted: 0
-        net: 0
-    computed_at: "2026-08-12T16:01:07Z"
-    computed_at_stage: hydrate
+        net: 21
+    computed_at: "2026-08-12T16:04:40Z"
+    computed_at_stage: ship
 summary: Suppress Homebrew 6 ask-mode prompt on tu update via HOMEBREW_NO_ASK=1 child env
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-08-12T16:01:07Z
+last_updated: 2026-08-12T16:04:40Z
