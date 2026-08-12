@@ -383,7 +383,13 @@ export function runUpdate(skipBrewUpdate = false): void {
     // NO timeout here (toolkit `update` standard MUST NOT): killing brew
     // mid-transaction corrupts the keg mid-swap. The call is interactive
     // (stdio: "inherit") — the user can Ctrl-C a genuinely stuck upgrade.
-    execSync("brew upgrade tu", { stdio: "inherit" });
+    // HOMEBREW_NO_ASK=1 disables Homebrew 6's default ask mode (the
+    // "Do you want to proceed with the upgrade? [y/n]" prompt fires when
+    // both stdio fds are TTYs, and would otherwise block the update).
+    // The env var is used instead of the `--no-ask` flag because Homebrew
+    // < 6 doesn't know the flag and would error, while an unrecognized
+    // env var is harmlessly ignored — cross-version safe.
+    execSync("brew upgrade tu", { stdio: "inherit", env: { ...process.env, HOMEBREW_NO_ASK: "1" } });
   } catch {
     console.error("Error: brew upgrade failed.");
     process.exit(1);
