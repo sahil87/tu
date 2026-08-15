@@ -269,6 +269,12 @@ describe("summary footer", () => {
     assert.equal(footer, "avg $200.00/month · peak $300.00 (2020-02)");
   });
 
+  it("omits the peak label parenthetical when all row costs are zero", () => {
+    const entries = [entry("2020-01-01", 0), entry("2020-01-02", 0)];
+    const footer = footerLine(renderHistory("Claude Code", "daily", entries, 200));
+    assert.equal(footer, "avg $0.00/day · peak $0.00");
+  });
+
   it("uses the /week suffix for weekly periods", () => {
     const entries = [entry("2026-08-09", 100), entry("2026-08-16", 200)];
     const footer = footerLine(renderHistory("Claude Code", "weekly", entries, 200));

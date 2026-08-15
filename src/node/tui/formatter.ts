@@ -208,7 +208,7 @@ function renderHistoryFooter(labels: string[], costs: number[], period: string, 
       peakLabel = labels[i];
     }
   }
-  parts.push(`peak ${fmtCost(peak)} (${peakLabel})`);
+  parts.push(peakLabel === "" ? `peak ${fmtCost(peak)}` : `peak ${fmtCost(peak)} (${peakLabel})`);
   if (scale.mode === "two-zone") parts.push(`${SCALE_BREAK_RULE} = ${fmtCost(scale.p95)} (p95)`);
   return dim(parts.join(" · "));
 }
