@@ -12,18 +12,19 @@
 ```
 📊 Combined Usage (daily)
 
-Tool           |        Tokens |        Input |       Output |         Cost
-────────────────────────────────────────────────────────────────────────────
-Claude Code    |     1,234,567 |      567,890 |      666,677 |       $12.34
-Codex          |     2,345,678 |      987,654 |    1,358,024 |       $23.45
-OpenCode       |       456,789 |      234,567 |      222,222 |        $4.56
-────────────────────────────────────────────────────────────────────────────
-Total          |     4,037,034 |    1,790,111 |    2,246,923 |       $40.35
+Tool           |         Tokens |          Input |         Output |           Cost
+───────────────|────────────────|────────────────|────────────────|───────────────
+Claude Code    |      1,234,567 |        567,890 |        666,677 |      $1,012.34
+Codex          |      2,345,678 |        987,654 |      1,358,024 |         $23.45
+OpenCode       |        456,789 |        234,567 |        222,222 |          $4.56
+───────────────|────────────────|────────────────|────────────────|───────────────
+Total          |      4,037,034 |      1,790,111 |      2,246,923 |      $1,040.35
 ```
 
 - **Columns:** Tool (14 left-aligned), Tokens/Input/Output/Cost (14 right-aligned each)
 - **Separator:** ` | ` between columns
 - **Colors:** header row `boldCyan`, dividers `dim`, Total row `boldWhite`
+- Cost cells carry `en-US` thousands separators (`$1,012.34`), matching the token columns
 - Tools with zero tokens are omitted; Total row shown only when >1 tool has data
 
 ## 2. Snapshot — Single Tool
@@ -35,9 +36,9 @@ Same table as Layout 1 but with a single data row. Title uses tool name:
 ```
 📊 Claude Code (daily)
 
-Tool           |        Tokens |        Input |       Output |         Cost
-────────────────────────────────────────────────────────────────────────────
-Claude Code    |     1,234,567 |      567,890 |      666,677 |       $12.34
+Tool           |         Tokens |          Input |         Output |           Cost
+───────────────|────────────────|────────────────|────────────────|───────────────
+Claude Code    |      1,234,567 |        567,890 |        666,677 |      $1,012.34
 ```
 
 No divider/Total row when only one row is present.
@@ -49,17 +50,37 @@ No divider/Total row when only one row is present.
 ```
 📊 Claude Code (daily)
 
-Date         |        Input |       Output |  Cache Write |   Cache Read |        Total |     Cost
-──────────────────────────────────────────────────────────────────────────────────────────────────────
-2026-03-06   |      567,890 |      678,901 |       45,678 |       23,456 |    1,315,925 |    $2.85  ██████████████████
-2026-03-05   |      456,789 |      567,890 |       23,456 |       12,345 |    1,060,480 |    $2.10  █████████████▍
-2026-03-04   |      234,567 |      345,678 |       10,000 |        5,000 |      595,245 |    $1.50  █████████▌
-──────────────────────────────────────────────────────────────────────────────────────────────────────
-Total        |    1,259,246 |    1,592,469 |       79,134 |       40,801 |    2,971,650 |    $6.45
+Date         |          Input |         Output |    Cache Write |     Cache Read |          Total |      Cost
+─────────────|────────────────|────────────────|────────────────|────────────────|────────────────|─────────────────────
+2026-03-05   |        456,789 |        567,890 |         23,456 |         12,345 |      1,060,480 |     $2.10 ▏
+─────────────|────────────────|────────────────|────────────────|────────────────|────────────────|─────────────────────
+2026-04-01   |        234,567 |        345,678 |         10,000 |          5,000 |        595,245 |     $1.50 ▏
+2026-04-02   |        567,890 |        678,901 |         45,678 |         23,456 |      1,315,925 | $1,284.85 ██████████
+─────────────|────────────────|────────────────|────────────────|────────────────|────────────────|─────────────────────
+Total        |      1,259,246 |      1,592,469 |         79,134 |         40,801 |      2,971,650 | $1,288.45
+avg $429.48/day · this month $1,286.35 · peak $1,284.85 (2026-04-02)
 ```
 
-- **Columns:** Date (12 left-aligned), Input/Output/Cache Write/Cache Read/Total (14 right-aligned), Cost (8 right-aligned)
+Outlier window — max $4,031.61 > 1.5 × p95 $846.21, so the bars switch to the two-zone scale (green main zone 0→p95, dim `┊` scale-break rule in every row, yellow overflow zone p95→max):
+
+```
+Date         |          Input |         Output |    Cache Write |     Cache Read |          Total |      Cost
+─────────────|────────────────|────────────────|────────────────|────────────────|────────────────|─────────────────────
+2026-06-10   |        234,567 |        345,678 |         10,000 |          5,000 |        595,245 |  $846.21 █████████████████████┊
+2026-06-11   |        345,678 |        456,789 |         15,000 |          7,500 |        824,967 | $1,091.67 █████████████████████┊▌
+2026-06-12   |        567,890 |        678,901 |         45,678 |         23,456 |      1,315,925 | $4,031.61 █████████████████████┊████████
+2026-06-13   |        123,456 |        234,567 |          8,000 |          4,000 |        370,023 |  $172.13 ████▎                 ┊
+─────────────|────────────────|────────────────|────────────────|────────────────|────────────────|─────────────────────
+Total        |      1,271,591 |      1,715,935 |         78,678 |         39,956 |      3,106,160 | $6,141.62
+avg $1,535.41/day · this month $6,141.62 · peak $4,031.61 (2026-06-12) · ┊ = $846.21 (p95)
+```
+
+- **Columns:** Date (12 left-aligned), Input/Output/Cache Write/Cache Read/Total (14 right-aligned), Cost (9 right-aligned — fits `$9,999.99` with thousands separators)
 - **Bar chart:** green Unicode block elements (full + fractional eighths), max width 30, scaled to max cost
+- **p95 two-zone scale:** when `max > 1.5 × p95` (95th percentile of the nonzero row costs, linear interpolation), the bar area splits into a green main zone (linear 0→p95), a dim `┊` (U+250A) scale-break rule rendered in every row (short bars space-pad up to the rule so it aligns vertically), and a yellow overflow zone (linear p95→max, `max(4, round(barWidth/4))` chars). Rows at exactly p95 end at the rule with no overflow segment. Below the trigger the single linear scale renders unchanged — no rule, no legend, no width change
+- **Month separators:** daily views emit a dim divider (same construction as the header divider) before each row whose `YYYY-MM` prefix differs from the previous row's — daily period only, computed on the post-`maxRows` window, never before the first visible row
+- **Current-period marker:** the row matching the current period's label (today / this week / this month) renders its date cell in **boldWhite** — color-only, no glyph, width unchanged, stripped by `--no-color`/`NO_COLOR`
+- **Summary footer:** one dim line after the Total row (≥2 data rows): `avg $X.XX/day · this month $X,XXX.XX · peak $X,XXX.XX (YYYY-MM-DD)` — avg is window total ÷ data-row count with a per-period unit suffix (`/day`, `/week`, `/month`); `this month` is daily-only and omitted when the window has no current-month rows; two-zone windows append `· ┊ = $X (p95)`. ANSI renderers only — compact, CSV, and Markdown output carry no separators, marker, or footer
 - Bars only render when terminal width allows (>= 10 chars remaining after cost column)
 - Total row shown when >1 entry
 
@@ -70,20 +91,37 @@ Total        |    1,259,246 |    1,592,469 |       79,134 |       40,801 |    2,
 ```
 📊 Combined Cost History (daily)
 
-Date       | Claude Code |    Codex | OpenCode |   Gemini |  Copilot |     Kimi |     Cost
-───────────|─────────────|──────────|──────────|──────────|──────────|──────────|─────────
-2026-03-04 |       $1.50 |    $6.10 |    $1.20 |    $0.00 |    $0.00 |    $0.00 |    $8.80
-2026-03-05 |       $2.10 |    $3.20 |    $0.45 |    $0.00 |    $0.00 |    $0.00 |    $5.75
-2026-03-06 |       $2.85 |    $5.45 |    $0.67 |    $0.00 |    $0.00 |    $0.00 |    $8.97
-───────────|─────────────|──────────|──────────|──────────|──────────|──────────|─────────
-Total      |       $6.45 |   $14.75 |    $2.32 |    $0.00 |    $0.00 |    $0.00 |   $23.52
+Date       | Claude Code |     Codex |      Cost
+───────────|─────────────|───────────|─────────────────────────────────────────
+2026-03-31 |   $1,234.50 |     $6.10 | $1,240.60 ██████████████████████████████
+───────────|─────────────|───────────|─────────────────────────────────────────
+2026-04-01 |     $890.10 |     $3.20 |   $893.30 █████████████████████▋
+2026-04-02 |   $1,007.85 |     $5.45 | $1,013.30 ████████████████████████▌
+───────────|─────────────|───────────|─────────────────────────────────────────
+Total      |   $3,132.45 |    $14.75 | $3,147.20
+avg $1,049.07/day · this month $1,906.60 · peak $1,240.60 (2026-03-31)
 ```
 
-- **Columns:** Date (10 left-aligned — ISO daily labels are 10 chars, monthly 7), one per tool sized to `max(toolName.length, 8)` right-aligned (variable per-tool width — e.g. `Claude Code` → 11, all shorter names floor to 8), row Cost (8 right-aligned)
-- Variable-width columns keep the **full 6-tool data row — Date + tool columns + the 3-char gutter + the 8-wide Cost cell — at 90 chars**: `10 + (11+8+8+8+8+8) + 6×3 + 3 + 8 = 90`, so the full pivot needs a ≥90-col terminal (the 80-col fit ended when the pivot grew to 6 tools — the 8-char cost-cell floor leaves no slack to reclaim; the old fixed-14 layout was ~108). On narrower terminals the row wraps. At 90–100 cols the inline bar is suppressed (its remaining area is below the `MIN_BAR_AREA` threshold) so no line exceeds 90
-- **Watch mode** appends a delta indicator (`↑`/`↓`) after the Cost cell when `prevCosts` is set. In this pivot only, the indicator is rendered **without its leading space** (`$8.97↑` — 1 visible char), so the watch-mode row is 90 + 1 = **91 chars** and fits a ≥91-col terminal without wrapping (the spaced ` ↑` form would add one more char and wrap, corrupting the watch compositor's line-counting). Other renderers keep the spaced form (they have width headroom)
+Outlier window — 21 days in the $100–300 range (shown collapsed) plus two outliers; p95 = $1,012.50 and max $4,031.61 > 1.5 × p95, so the two-zone scale engages (see Layout 3 for the zone rules):
+
+```
+Date       | Claude Code |     Codex |      Cost
+───────────|─────────────|───────────|──────────────────────────────
+2026-06-01 | …           | …         |    $100.00 ██▏                ┊
+   …       | …           | …         |       …    …                  ┊
+2026-06-22 |   $1,085.56 |     $6.11 | $1,091.67 █████████████████████┊▎
+2026-06-23 |   $4,025.50 |     $6.11 | $4,031.61 █████████████████████┊████████
+───────────|─────────────|───────────|──────────────────────────────
+Total      |   $9,212.67 |   $110.61 | $9,323.28
+avg $405.36/day · this month $9,323.28 · peak $4,031.61 (2026-06-23) · ┊ = $1,012.50 (p95)
+```
+
+- **Columns:** Date (10 left-aligned — ISO daily labels are 10 chars, monthly 7), one per tool sized to `max(toolName.length, 9)` right-aligned (variable per-tool width — e.g. `Claude Code` → 11, all shorter names floor to 9), row Cost (9 right-aligned — fits `$9,999.99` with thousands separators)
+- **Zero-column omission:** tool columns whose cost totals zero across the visible window (post-`maxRows` labels) are omitted entirely — above, Gemini/Copilot/Kimi/OpenCode have no cost in the window, so only Claude Code and Codex render. If every tool is zero the renderer falls back to the full list. The CSV emitter is the exception: it keeps every registry column with raw `0.00` cells (positional machine contract)
+- Variable-width columns keep the **full 6-tool data row — Date + tool columns + the 3-char gutter + the 9-wide Cost cell — at 96 chars**: `10 + (11+9+9+9+9+9) + 6×3 + 3 + 9 = 96`, so the all-tools-active pivot needs a ≥96-col terminal. With zero-column omission the typically rendered width is far below 80, restoring the inline bar chart on standard terminals (at 96–106 cols with all six tools active the bar is suppressed below the `MIN_BAR_AREA` threshold, so no line exceeds 96)
+- **Watch mode** appends a delta indicator (`↑`/`↓`) after the Cost cell when `prevCosts` is set. In this pivot only, the indicator is rendered **without its leading space** (`$1,013.30↑` — 1 visible char), so the full watch-mode row is 96 + 1 = **97 chars** and fits a ≥97-col terminal without wrapping (the spaced ` ↑` form would add one more char and wrap, corrupting the watch compositor's line-counting). Other renderers keep the spaced form (they have width headroom). A tool crossing $0 → nonzero mid-watch gains a column on the next render — the compositor re-measures every frame
 - Bars scale to row total cost, same rendering as Layout 3, when terminal width leaves room
-- All registry tools get a column (fetchers iterate the whole `TOOLS` registry); tools with no data show `$0.00` rather than being omitted
+- **Month separators, current-period marker, summary footer, and p95 two-zone scale:** same rules as Layout 3 — separators daily-only, the current-period row's date cell renders boldWhite, the dim footer follows the Total row (≥2 labels), and the `┊` scale-break rule with yellow overflow zone engages when `max > 1.5 × p95` of the nonzero row totals
 
 ## 5. Watch Mode — Full Screen
 
@@ -100,13 +138,13 @@ Enters alternate screen buffer. Layout adapts to terminal dimensions:
 ─────────────────────────────────────────────
 📊 Combined Cost History (daily)
 
-Date       | Claude Code |    Codex | OpenCode |   Gemini |  Copilot |     Kimi |     Cost
-───────────|─────────────|──────────|──────────|──────────|──────────|──────────|─────────
-2026-03-04 |       $1.50 |    $6.10 |    $1.20 |    $0.00 |    $0.00 |    $0.00 |    $8.80
-2026-03-05 |       $2.10 |    $3.20 |    $0.45 |    $0.00 |    $0.00 |    $0.00 |    $5.75
-2026-03-06 |       $2.85 |    $5.45 |    $0.67 |    $0.00 |    $0.00 |    $0.00 |    $8.97↑
-───────────|─────────────|──────────|──────────|──────────|──────────|──────────|─────────
-Total      |       $6.45 |   $14.75 |    $2.32 |    $0.00 |    $0.00 |    $0.00 |   $23.52
+Date       | Claude Code |     Codex |      Cost
+───────────|─────────────|───────────|─────────────────────────────────────────
+2026-03-04 |   $1,234.50 |     $6.10 | $1,240.60 ██████████████████████████████
+2026-03-05 |     $890.10 |     $3.20 |   $893.30 █████████████████████▋
+2026-03-06 |   $1,007.85 |     $5.45 | $1,013.30↑ ████████████████████████▌
+───────────|─────────────|───────────|─────────────────────────────────────────
+Total      |   $3,132.45 |    $14.75 | $3,147.20
 
                   ﾗ0ﾑa                    7ﾘ
                   ﾗ                        ﾘk

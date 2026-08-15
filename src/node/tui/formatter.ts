@@ -1,4 +1,5 @@
 import type { UsageTotals, UsageEntry } from "../core/types.js";
+import { currentLabel } from "../core/fetcher.js";
 import { bold, dim, green, red, cyan, yellow, boldWhite, boldCyan } from "./colors.js";
 
 export interface FormatOptions {
@@ -22,7 +23,7 @@ export function fmtNum(n: number): string {
 }
 
 export function fmtCost(n: number): string {
-  return `$${n.toFixed(2)}`;
+  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 export function deltaIndicator(current: number, key: string, prevCosts?: Map<string, number>, noSpace = false): string {
@@ -31,9 +32,11 @@ export function deltaIndicator(current: number, key: string, prevCosts?: Map<str
   if (prev === undefined) return "";
   // The cross-tool pivot (renderTotalHistory) passes noSpace=true so the arrow
   // appends directly to the Cost cell ($128.13\u2191, 1 visible char) rather than
-  // with a leading space ( \u2191, 2 chars): its full 79-char row + a 2-char
-  // indicator would be 81 and wrap on an 80-col terminal, corrupting the
-  // watch-mode compositor's line-counting. Other renderers have width headroom
+  // with a leading space ( \u2191, 2 chars): the full 6-tool row is 96 chars, so the
+  // spaced form would render 98 and wrap on a 96–97-col terminal, corrupting
+  // the watch-mode compositor's line-counting. (Zero-cost tool columns are
+  // omitted, so typical rows are far narrower — but every active tool counts
+  // toward the full row.) Other renderers have width headroom
   // and keep the spaced form.
   const sp = noSpace ? "" : " ";
   if (current > prev) return sp + green("\u2191");
@@ -64,15 +67,17 @@ const BLOCK_EIGHTHS = [
 const MIN_BAR_AREA = 10;
 const MAX_BAR_WIDTH = 30;
 const GUTTER = 3; // " | " separator between main table and cost area
-const COST_WIDTH = 8;
+const COST_WIDTH = 9; // fits $9,999.99 — fmtCost renders thousands separators
 // Floor for a variable-width cross-tool pivot column (renderTotalHistory): each
-// column is sized to its tool name but never narrower than this. 8 chars holds
-// a typical cost cell ($9999.99 is 8; $99999.99 — a five-figure daily total —
+// column is sized to its tool name but never narrower than this. 9 chars holds
+// a typical cost cell ($9,999.99 is 9; $99,999.99 — a five-figure daily total —
 // would overflow its cell and widen the row via padStart, but that is far beyond
 // any realistic single-day/tool cost). With this floor the FULL 6-tool data row
-// (Date + tool columns + gutter + Cost) is 10 + (11+8+8+8+8+8) + 6×3 + 3 + 8 = 90,
-// so the full pivot needs a ≥90-col terminal (the 80-col fit ended at 6 tools).
-const MIN_TOOL_COL_WIDTH = 8;
+// (Date + tool columns + gutter + Cost) is 10 + (11+9+9+9+9+9) + 6×3 + 3 + 9 = 96
+// (97 in watch mode with the space-less delta indicator) — but tool columns
+// with zero cost across the visible window are omitted, so the typically
+// rendered width is far below 80.
+const MIN_TOOL_COL_WIDTH = 9;
 // Date column width in the cross-tool pivot: ISO daily labels are 10 chars
 // ("2026-07-01"), monthly 7 ("2026-07"), the "Date" header 4 — 10 fits all.
 const PIVOT_DATE_WIDTH = 10;
@@ -104,6 +109,108 @@ export function renderBar(value: number, maxValue: number, barWidth: number): st
 
   const bar = FULL_BLOCK.repeat(fullBlocks) + BLOCK_EIGHTHS[eighths];
   return bar.length > 0 ? bar : MIN_BAR;
+}
+
+// --- Two-zone bar scaling (p95 cap with a scale-break rule) ---
+//
+// Outlier days crush a linear max-scaled bar to slivers. When the max row cost
+// exceeds P95_TRIGGER_FACTOR × p95 of the nonzero row costs, the bar area splits
+// into a main zone (linear 0→p95, green), a dim scale-break rule (┊) drawn in
+// every row, and an overflow zone (linear p95→max, yellow). Below the trigger
+// the single-zone path delegates to renderBar unchanged.
+
+const P95_PERCENTILE = 95;
+const P95_TRIGGER_FACTOR = 1.5;
+const OVERFLOW_ZONE_MIN = 4;
+const OVERFLOW_ZONE_DIVISOR = 4; // overflow zone ≈ 1/4 of the bar area
+const SCALE_BREAK_RULE = "┊"; // ┊
+
+export interface SingleZoneScale {
+  mode: "single";
+  max: number;
+}
+
+export interface TwoZoneScale {
+  mode: "two-zone";
+  p95: number;
+  max: number;
+  mainZone: number;
+  overflowZone: number;
+}
+
+export type BarScale = SingleZoneScale | TwoZoneScale;
+
+// p-th percentile (0–100) of a sorted-ascending sample, linear interpolation.
+export function percentile(sortedAscending: number[], p: number): number {
+  if (sortedAscending.length === 0) return 0;
+  const idx = (p / 100) * (sortedAscending.length - 1);
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  return sortedAscending[lo] + (sortedAscending[hi] - sortedAscending[lo]) * (idx - lo);
+}
+
+// Pick the bar scale for a visible window of row costs. Two-zone mode engages
+// only when an outlier dominates (max > 1.5 × p95 over nonzero costs).
+export function computeBarScale(costs: number[], barWidth: number): BarScale {
+  const max = Math.max(...costs);
+  const nonzero = costs.filter((c) => c > 0).sort((a, b) => a - b);
+  if (nonzero.length === 0) return { mode: "single", max };
+  const p95 = percentile(nonzero, P95_PERCENTILE);
+  if (!(max > P95_TRIGGER_FACTOR * p95)) return { mode: "single", max };
+  const overflowZone = Math.max(OVERFLOW_ZONE_MIN, Math.round(barWidth / OVERFLOW_ZONE_DIVISOR));
+  return { mode: "two-zone", p95, max, mainZone: barWidth - overflowZone - 1, overflowZone };
+}
+
+// Render one row's bar (leading space included) under the given scale. In
+// two-zone mode the result is exactly barWidth visible chars: the main zone is
+// space-padded up to the rule so the ┊ column aligns across rows, and the
+// overflow zone is space-padded to keep total row width unchanged. A row at
+// exactly p95 ends at the rule with no overflow segment.
+export function renderScaledBar(value: number, scale: BarScale, barWidth: number): string {
+  if (scale.mode === "single") {
+    const raw = renderBar(value, scale.max, barWidth);
+    return raw ? " " + green(raw) : "";
+  }
+  const mainRaw = renderBar(Math.min(value, scale.p95), scale.p95, scale.mainZone);
+  const main = green(mainRaw) + " ".repeat(scale.mainZone - mainRaw.length);
+  const overflowRaw = value > scale.p95 ? renderBar(value - scale.p95, scale.max - scale.p95, scale.overflowZone) : "";
+  const overflow = yellow(overflowRaw) + " ".repeat(scale.overflowZone - overflowRaw.length);
+  return " " + main + dim(SCALE_BREAK_RULE) + overflow;
+}
+
+// --- History summary footer (avg / this month / peak [+ p95 legend]) ---
+
+const PERIOD_UNIT_SUFFIX: Record<string, string> = { daily: "/day", weekly: "/week", monthly: "/month" };
+
+// Dim footer appended after the Total row in history views. `this month` is
+// daily-only and omitted when the window has no current-month rows; the ┊
+// legend appears only when the two-zone scale is active.
+function renderHistoryFooter(labels: string[], costs: number[], period: string, scale: BarScale): string {
+  const total = costs.reduce((sum, c) => sum + c, 0);
+  const parts: string[] = [`avg ${fmtCost(total / costs.length)}${PERIOD_UNIT_SUFFIX[period] ?? "/row"}`];
+  if (period === "daily") {
+    const monthPrefix = currentLabel("monthly");
+    let monthSum = 0;
+    let hasMonthRows = false;
+    for (let i = 0; i < labels.length; i++) {
+      if (labels[i].startsWith(monthPrefix)) {
+        monthSum += costs[i];
+        hasMonthRows = true;
+      }
+    }
+    if (hasMonthRows) parts.push(`this month ${fmtCost(monthSum)}`);
+  }
+  let peak = 0;
+  let peakLabel = "";
+  for (let i = 0; i < labels.length; i++) {
+    if (costs[i] > peak) {
+      peak = costs[i];
+      peakLabel = labels[i];
+    }
+  }
+  parts.push(`peak ${fmtCost(peak)} (${peakLabel})`);
+  if (scale.mode === "two-zone") parts.push(`${SCALE_BREAK_RULE} = ${fmtCost(scale.p95)} (p95)`);
+  return dim(parts.join(" · "));
 }
 
 // --- Single-tool history table (tu cc daily, tu codex monthly, etc.) ---
@@ -160,7 +267,10 @@ export function renderHistory(toolName: string, period: string, entries: UsageEn
   lines.push(colorRow(["Date", "Input", "Output", "Cache Write", "Cache Read", "Total"], boldCyan) + costHeader + machineHeader);
   lines.push(dim(divStr + costDiv + machineDiv + barDiv));
 
-  const maxCost = Math.max(...entries.map((e) => e.totalCost));
+  const scale = showBars
+    ? computeBarScale(entries.map((e) => e.totalCost), barWidth)
+    : { mode: "single" as const, max: Math.max(...entries.map((e) => e.totalCost)) };
+  const current = currentLabel(period);
   const prevCosts = opts?.prevCosts;
 
   let sumCost = 0;
@@ -170,9 +280,19 @@ export function renderHistory(toolName: string, period: string, entries: UsageEn
   let sumCacheR = 0;
   let sumTotal = 0;
   const machineSums = new Map<string, number>();
+  let prevMonthPrefix = "";
 
   for (const e of entries) {
-    const rowStr = row(e.label, fmtNum(e.inputTokens), fmtNum(e.outputTokens), fmtNum(e.cacheCreationTokens), fmtNum(e.cacheReadTokens), fmtNum(e.totalTokens));
+    // Month-boundary separator (daily views only) — same construction as the header divider
+    const monthPrefix = e.label.slice(0, 7);
+    if (period === "daily" && prevMonthPrefix && monthPrefix !== prevMonthPrefix) {
+      lines.push(dim(divStr + costDiv + machineDiv + barDiv));
+    }
+    prevMonthPrefix = monthPrefix;
+
+    // The current period's row renders its date cell in boldWhite (Total-row emphasis)
+    const labelCell = e.label === current ? boldWhite(e.label.padEnd(D)) : e.label;
+    const rowStr = row(labelCell, fmtNum(e.inputTokens), fmtNum(e.outputTokens), fmtNum(e.cacheCreationTokens), fmtNum(e.cacheReadTokens), fmtNum(e.totalTokens));
     const costBase = " | " + fmtCost(e.totalCost).padStart(COST_WIDTH);
     const indicator = deltaIndicator(e.totalCost, `${toolName}:${e.label}`, prevCosts);
 
@@ -186,8 +306,7 @@ export function renderHistory(toolName: string, period: string, entries: UsageEn
       }
     }
 
-    const rawBar = showBars ? renderBar(e.totalCost, maxCost, barWidth) : "";
-    const bar = rawBar ? " " + green(rawBar) : "";
+    const bar = showBars ? renderScaledBar(e.totalCost, scale, barWidth) : "";
     lines.push(rowStr + costBase + machineCells + indicator + bar);
     sumCost += e.totalCost;
     sumInput += e.inputTokens;
@@ -208,6 +327,7 @@ export function renderHistory(toolName: string, period: string, entries: UsageEn
       }
     }
     lines.push(totalRow + totalCost + totalMachineCells);
+    lines.push(renderHistoryFooter(entries.map((e) => e.label), entries.map((e) => e.totalCost), period, scale));
   }
   if (hasMachines) {
     lines.push("");
@@ -314,13 +434,23 @@ export function printTotal(period: string, toolTotals: Map<string, UsageTotals>,
 // --- Cross-tool history pivot (tu total-history daily, tu total-history monthly) ---
 // Y-axis = dates, X-axis = tool names, cell = cost
 
+// Filter pivot tool columns to those with nonzero total cost across the given
+// labels (the visible window for the ANSI pivot, all labels for Markdown).
+// Falls back to the unfiltered list when the filter would empty it. Shared by
+// renderTotalHistory and emitMarkdownTotalHistory; CSV keeps all columns.
+function nonzeroCostTools(toolNames: string[], costMap: Map<string, Map<string, number>>, labels: string[]): string[] {
+  const active = toolNames.filter((tool) =>
+    labels.some((label) => (costMap.get(tool)?.get(label) ?? 0) !== 0));
+  return active.length > 0 ? active : toolNames;
+}
+
 export function renderTotalHistory(period: string, allToolEntries: Map<string, UsageEntry[]>, termWidth?: number, opts?: FormatOptions): string[] {
   const lines: string[] = [];
   lines.push("");
   lines.push(boldWhite(`\u{1F4CA} Combined Cost History (${periodLabel(period, opts?.capActive)})`));
   lines.push("");
 
-  const toolNames = [...allToolEntries.keys()];
+  const allToolNames = [...allToolEntries.keys()];
 
   // Collect labels early for compact check
   const labelSet = new Set<string>();
@@ -360,12 +490,18 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
     costMap.set(tool, m);
   }
 
+  // Omit tool columns with zero total cost across the visible labels (the
+  // post-maxRows window) — all-$0.00 columns are noise that widens the row and
+  // crowds out the bar chart. Falls back to the full registry list when every
+  // tool is zero (defensive; cannot normally occur with nonempty labels).
+  const toolNames = nonzeroCostTools(allToolNames, costMap, labels);
+
   const D = PIVOT_DATE_WIDTH;
   // Variable per-tool column width: each tool column is sized to its name, with
   // a floor of MIN_TOOL_COL_WIDTH (see the constant for the full-row math).
   // Fixed-width columns overflowed 80-col terminals once the pivot grew to 5
   // tools; sizing per column keeps the full data row as narrow as the cost
-  // cells allow (90 cols at 6 tools).
+  // cells allow (96 cols at 6 tools, before zero-column omission).
   const toolWidths = toolNames.map((name) => Math.max(name.length, MIN_TOOL_COL_WIDTH));
   // Date + each tool column + the " | " (3-char) separator before each column.
   const tableWidth = D + toolWidths.reduce((sum, w) => sum + w + 3, 0);
@@ -408,15 +544,26 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
   }
 
   const maxCost = Math.max(...rowData.map((r) => r.rowTotal));
+  const scale = showBars ? computeBarScale(rowData.map((r) => r.rowTotal), barWidth) : { mode: "single" as const, max: maxCost };
+  const current = currentLabel(period);
 
   const prevCosts = opts?.prevCosts;
+  let prevMonthPrefix = "";
 
   for (const r of rowData) {
-    const rowStr = row(r.label, ...r.cells);
+    // Month-boundary separator (daily views only) — same construction as the header divider
+    const monthPrefix = r.label.slice(0, 7);
+    if (period === "daily" && prevMonthPrefix && monthPrefix !== prevMonthPrefix) {
+      lines.push(dim(divStr + costDiv + barDiv));
+    }
+    prevMonthPrefix = monthPrefix;
+
+    // The current period's row renders its date cell in boldWhite (Total-row emphasis)
+    const labelCell = r.label === current ? boldWhite(r.label.padEnd(D)) : r.label;
+    const rowStr = row(labelCell, ...r.cells);
     const costBase = " | " + fmtCost(r.rowTotal).padStart(COST_WIDTH);
     const indicator = deltaIndicator(r.rowTotal, `total:${r.label}`, prevCosts, true);
-    const rawBar = showBars ? renderBar(r.rowTotal, maxCost, barWidth) : "";
-    const bar = rawBar ? " " + green(rawBar) : "";
+    const bar = showBars ? renderScaledBar(r.rowTotal, scale, barWidth) : "";
     lines.push(rowStr + costBase + indicator + bar);
   }
 
@@ -426,6 +573,7 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
     const totalRow = colorRow(["Total", ...sumCells], boldWhite);
     const totalCost = " | " + boldWhite(fmtCost(grandTotal).padStart(COST_WIDTH));
     lines.push(totalRow + totalCost);
+    lines.push(renderHistoryFooter(rowData.map((r) => r.label), rowData.map((r) => r.rowTotal), period, scale));
   }
   lines.push("");
   return lines;
@@ -808,7 +956,7 @@ function emitMarkdownHistory(toolName: string, entries: UsageEntry[], opts: Emit
 }
 
 function emitMarkdownTotalHistory(allToolEntries: Map<string, UsageEntry[]>, opts: EmitOptions): string {
-  const toolNames = [...allToolEntries.keys()];
+  const allToolNames = [...allToolEntries.keys()];
 
   const labelSet = new Set<string>();
   for (const entries of allToolEntries.values()) {
@@ -822,6 +970,10 @@ function emitMarkdownTotalHistory(allToolEntries: Map<string, UsageEntry[]>, opt
     for (const e of entries) m.set(e.label, e.totalCost);
     costMap.set(tool, m);
   }
+
+  // Same zero-column omission as the ANSI pivot (over all labels — the emit
+  // path has no maxRows window); CSV stays unfiltered (positional contract).
+  const toolNames = nonzeroCostTools(allToolNames, costMap, labels);
 
   const machines = collectMachineNames(opts.machineCosts);
   const aligns: Array<"left" | "right"> = [
