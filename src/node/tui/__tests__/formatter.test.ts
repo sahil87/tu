@@ -799,6 +799,59 @@ describe("renderTotal", () => {
     const renderOutput = renderTotal("daily", totals).join("\n");
     assert.equal(renderOutput, printOutput);
   });
+
+  it("renders a combined Cache column whose cells close the row arithmetic", () => {
+    const totals = new Map<string, UsageTotals>([
+      ["Claude Code", { totalCost: 465.67, inputTokens: 3734, outputTokens: 1121329, cacheCreationTokens: 400000000, cacheReadTokens: 86557984, totalTokens: 487683047 }],
+      ["Codex", { totalCost: 3, inputTokens: 800, outputTokens: 200, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1000 }],
+    ]);
+    const lines = renderTotal("daily", totals).map(stripAnsi);
+    const header = lines.find((l) => l.includes("Tool"))!;
+    assert.deepEqual(header.split(" | ").map((c) => c.trim()), ["Tool", "Tokens", "Input", "Output", "Cache", "Cost"]);
+    const ccRow = lines.find((l) => l.startsWith("Claude Code"))!;
+    const cells = ccRow.split(" | ").map((c) => c.trim());
+    assert.equal(cells[4], "486,557,984", "cache cell is write+read combined");
+    const [tokens, input, output, cache] = cells.slice(1, 5).map((c) => Number(c.replace(/,/g, "")));
+    assert.equal(input + output + cache, tokens, "Input + Output + Cache = Tokens");
+    const totalRow = lines.find((l) => l.startsWith("Total"))!;
+    const tCells = totalRow.split(" | ").map((c) => c.trim());
+    assert.equal(tCells[4], "486,557,984", "Total row sums the cache column");
+  });
+
+  it("renders 0 in the Cache cell for a zero-cache tool", () => {
+    const totals = new Map<string, UsageTotals>([
+      ["Codex", { totalCost: 3, inputTokens: 800, outputTokens: 200, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1000 }],
+    ]);
+    const lines = renderTotal("daily", totals).map(stripAnsi);
+    const row = lines.find((l) => l.startsWith("Codex"))!;
+    assert.equal(row.split(" | ").map((c) => c.trim())[4], "0");
+  });
+
+  it("all rows measure 87 visible chars (within the 90-col budget)", () => {
+    const totals = new Map<string, UsageTotals>([
+      ["Claude Code", { totalCost: 465.67, inputTokens: 3734, outputTokens: 1121329, cacheCreationTokens: 400000000, cacheReadTokens: 86557984, totalTokens: 487683047 }],
+      ["Codex", { totalCost: 3, inputTokens: 800, outputTokens: 200, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1000 }],
+    ]);
+    const lines = renderTotal("daily", totals).map(stripAnsi);
+    const tableLines = lines.filter((l) => l.includes("|") || l.includes("─"));
+    assert.ok(tableLines.length >= 5, "header, divider, 2 data rows, total divider + row");
+    for (const l of tableLines) {
+      assert.equal(l.length, 87, `row width must be 87: "${l}"`);
+    }
+  });
+
+  it("appends machine columns after Cost with the new layout", () => {
+    const totals = new Map<string, UsageTotals>([
+      ["Claude Code", { totalCost: 5, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 10, cacheReadTokens: 5, totalTokens: 165 }],
+    ]);
+    const machineCosts = new Map<string, Map<string, number>>([
+      ["Claude Code", new Map([["alpha", 3.5], ["zebra", 1.5]])],
+    ]);
+    const lines = renderTotal("daily", totals, { machineCosts }).map(stripAnsi);
+    const header = lines.find((l) => l.includes("Tool"))!;
+    assert.deepEqual(header.split(" | ").map((c) => c.trim()), ["Tool", "Tokens", "Input", "Output", "Cache", "Cost", "A", "B"]);
+    assert.ok(lines.some((l) => l.startsWith("Machines:")), "machine legend present");
+  });
 });
 
 describe("renderHistory", () => {
@@ -897,20 +950,21 @@ function stdoutText(): string {
 // ---------------------------------------------------------------------------
 describe("emitCsv", () => {
   describe("snapshot kind", () => {
-    it("emits tool,tokens,input,output,cost header with data rows and Total", (t) => {
+    it("emits tool,tokens,input,output,cache,cost header with data rows and Total", (t) => {
       captureStdout();
       t.after(restoreStdout);
       const totals = new Map<string, UsageTotals>([
-        ["Claude Code", { totalCost: 12.34, inputTokens: 800000, outputTokens: 400000, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1234567 }],
-        ["Codex", { totalCost: 2.45, inputTokens: 150000, outputTokens: 80000, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 234567 }],
+        ["Claude Code", { totalCost: 12.34, inputTokens: 800000, outputTokens: 400000, cacheCreationTokens: 20000, cacheReadTokens: 14567, totalTokens: 1234567 }],
+        ["Codex", { totalCost: 2.45, inputTokens: 150000, outputTokens: 80000, cacheCreationTokens: 0, cacheReadTokens: 4567, totalTokens: 234567 }],
       ]);
       emitCsv(totals, "snapshot", { period: "daily" });
       const out = stdoutText();
       const lines = out.split("\n");
-      assert.equal(lines[0], "tool,tokens,input,output,cost", "header row must exactly match");
+      assert.equal(lines[0], "tool,tokens,input,output,cache,cost", "header row must exactly match");
       assert.ok(lines.some((l) => l.startsWith("Claude Code,")), "Claude Code row present");
+      assert.ok(lines.includes("Claude Code,1234567,800000,400000,34567,12.34"), "cache cell is write+read combined, after output");
       assert.ok(lines.some((l) => l.startsWith("Codex,")), "Codex row present");
-      assert.ok(lines.some((l) => l.startsWith("Total,")), "Total row present when >1 tool visible");
+      assert.ok(lines.includes("Total,1469134,950000,480000,39134,14.79"), "Total row sums cache when >1 tool visible");
     });
 
     it("omits Total row when only one tool has data", (t) => {
@@ -1032,7 +1086,7 @@ describe("emitCsv", () => {
       ]);
       emitCsv(totals, "snapshot", { period: "daily", machineCosts });
       const lines = stdoutText().split("\n");
-      assert.equal(lines[0], "tool,tokens,input,output,cost,machine_alpha_cost,machine_zebra_cost", "alphabetical machine columns");
+      assert.equal(lines[0], "tool,tokens,input,output,cache,cost,machine_alpha_cost,machine_zebra_cost", "alphabetical machine columns after cost");
       assert.ok(lines[1].endsWith("3.50,1.50"), "alpha=3.50, zebra=1.50");
     });
   });
@@ -1114,8 +1168,8 @@ describe("emitMarkdown", () => {
       const lines = stdoutText().split("\n");
       assert.equal(lines[0], "## Combined Usage (monthly)", "heading must match ANSI renderer title");
       assert.equal(lines[1], "", "blank line after heading");
-      assert.equal(lines[2], "| Tool | Tokens | Input | Output | Cost |", "GFM header row");
-      assert.equal(lines[3], "| :--- | ---: | ---: | ---: | ---: |", "alignment row — string left, numeric right");
+      assert.equal(lines[2], "| Tool | Tokens | Input | Output | Cache | Cost |", "GFM header row");
+      assert.equal(lines[3], "| :--- | ---: | ---: | ---: | ---: | ---: |", "alignment row — string left, numeric right");
     });
 
     it("bolds the Total row when >1 tool visible", (t) => {

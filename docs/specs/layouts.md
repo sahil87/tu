@@ -12,16 +12,17 @@
 ```
 📊 Combined Usage (daily)
 
-Tool           |         Tokens |          Input |         Output |           Cost
-───────────────|────────────────|────────────────|────────────────|───────────────
-Claude Code    |      1,234,567 |        567,890 |        666,677 |      $1,012.34
-Codex          |      2,345,678 |        987,654 |      1,358,024 |         $23.45
-OpenCode       |        456,789 |        234,567 |        222,222 |          $4.56
-───────────────|────────────────|────────────────|────────────────|───────────────
-Total          |      4,037,034 |      1,790,111 |      2,246,923 |      $1,040.35
+Tool         |       Tokens |        Input |       Output |        Cache |         Cost
+─────────────|──────────────|──────────────|──────────────|──────────────|─────────────
+Claude Code  |  487,683,047 |        3,734 |    1,121,329 |  486,557,984 |      $465.67
+Codex        |    2,345,678 |      987,654 |    1,358,024 |            0 |       $23.45
+OpenCode     |      456,789 |      234,567 |      222,222 |            0 |        $4.56
+─────────────|──────────────|──────────────|──────────────|──────────────|─────────────
+Total        |  490,485,514 |    1,225,955 |    2,701,575 |  486,557,984 |      $493.68
 ```
 
-- **Columns:** Tool (14 left-aligned), Tokens/Input/Output/Cost (14 right-aligned each)
+- **Columns:** Tool (12 left-aligned), Tokens/Input/Output/Cache/Cost (12 right-aligned each) — full row is 87 visible chars (≤ 90 budget)
+- **Cache** is cache write + cache read combined, so the row arithmetic closes: Input + Output + Cache = Tokens
 - **Separator:** ` | ` between columns
 - **Colors:** header row `boldCyan`, dividers `dim`, Total row `boldWhite`
 - Cost cells carry `en-US` thousands separators (`$1,012.34`), matching the token columns
@@ -36,9 +37,9 @@ Same table as Layout 1 but with a single data row. Title uses tool name:
 ```
 📊 Claude Code (daily)
 
-Tool           |         Tokens |          Input |         Output |           Cost
-───────────────|────────────────|────────────────|────────────────|───────────────
-Claude Code    |      1,234,567 |        567,890 |        666,677 |      $1,012.34
+Tool         |       Tokens |        Input |       Output |        Cache |         Cost
+─────────────|──────────────|──────────────|──────────────|──────────────|─────────────
+Claude Code  |  487,683,047 |        3,734 |    1,121,329 |  486,557,984 |      $465.67
 ```
 
 No divider/Total row when only one row is present.
@@ -202,9 +203,9 @@ Refreshing... · ↵ refresh · q quit
 ─────────────────────────────────────────────
 📊 Combined Usage (daily)
 
-Tool           |        Tokens |        Input |       Output |         Cost
-────────────────────────────────────────────────────────────────────────────
-                         Loading...
+Tool         |       Tokens |        Input |       Output |        Cache |         Cost
+─────────────|──────────────|──────────────|──────────────|──────────────|─────────────
+                                      Loading...
 ```
 
 ## 7. Watch Mode — Delta Indicators

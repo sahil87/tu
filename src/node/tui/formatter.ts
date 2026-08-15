@@ -362,14 +362,14 @@ export function renderTotal(period: string, toolTotals: Map<string, UsageTotals>
     return lines;
   }
 
-  const W = 14;
-  const N = 14;
+  const W = 12;
+  const N = 12;
   const prevCosts = opts?.prevCosts;
   const row = (...cols: string[]) =>
     cols.map((c, i) => (i === 0 ? c.padEnd(W) : c.padStart(N))).join(" | ");
   const colorRow = (cols: string[], colorFn: (s: string) => string) =>
     cols.map((c, i) => colorFn(i === 0 ? c.padEnd(W) : c.padStart(N))).join(" | ");
-  const divider = [W, N, N, N, N].map(w => "─".repeat(w)).join("─|─");
+  const divider = [W, N, N, N, N, N].map(w => "─".repeat(w)).join("─|─");
 
   // Machine columns setup
   const machineCosts = opts?.machineCosts;
@@ -379,12 +379,13 @@ export function renderTotal(period: string, toolTotals: Map<string, UsageTotals>
   const machineDiv = hasMachines ? mcols.map(() => "─|─" + "─".repeat(MACHINE_COL_WIDTH)).join("") : "";
   const machineHeader = hasMachines ? mcols.map((c) => " | " + boldCyan(c.letter.padStart(MACHINE_COL_WIDTH))).join("") : "";
 
-  lines.push(colorRow(["Tool", "Tokens", "Input", "Output", "Cost"], boldCyan) + machineHeader);
+  lines.push(colorRow(["Tool", "Tokens", "Input", "Output", "Cache", "Cost"], boldCyan) + machineHeader);
   lines.push(dim(divider + machineDiv));
 
   let grandCost = 0;
   let grandInput = 0;
   let grandOutput = 0;
+  let grandCache = 0;
   let grandTotal = 0;
   const machineSums = new Map<string, number>();
 
@@ -400,11 +401,12 @@ export function renderTotal(period: string, toolTotals: Map<string, UsageTotals>
           machineSums.set(mc.name, (machineSums.get(mc.name) ?? 0) + cost);
         }
       }
-      lines.push(row(name, fmtNum(t.totalTokens), fmtNum(t.inputTokens), fmtNum(t.outputTokens), costStr) + machineCells);
+      lines.push(row(name, fmtNum(t.totalTokens), fmtNum(t.inputTokens), fmtNum(t.outputTokens), fmtNum(t.cacheCreationTokens + t.cacheReadTokens), costStr) + machineCells);
     }
     grandCost += t.totalCost;
     grandInput += t.inputTokens;
     grandOutput += t.outputTokens;
+    grandCache += t.cacheCreationTokens + t.cacheReadTokens;
     grandTotal += t.totalTokens;
   }
 
@@ -417,7 +419,7 @@ export function renderTotal(period: string, toolTotals: Map<string, UsageTotals>
         totalMachineCells += " | " + boldWhite(fmtCost(machineSums.get(mc.name) ?? 0).padStart(MACHINE_COL_WIDTH));
       }
     }
-    lines.push(colorRow(["Total", fmtNum(grandTotal), fmtNum(grandInput), fmtNum(grandOutput), fmtCost(grandCost)], boldWhite) + totalMachineCells);
+    lines.push(colorRow(["Total", fmtNum(grandTotal), fmtNum(grandInput), fmtNum(grandOutput), fmtNum(grandCache), fmtCost(grandCost)], boldWhite) + totalMachineCells);
   }
   if (hasMachines) {
     lines.push("");
@@ -705,11 +707,12 @@ function collectMachineNames(machineCosts?: Map<string, Map<string, number>>): s
 
 function emitCsvSnapshot(toolTotals: Map<string, UsageTotals>, opts: EmitOptions): string {
   const machines = collectMachineNames(opts.machineCosts);
-  const header = ["tool", "tokens", "input", "output", "cost", ...machines.map((m) => `machine_${m}_cost`)];
+  const header = ["tool", "tokens", "input", "output", "cache", "cost", ...machines.map((m) => `machine_${m}_cost`)];
   const rows: string[] = [csvRow(header)];
 
   let grandInput = 0;
   let grandOutput = 0;
+  let grandCache = 0;
   let grandTotal = 0;
   let grandCost = 0;
   const machineSums = new Map<string, number>(machines.map((m) => [m, 0]));
@@ -722,10 +725,11 @@ function emitCsvSnapshot(toolTotals: Map<string, UsageTotals>, opts: EmitOptions
         machineSums.set(m, (machineSums.get(m) ?? 0) + c);
         return csvCost(c);
       });
-      rows.push(csvRow([name, csvNum(t.totalTokens), csvNum(t.inputTokens), csvNum(t.outputTokens), csvCost(t.totalCost), ...machineCells]));
+      rows.push(csvRow([name, csvNum(t.totalTokens), csvNum(t.inputTokens), csvNum(t.outputTokens), csvNum(t.cacheCreationTokens + t.cacheReadTokens), csvCost(t.totalCost), ...machineCells]));
     }
     grandInput += t.inputTokens;
     grandOutput += t.outputTokens;
+    grandCache += t.cacheCreationTokens + t.cacheReadTokens;
     grandTotal += t.totalTokens;
     grandCost += t.totalCost;
   }
@@ -733,7 +737,7 @@ function emitCsvSnapshot(toolTotals: Map<string, UsageTotals>, opts: EmitOptions
   const visibleCount = [...toolTotals.values()].filter((t) => t.totalTokens > 0).length;
   if (visibleCount > 1) {
     const totalMachines = machines.map((m) => csvCost(machineSums.get(m) ?? 0));
-    rows.push(csvRow(["Total", csvNum(grandTotal), csvNum(grandInput), csvNum(grandOutput), csvCost(grandCost), ...totalMachines]));
+    rows.push(csvRow(["Total", csvNum(grandTotal), csvNum(grandInput), csvNum(grandOutput), csvNum(grandCache), csvCost(grandCost), ...totalMachines]));
   }
 
   return rows.join("\n") + "\n";
@@ -852,8 +856,8 @@ function titleForTotalHistory(period: string, capActive?: boolean): string {
 
 function emitMarkdownSnapshot(toolTotals: Map<string, UsageTotals>, opts: EmitOptions): string {
   const machines = collectMachineNames(opts.machineCosts);
-  const aligns: Array<"left" | "right"> = ["left", "right", "right", "right", "right", ...machines.map((_) => "right" as const)];
-  const header = ["Tool", "Tokens", "Input", "Output", "Cost", ...machines];
+  const aligns: Array<"left" | "right"> = ["left", "right", "right", "right", "right", "right", ...machines.map((_) => "right" as const)];
+  const header = ["Tool", "Tokens", "Input", "Output", "Cache", "Cost", ...machines];
 
   const lines: string[] = [];
   lines.push(`## ${titleForSnapshot(opts.period)}`);
@@ -863,6 +867,7 @@ function emitMarkdownSnapshot(toolTotals: Map<string, UsageTotals>, opts: EmitOp
 
   let grandInput = 0;
   let grandOutput = 0;
+  let grandCache = 0;
   let grandTotal = 0;
   let grandCost = 0;
   const machineSums = new Map<string, number>(machines.map((m) => [m, 0]));
@@ -875,10 +880,11 @@ function emitMarkdownSnapshot(toolTotals: Map<string, UsageTotals>, opts: EmitOp
         machineSums.set(m, (machineSums.get(m) ?? 0) + c);
         return mdCost(c);
       });
-      lines.push(mdRow([name, mdNum(t.totalTokens), mdNum(t.inputTokens), mdNum(t.outputTokens), mdCost(t.totalCost), ...machineCells]));
+      lines.push(mdRow([name, mdNum(t.totalTokens), mdNum(t.inputTokens), mdNum(t.outputTokens), mdNum(t.cacheCreationTokens + t.cacheReadTokens), mdCost(t.totalCost), ...machineCells]));
     }
     grandInput += t.inputTokens;
     grandOutput += t.outputTokens;
+    grandCache += t.cacheCreationTokens + t.cacheReadTokens;
     grandTotal += t.totalTokens;
     grandCost += t.totalCost;
   }
@@ -886,7 +892,7 @@ function emitMarkdownSnapshot(toolTotals: Map<string, UsageTotals>, opts: EmitOp
   const visibleCount = [...toolTotals.values()].filter((t) => t.totalTokens > 0).length;
   if (visibleCount > 1) {
     const totalMachines = machines.map((m) => `**${mdCost(machineSums.get(m) ?? 0)}**`);
-    lines.push(mdRow(["**Total**", `**${mdNum(grandTotal)}**`, `**${mdNum(grandInput)}**`, `**${mdNum(grandOutput)}**`, `**${mdCost(grandCost)}**`, ...totalMachines]));
+    lines.push(mdRow(["**Total**", `**${mdNum(grandTotal)}**`, `**${mdNum(grandInput)}**`, `**${mdNum(grandOutput)}**`, `**${mdNum(grandCache)}**`, `**${mdCost(grandCost)}**`, ...totalMachines]));
   }
 
   lines.push("");

@@ -147,7 +147,7 @@ Tool configs define the six supported tools (`cc`, `codex`, `oc`, `gemini`, `cop
 
 ### Snapshot Table (all tools)
 
-Columns: Tool, Tokens, Input, Output, Cost. One row per tool with non-zero tokens, plus a Total row. Heading: "Combined Usage (daily|weekly|monthly)".
+Columns: Tool, Tokens, Input, Output, Cache, Cost (Cache = cache write + cache read combined, so Input + Output + Cache = Tokens). One row per tool with non-zero tokens, plus a Total row. Heading: "Combined Usage (daily|weekly|monthly)".
 
 ### Single-Tool History Table
 

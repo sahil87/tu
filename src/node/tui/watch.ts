@@ -62,15 +62,15 @@ function renderSkeleton(termWidth: number): string[] {
     lines.push(boldWhite("\u{1F4CA} Combined Usage (daily)"));
     lines.push("");
 
-    const W = 14;
-    const N = 14;
-    const cols = ["Tool", "Tokens", "Input", "Output", "Cost"];
+    const W = 12;
+    const N = 12;
+    const cols = ["Tool", "Tokens", "Input", "Output", "Cache", "Cost"];
     const header = cols
       .map((c, i) => boldCyan(i === 0 ? c.padEnd(W) : c.padStart(N)))
       .join(" | ");
     lines.push(header);
 
-    const divider = [W, N, N, N, N].map((w) => "\u2500".repeat(w)).join("\u2500|\u2500");
+    const divider = [W, N, N, N, N, N].map((w) => "\u2500".repeat(w)).join("\u2500|\u2500");
     lines.push(dim(divider));
 
     // Centered "Loading..." placeholder
