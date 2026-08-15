@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 5
@@ -33,22 +33,24 @@ stage_metrics:
     apply: {started_at: "2026-08-15T11:08:51Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-15T11:16:23Z"}
     review: {started_at: "2026-08-15T11:16:23Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-15T11:21:46Z"}
     hydrate: {started_at: "2026-08-15T11:21:46Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-15T11:23:22Z"}
-    ship: {started_at: "2026-08-15T11:23:22Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-08-15T11:23:22Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-15T11:25:34Z"}
+    review-pr: {started_at: "2026-08-15T11:25:34Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/tu/pull/65
 true_impact:
-    added: 1773
-    deleted: 125
-    net: 1648
+    added: 2032
+    deleted: 156
+    net: 1876
     excluding:
-        added: 790
-        deleted: 78
-        net: 712
+        added: 875
+        deleted: 103
+        net: 772
     tests:
-        added: 617
-        deleted: 57
-        net: 560
-    computed_at: "2026-08-15T11:23:22Z"
-    computed_at_stage: hydrate
+        added: 679
+        deleted: 65
+        net: 614
+    computed_at: "2026-08-15T11:25:34Z"
+    computed_at_stage: ship
 summary: Snapshot gains a combined Cache column (write+read) across ANSI/Markdown/CSV with 12-wide columns (87-char row) and a synced watch loading skeleton
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-08-15T11:23:22Z
+last_updated: 2026-08-15T11:25:34Z
