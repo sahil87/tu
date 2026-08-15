@@ -1,3 +1,4 @@
 {"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-08-15T09:34:17Z"}
 {"args":"Month-boundary separators, today marker, and summary footer in history views; p95-capped bar scaling with overflow marker","cmd":"fab-new","event":"command","ts":"2026-08-15T09:34:17Z"}
 {"delta":"+4.4","event":"confidence","score":4.4,"trigger":"calc-score","ts":"2026-08-15T09:35:06Z"}
+{"delta":"-0.1","event":"confidence","score":4.3,"trigger":"calc-score","ts":"2026-08-15T09:57:13Z"}
