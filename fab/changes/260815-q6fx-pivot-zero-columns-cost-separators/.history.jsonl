@@ -1,0 +1,3 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-08-15T09:33:01Z"}
+{"args":"Omit all-zero tool columns in the cross-tool pivot and add thousands separators to cost cells","cmd":"fab-new","event":"command","ts":"2026-08-15T09:33:01Z"}
+{"delta":"+4.8","event":"confidence","score":4.8,"trigger":"calc-score","ts":"2026-08-15T09:33:53Z"}
