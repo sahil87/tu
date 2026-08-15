@@ -51,6 +51,12 @@ describe("fmtCost", () => {
     assert.equal(fmtCost(0), "$0.00");
     assert.equal(fmtCost(12.345), "$12.35");
   });
+
+  it("formats thousands with comma separators", () => {
+    assert.equal(fmtCost(4031.61), "$4,031.61");
+    assert.equal(fmtCost(1000), "$1,000.00");
+    assert.equal(fmtCost(999999.99), "$999,999.99");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -180,8 +186,8 @@ describe("printHistory", () => {
 
   it("omits bar column on narrow terminals", (t) => {
     t.after(restoreLog);
-    // tableWidth = 97, GUTTER = 3, COST_WIDTH = 8, separator = 1
-    // termWidth = 110 → barWidth = 110 - 97 - 3 - 8 - 1 = 1 < MIN_BAR_AREA
+    // tableWidth = 97, GUTTER = 3, COST_WIDTH = 9, separator = 1
+    // termWidth = 110 → barWidth = 110 - 97 - 3 - 9 - 1 = 0 < MIN_BAR_AREA
     const entries: UsageEntry[] = [{
       label: "2026-02-14",
       totalCost: 5,
@@ -226,7 +232,7 @@ describe("printHistory", () => {
       cacheReadTokens: 0,
       totalTokens: 300,
     }];
-    // termWidth=188, tableWidth=97, GUTTER=3, COST_WIDTH=8, sep=1 → uncapped=79, capped at 30
+    // termWidth=188, tableWidth=97, GUTTER=3, COST_WIDTH=9, sep=1 → uncapped=78, capped at 30
     printHistory("Test", "daily", entries, 188);
     const dataLine = logged.find(l => l.includes("2026-02-14"));
     assert.ok(dataLine);
@@ -449,9 +455,9 @@ describe("printTotalHistory", () => {
         { label: "2026-02-14", totalCost: 3, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 },
       ]],
     ]);
-    // Variable-width columns: Claude Code → max(11,8)=11, Codex → max(5,8)=8.
-    // Date column is 10. tableWidth = 10 + (11+3) + (8+3) = 35.
-    // termWidth=50 → barWidth = 50 - 35 - 3 - 8 - 1 = 3 < MIN_BAR_AREA
+    // Variable-width columns: Claude Code → max(11,9)=11, Codex → max(5,9)=9.
+    // Date column is 10. tableWidth = 10 + (11+3) + (9+3) = 36.
+    // termWidth=50 → barWidth = 50 - 36 - 3 - 9 - 1 = 1 < MIN_BAR_AREA
     printTotalHistory("daily", data, 50);
     const output = logged.join("\n");
     assert.ok(!output.includes("\u2588"), "expected no bars on narrow terminal");
@@ -464,9 +470,9 @@ describe("printTotalHistory", () => {
       ["B", [{ label: "2026-02-14", totalCost: 5, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 }]],
       ["C", [{ label: "2026-02-14", totalCost: 3, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 }]],
     ]);
-    // Variable-width columns: A/B/C each → max(1,8)=8. Date column is 10.
-    // tableWidth = 10 + 3*(8+3) = 43.
-    // termWidth=140 → barWidth = min(140-43-3-8-1, 30) = min(85, 30) = 30
+    // Variable-width columns: A/B/C each → max(1,9)=9. Date column is 10.
+    // tableWidth = 10 + 3*(9+3) = 46.
+    // termWidth=140 → barWidth = min(140-46-3-9-1, 30) = min(81, 30) = 30
     printTotalHistory("daily", data, 140);
     const dataLine = logged.find(l => l.includes("2026-02-14"));
     assert.ok(dataLine);
@@ -474,103 +480,102 @@ describe("printTotalHistory", () => {
     assert.ok(dataLine!.includes("\u2588"), "expected bars in data row");
   });
 
-  it("6-tool pivot full data row (through the Cost cell) is 90 chars and fits within 91 columns", (t) => {
+  it("6-tool pivot full data row (through the Cost cell) is 96 chars and fits within 97 columns", (t) => {
     t.after(restoreLog);
     const mk = (cost: number): UsageEntry[] => [
       { label: "2026-07-01", totalCost: cost, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 },
     ];
-    // Full 6-tool registry order, including zero-data gemini/copilot/kimi columns.
+    // Full 6-tool registry order, all with nonzero cost (zero-cost columns are
+    // omitted — that case is covered by the omission tests below).
     const data = new Map<string, UsageEntry[]>([
       ["Claude Code", mk(123.45)],
       ["Codex", mk(0.12)],
       ["OpenCode", mk(4.56)],
-      ["Gemini", mk(0)],
-      ["Copilot", mk(0)],
-      ["Kimi", mk(0)],
+      ["Gemini", mk(0.01)],
+      ["Copilot", mk(0.02)],
+      ["Kimi", mk(0.03)],
     ]);
-    printTotalHistory("daily", data, 91);
+    printTotalHistory("daily", data, 97);
     const output = logged.join("\n");
 
-    // All six tool columns render (zero-data ones are NOT omitted).
+    // All six tool columns render (all have nonzero cost in the window).
     for (const name of ["Claude Code", "Codex", "OpenCode", "Gemini", "Copilot", "Kimi"]) {
       assert.match(output, new RegExp(name));
     }
-    // Zero-data tools show $0.00, not a blank/omitted column.
-    assert.match(output, /\$0\.00/);
 
     // The FULL rendered data row \u2014 Date + the six tool columns + the 3-char
-    // gutter + the 8-wide Cost cell \u2014 must fit within 91 cols. Per-column
-    // widths: Date 10, Claude Code max(11,8)=11, the other five max(<=8,8)=8. So
-    // the row is 10 + (11+8+8+8+8+8) + 6x3 (the " | " before each tool column) + 3
-    // (gutter) + 8 (Cost) = 90 (the 80-col fit ended when the pivot grew to 6
-    // tools \u2014 the 8-char cost-cell floor leaves no slack to reclaim).
+    // gutter + the 9-wide Cost cell \u2014 must fit within 97 cols. Per-column
+    // widths: Date 10, Claude Code max(11,9)=11, the other five max(<=9,9)=9. So
+    // the row is 10 + (11+9+9+9+9+9) + 6x3 (the " | " before each tool column) + 3
+    // (gutter) + 9 (Cost) = 96.
     // Measure the ACTUAL rendered data row through the Cost cell \u2014 not the
     // body, not recomputed arithmetic against a constant.
     const dataLine = logged.find((l) => stripAnsi(l).includes("2026-07-01"));
     assert.ok(dataLine, "expected the 2026-07-01 data row");
     const stripped = stripAnsi(dataLine!);
-    // Slice through the end of the Cost cell (the row's grand total, $128.13).
-    const costCell = "$128.13";
+    // Slice through the end of the Cost cell (the row's grand total, $128.19).
+    const costCell = "$128.19";
     const costEnd = stripped.indexOf(costCell) + costCell.length;
     const fullRow = stripped.slice(0, costEnd);
-    assert.equal(fullRow.length, 90, `full data row must be 90 chars (got ${fullRow.length}): "${fullRow}"`);
-    assert.ok(fullRow.length <= 91, `full data row exceeds 91 cols (${fullRow.length})`);
-    // And no inline bar renders at 91 cols (barWidth = 91 - 79 - 3 - 8 - 1 = 0 < MIN_BAR_AREA).
-    assert.ok(!output.includes("\u2588"), "expected no inline bars for the 6-tool pivot at 91 cols");
+    assert.equal(fullRow.length, 96, `full data row must be 96 chars (got ${fullRow.length}): "${fullRow}"`);
+    assert.ok(fullRow.length <= 97, `full data row exceeds 97 cols (${fullRow.length})`);
+    // And no inline bar renders at 97 cols (barWidth = 97 - 84 - 3 - 9 - 1 = 0 < MIN_BAR_AREA).
+    assert.ok(!output.includes("\u2588"), "expected no inline bars for the 6-tool pivot at 97 cols");
 
     // Watch mode: with prevCosts set (watch.ts populates it after the first
     // poll) the row appends a delta indicator after the Cost cell. In this pivot
     // it is rendered WITHOUT its leading space (the arrow abuts the cost \u2014
-    // "$128.13\u2191", 1 visible char) so the row is 90 + 1 = 91 exactly and
-    // does NOT wrap at 91 cols. The spaced form ( \u2191, 2 chars) would render
-    // 92 and wrap, corrupting the watch compositor's line-counting.
+    // "$128.19\u2191", 1 visible char) so the row is 96 + 1 = 97 exactly and
+    // does NOT wrap at 97 cols. The spaced form ( \u2191, 2 chars) would render
+    // 98 and wrap, corrupting the watch compositor's line-counting.
     captureLog();
-    // Row total for 2026-07-01 is 123.45 + 0.12 + 4.56 = 128.13; a lower prev
-    // triggers the up-arrow (\u2191).
-    printTotalHistory("daily", data, 91, { prevCosts: new Map([["total:2026-07-01", 100]]) });
+    // Row total for 2026-07-01 is 123.45 + 0.12 + 4.56 + 0.01 + 0.02 + 0.03 =
+    // 128.19; a lower prev triggers the up-arrow (\u2191).
+    printTotalHistory("daily", data, 97, { prevCosts: new Map([["total:2026-07-01", 100]]) });
     const watchOutput = logged.join("\n");
     const watchLine = logged.find((l) => stripAnsi(l).includes("2026-07-01"));
     assert.ok(watchLine, "expected the 2026-07-01 watch-mode data row");
     const watchStripped = stripAnsi(watchLine!);
     // Sanity: the indicator rendered space-lessly, directly against the cost.
-    assert.ok(watchStripped.includes("$128.13\u2191"), `expected space-less indicator "$128.13\u2191", got: "${watchStripped}"`);
+    assert.ok(watchStripped.includes("$128.19\u2191"), `expected space-less indicator "$128.19\u2191", got: "${watchStripped}"`);
     // Measure the full row through the indicator (the arrow is the last glyph).
     const arrowEnd = watchStripped.indexOf("\u2191") + 1;
     const watchRow = watchStripped.slice(0, arrowEnd);
-    assert.equal(watchRow.length, 91, `watch-mode row (through the delta indicator) must be 91 chars (got ${watchRow.length}): "${watchRow}"`);
-    assert.ok(watchRow.length <= 91, `watch-mode row exceeds 91 cols (${watchRow.length})`);
-    // Still no inline bar at 91 cols in watch mode.
-    assert.ok(!watchOutput.includes("\u2588"), "expected no inline bars for the 6-tool watch pivot at 91 cols");
+    assert.equal(watchRow.length, 97, `watch-mode row (through the delta indicator) must be 97 chars (got ${watchRow.length}): "${watchRow}"`);
+    assert.ok(watchRow.length <= 97, `watch-mode row exceeds 97 cols (${watchRow.length})`);
+    // Still no inline bar at 97 cols in watch mode.
+    assert.ok(!watchOutput.includes("\u2588"), "expected no inline bars for the 6-tool watch pivot at 97 cols");
   });
 
-  it("6-tool watch-mode pivot: no line exceeds terminal width across the bars band (101/110/120)", (t) => {
+  it("6-tool watch-mode pivot: no line exceeds terminal width across the bars band (107/110/120)", (t) => {
     t.after(restoreLog);
     const mk = (cost: number): UsageEntry[] => [
       { label: "2026-07-01", totalCost: cost, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 },
     ];
-    // Full 6-tool registry order; the max-cost row is the one that renders the
-    // longest bar (full width) — it is the wrap risk once a delta indicator is
-    // appended. tableWidth = 79, so bars render from ~width 101 (barWidth >= 10).
+    // Full 6-tool registry order, all nonzero (zero-cost columns are omitted);
+    // the max-cost row is the one that renders the longest bar (full width) —
+    // it is the wrap risk once a delta indicator is appended. tableWidth = 84,
+    // so bars render from ~width 107 (barWidth >= 10).
     const data = new Map<string, UsageEntry[]>([
       ["Claude Code", mk(123.45)],
       ["Codex", mk(0.12)],
       ["OpenCode", mk(4.56)],
-      ["Gemini", mk(0)],
-      ["Copilot", mk(0)],
-      ["Kimi", mk(0)],
+      ["Gemini", mk(0.01)],
+      ["Copilot", mk(0.02)],
+      ["Kimi", mk(0.03)],
     ]);
-    // A lower prev triggers the up-arrow (row total 128.13 > 100), exercising the
+    // A lower prev triggers the up-arrow (row total 128.19 > 100), exercising the
     // watch-mode delta indicator on the max-cost row.
     const prevCosts = new Map([["total:2026-07-01", 100]]);
-    for (const termWidth of [101, 110, 120]) {
+    for (const termWidth of [107, 110, 120]) {
       captureLog();
       printTotalHistory("daily", data, termWidth, { prevCosts });
       // Reserving the indicator char shifts the bars threshold up by one: with
-      // tableWidth 79, barWidth = width - 79 - 3 - 8 - 1 - 1 (indicator reserve),
-      // so bars render from width 102 (>=10). 101 is the last no-bar width; 110/120
+      // tableWidth 84, barWidth = width - 84 - 3 - 9 - 1 - 1 (indicator reserve),
+      // so bars render from width 108 (>=10). 107 is the last no-bar width; 110/120
       // render bars and exercise the bar + indicator interaction on the max-cost
       // row (the historical width+1 wrap).
-      if (termWidth >= 102) {
+      if (termWidth >= 108) {
         assert.ok(logged.join("\n").includes("█"), `expected inline bars at ${termWidth} cols`);
       }
       // EVERY rendered line — headers, dividers, data rows (bar + indicator),
@@ -583,10 +588,10 @@ describe("printTotalHistory", () => {
     }
   });
 
-  it("tool columns are sized to max(name.length, 8)", (t) => {
+  it("tool columns are sized to max(name.length, 9)", (t) => {
     t.after(restoreLog);
     const data = new Map<string, UsageEntry[]>([
-      // "Claude Code" (11) exceeds the 8 floor; "AB" (2) is padded up to 8.
+      // "Claude Code" (11) exceeds the 9 floor; "AB" (2) is padded up to 9.
       ["Claude Code", [{ label: "2026-07-01", totalCost: 1, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 }]],
       ["AB", [{ label: "2026-07-01", totalCost: 2, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 }]],
     ]);
@@ -596,9 +601,115 @@ describe("printTotalHistory", () => {
     const stripped = stripAnsi(header!);
     // Columns joined by " | ": Date padEnd(10) = "Date" + 6 spaces, then the
     // separator's leading space → 7 spaces before the pipe; "Claude Code"
-    // padStart(11) (fits exactly, so no pad); "AB" padStart(8) — padStart
-    // right-aligns, so 6 leading pad spaces + the separator space = 7 before "AB".
-    assert.match(stripped, /^Date {7}\| Claude Code \| {7}AB \|/);
+    // padStart(11) (fits exactly, so no pad); "AB" padStart(9) — padStart
+    // right-aligns, so 7 leading pad spaces + the separator space = 8 before "AB".
+    assert.match(stripped, /^Date {7}\| Claude Code \| {8}AB \|/);
+  });
+
+  it("omits tool columns with zero cost across the visible window", (t) => {
+    t.after(restoreLog);
+    const e = (label: string, totalCost: number): UsageEntry => ({
+      label, totalCost, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0,
+    });
+    const data = new Map<string, UsageEntry[]>([
+      ["Claude Code", [e("2026-02-13", 1), e("2026-02-14", 2)]],
+      ["Codex", [e("2026-02-13", 0)]],
+      ["Kimi", []],
+    ]);
+    printTotalHistory("daily", data, 140);
+    const output = logged.join("\n");
+
+    // Header is Date | Claude Code | Cost — the zero-cost columns are gone.
+    const header = logged.find((l) => l.includes("Claude Code"));
+    assert.ok(header, "expected a header line");
+    assert.equal(stripAnsi(header!), "Date       | Claude Code |      Cost");
+    assert.ok(!output.includes("Codex"), "zero-cost Codex column omitted");
+    assert.ok(!output.includes("Kimi"), "no-entry Kimi column omitted");
+    // No $0.00-only cells anywhere (rows or Total).
+    assert.ok(!output.includes("$0.00"), "no $0.00 cells from omitted columns");
+    // Total row renders against the same filtered column set.
+    const totalLine = logged.find((l) => l.startsWith("Total"));
+    assert.ok(totalLine, "expected a Total line");
+    assert.equal(stripAnsi(totalLine!), "Total      |       $3.00 |     $3.00");
+  });
+
+  it("keeps the Date | Tool | Cost pivot shape when one tool remains", (t) => {
+    t.after(restoreLog);
+    const e = (label: string, totalCost: number): UsageEntry => ({
+      label, totalCost, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0,
+    });
+    const data = new Map<string, UsageEntry[]>([
+      ["Claude Code", [e("2026-02-14", 5)]],
+      ["Codex", [e("2026-02-14", 0)]],
+    ]);
+    printTotalHistory("daily", data, 140);
+    const output = logged.join("\n");
+    const header = logged.find((l) => l.includes("Claude Code"));
+    assert.ok(header, "expected a header line");
+    // Pivot shape preserved — no collapse to the single-tool history layout
+    // (which would carry Input/Output/Cache token columns).
+    assert.equal(stripAnsi(header!), "Date       | Claude Code |      Cost");
+    assert.ok(!output.includes("Input"), "must not switch to the single-tool history layout");
+    assert.ok(!output.includes("Codex"), "zero-cost Codex column omitted");
+  });
+
+  it("filters on the post-maxRows visible window", (t) => {
+    t.after(restoreLog);
+    const e = (label: string, totalCost: number): UsageEntry => ({
+      label, totalCost, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0,
+    });
+    const data = new Map<string, UsageEntry[]>([
+      ["Claude Code", [e("2026-03-01", 1), e("2026-03-02", 1), e("2026-03-03", 1)]],
+      // Codex has cost only on 2026-03-01 — outside the maxRows=2 window.
+      ["Codex", [e("2026-03-01", 5)]],
+    ]);
+    printTotalHistory("daily", data, 140, { maxRows: 2 });
+    let output = logged.join("\n");
+    assert.ok(!output.includes("Codex"), "tool with cost only outside the window is omitted");
+    assert.ok(!output.includes("2026-03-01"), "window truncated to the last 2 labels");
+
+    // Without truncation the same tool keeps its column.
+    captureLog();
+    printTotalHistory("daily", data, 140);
+    output = logged.join("\n");
+    assert.ok(output.includes("Codex"), "tool with cost in the full window keeps its column");
+  });
+
+  it("falls back to the unfiltered tool list when every tool sums to zero", (t) => {
+    t.after(restoreLog);
+    const e = (label: string, totalCost: number): UsageEntry => ({
+      label, totalCost, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0,
+    });
+    const data = new Map<string, UsageEntry[]>([
+      ["Claude Code", [e("2026-02-14", 0)]],
+      ["Codex", [e("2026-02-14", 0)]],
+    ]);
+    printTotalHistory("daily", data, 140);
+    const output = logged.join("\n");
+    // Defensive guard: no degenerate Date | Cost table.
+    assert.ok(output.includes("Claude Code"), "fallback keeps Claude Code column");
+    assert.ok(output.includes("Codex"), "fallback keeps Codex column");
+    assert.ok(output.includes("$0.00"), "fallback renders the $0.00 cells");
+  });
+
+  it("renders a ≥$1,000 cost cell at exactly the 9-char column width (no overflow)", (t) => {
+    t.after(restoreLog);
+    const data = new Map<string, UsageEntry[]>([
+      ["Claude Code", [
+        { label: "2026-07-01", totalCost: 4031.61, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 },
+      ]],
+    ]);
+    printTotalHistory("daily", data, 140);
+    const dataLine = logged.find((l) => stripAnsi(l).includes("2026-07-01"));
+    assert.ok(dataLine, "expected the 2026-07-01 data row");
+    const stripped = stripAnsi(dataLine!);
+    assert.ok(stripped.includes("$4,031.61"), "thousands separator in the cost cell");
+    // "$4,031.61" is 9 chars — exactly COST_WIDTH — so padStart adds nothing and
+    // the row through the Cost cell stays 10 + 3 + 11 + 3 + 9 = 36.
+    const costCell = "$4,031.61";
+    const costEnd = stripped.indexOf(costCell, stripped.indexOf(costCell) + 1) + costCell.length;
+    const fullRow = stripped.slice(0, costEnd);
+    assert.equal(fullRow.length, 36, `row through the Cost cell must be 36 chars (got ${fullRow.length}): "${fullRow}"`);
   });
 });
 
@@ -687,6 +798,59 @@ describe("renderTotal", () => {
     const printOutput = logged.join("\n");
     const renderOutput = renderTotal("daily", totals).join("\n");
     assert.equal(renderOutput, printOutput);
+  });
+
+  it("renders a combined Cache column whose cells close the row arithmetic", () => {
+    const totals = new Map<string, UsageTotals>([
+      ["Claude Code", { totalCost: 465.67, inputTokens: 3734, outputTokens: 1121329, cacheCreationTokens: 400000000, cacheReadTokens: 86557984, totalTokens: 487683047 }],
+      ["Codex", { totalCost: 3, inputTokens: 800, outputTokens: 200, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1000 }],
+    ]);
+    const lines = renderTotal("daily", totals).map(stripAnsi);
+    const header = lines.find((l) => l.includes("Tool"))!;
+    assert.deepEqual(header.split(" | ").map((c) => c.trim()), ["Tool", "Tokens", "Input", "Output", "Cache", "Cost"]);
+    const ccRow = lines.find((l) => l.startsWith("Claude Code"))!;
+    const cells = ccRow.split(" | ").map((c) => c.trim());
+    assert.equal(cells[4], "486,557,984", "cache cell is write+read combined");
+    const [tokens, input, output, cache] = cells.slice(1, 5).map((c) => Number(c.replace(/,/g, "")));
+    assert.equal(input + output + cache, tokens, "Input + Output + Cache = Tokens");
+    const totalRow = lines.find((l) => l.startsWith("Total"))!;
+    const tCells = totalRow.split(" | ").map((c) => c.trim());
+    assert.equal(tCells[4], "486,557,984", "Total row sums the cache column");
+  });
+
+  it("renders 0 in the Cache cell for a zero-cache tool", () => {
+    const totals = new Map<string, UsageTotals>([
+      ["Codex", { totalCost: 3, inputTokens: 800, outputTokens: 200, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1000 }],
+    ]);
+    const lines = renderTotal("daily", totals).map(stripAnsi);
+    const row = lines.find((l) => l.startsWith("Codex"))!;
+    assert.equal(row.split(" | ").map((c) => c.trim())[4], "0");
+  });
+
+  it("all rows measure 87 visible chars (within the 90-col budget)", () => {
+    const totals = new Map<string, UsageTotals>([
+      ["Claude Code", { totalCost: 465.67, inputTokens: 3734, outputTokens: 1121329, cacheCreationTokens: 400000000, cacheReadTokens: 86557984, totalTokens: 487683047 }],
+      ["Codex", { totalCost: 3, inputTokens: 800, outputTokens: 200, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1000 }],
+    ]);
+    const lines = renderTotal("daily", totals).map(stripAnsi);
+    const tableLines = lines.filter((l) => l.includes("|") || l.includes("─"));
+    assert.ok(tableLines.length >= 5, "header, divider, 2 data rows, total divider + row");
+    for (const l of tableLines) {
+      assert.equal(l.length, 87, `row width must be 87: "${l}"`);
+    }
+  });
+
+  it("appends machine columns after Cost with the new layout", () => {
+    const totals = new Map<string, UsageTotals>([
+      ["Claude Code", { totalCost: 5, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 10, cacheReadTokens: 5, totalTokens: 165 }],
+    ]);
+    const machineCosts = new Map<string, Map<string, number>>([
+      ["Claude Code", new Map([["alpha", 3.5], ["zebra", 1.5]])],
+    ]);
+    const lines = renderTotal("daily", totals, { machineCosts }).map(stripAnsi);
+    const header = lines.find((l) => l.includes("Tool"))!;
+    assert.deepEqual(header.split(" | ").map((c) => c.trim()), ["Tool", "Tokens", "Input", "Output", "Cache", "Cost", "A", "B"]);
+    assert.ok(lines.some((l) => l.startsWith("Machines:")), "machine legend present");
   });
 });
 
@@ -786,20 +950,21 @@ function stdoutText(): string {
 // ---------------------------------------------------------------------------
 describe("emitCsv", () => {
   describe("snapshot kind", () => {
-    it("emits tool,tokens,input,output,cost header with data rows and Total", (t) => {
+    it("emits tool,tokens,input,output,cache,cost header with data rows and Total", (t) => {
       captureStdout();
       t.after(restoreStdout);
       const totals = new Map<string, UsageTotals>([
-        ["Claude Code", { totalCost: 12.34, inputTokens: 800000, outputTokens: 400000, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1234567 }],
-        ["Codex", { totalCost: 2.45, inputTokens: 150000, outputTokens: 80000, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 234567 }],
+        ["Claude Code", { totalCost: 12.34, inputTokens: 800000, outputTokens: 400000, cacheCreationTokens: 20000, cacheReadTokens: 14567, totalTokens: 1234567 }],
+        ["Codex", { totalCost: 2.45, inputTokens: 150000, outputTokens: 80000, cacheCreationTokens: 0, cacheReadTokens: 4567, totalTokens: 234567 }],
       ]);
       emitCsv(totals, "snapshot", { period: "daily" });
       const out = stdoutText();
       const lines = out.split("\n");
-      assert.equal(lines[0], "tool,tokens,input,output,cost", "header row must exactly match");
+      assert.equal(lines[0], "tool,tokens,input,output,cache,cost", "header row must exactly match");
       assert.ok(lines.some((l) => l.startsWith("Claude Code,")), "Claude Code row present");
+      assert.ok(lines.includes("Claude Code,1234567,800000,400000,34567,12.34"), "cache cell is write+read combined, after output");
       assert.ok(lines.some((l) => l.startsWith("Codex,")), "Codex row present");
-      assert.ok(lines.some((l) => l.startsWith("Total,")), "Total row present when >1 tool visible");
+      assert.ok(lines.includes("Total,1469134,950000,480000,39134,14.79"), "Total row sums cache when >1 tool visible");
     });
 
     it("omits Total row when only one tool has data", (t) => {
@@ -885,6 +1050,28 @@ describe("emitCsv", () => {
       assert.ok(lines[1].startsWith("2026-04-21,"), "first data row ascending");
       assert.ok(lines[2].startsWith("2026-04-22,"), "second data row ascending");
     });
+
+    it("retains every tool column with raw 0.00 cells (no zero-column omission, no separators)", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      // CSV is a machine contract: scripts index columns positionally, so
+      // zero-cost tools keep their column (unlike the ANSI/Markdown pivots).
+      const e = (label: string, totalCost: number): UsageEntry => ({
+        label, totalCost, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0,
+      });
+      const data = new Map<string, UsageEntry[]>([
+        ["Claude Code", [e("2026-04-21", 4031.61)]],
+        ["Codex", [e("2026-04-21", 0)]],
+        ["Kimi", []],
+      ]);
+      emitCsv(data, "total-history", { period: "daily" });
+      const out = stdoutText();
+      const lines = out.split("\n");
+      assert.equal(lines[0], "date,Claude Code,Codex,Kimi,total", "all tool columns retained");
+      assert.equal(lines[1], "2026-04-21,4031.61,0.00,0.00,4031.61", "raw-numeric cells, no separators");
+      assert.ok(!out.includes("$"), "no $ sign in CSV");
+      assert.ok(!out.includes("4,031.61"), "no thousands separators in CSV");
+    });
   });
 
   describe("machine columns", () => {
@@ -899,7 +1086,7 @@ describe("emitCsv", () => {
       ]);
       emitCsv(totals, "snapshot", { period: "daily", machineCosts });
       const lines = stdoutText().split("\n");
-      assert.equal(lines[0], "tool,tokens,input,output,cost,machine_alpha_cost,machine_zebra_cost", "alphabetical machine columns");
+      assert.equal(lines[0], "tool,tokens,input,output,cache,cost,machine_alpha_cost,machine_zebra_cost", "alphabetical machine columns after cost");
       assert.ok(lines[1].endsWith("3.50,1.50"), "alpha=3.50, zebra=1.50");
     });
   });
@@ -981,8 +1168,8 @@ describe("emitMarkdown", () => {
       const lines = stdoutText().split("\n");
       assert.equal(lines[0], "## Combined Usage (monthly)", "heading must match ANSI renderer title");
       assert.equal(lines[1], "", "blank line after heading");
-      assert.equal(lines[2], "| Tool | Tokens | Input | Output | Cost |", "GFM header row");
-      assert.equal(lines[3], "| :--- | ---: | ---: | ---: | ---: |", "alignment row — string left, numeric right");
+      assert.equal(lines[2], "| Tool | Tokens | Input | Output | Cache | Cost |", "GFM header row");
+      assert.equal(lines[3], "| :--- | ---: | ---: | ---: | ---: | ---: |", "alignment row — string left, numeric right");
     });
 
     it("bolds the Total row when >1 tool visible", (t) => {
@@ -1098,6 +1285,43 @@ describe("emitMarkdown", () => {
       ]);
       emitMarkdown(data, "total-history", { period: "daily", capActive: true });
       assert.equal(stdoutText().split("\n")[0], "## Combined Cost History (daily, last 3 months)");
+    });
+
+    it("omits zero-cost tool columns from the GFM table", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const e = (label: string, totalCost: number): UsageEntry => ({
+        label, totalCost, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0,
+      });
+      const data = new Map<string, UsageEntry[]>([
+        ["Claude Code", [e("2026-04-21", 2), e("2026-04-22", 3)]],
+        ["Codex", [e("2026-04-21", 0)]],
+        ["Kimi", []],
+      ]);
+      emitMarkdown(data, "total-history", { period: "daily" });
+      const out = stdoutText();
+      const lines = out.split("\n");
+      assert.equal(lines[2], "| Date | Claude Code | Cost |", "GFM header omits zero-cost tools");
+      assert.ok(!out.includes("Codex"), "zero-cost Codex column omitted");
+      assert.ok(!out.includes("Kimi"), "no-entry Kimi column omitted");
+      assert.ok(!out.includes("$0.00"), "no $0.00 cells from omitted columns");
+      // Total row (labels.length > 1) renders against the filtered set.
+      assert.ok(out.includes("| **Total** | **$5.00** | **$5.00** |"), "Total row matches filtered columns");
+    });
+
+    it("falls back to all tool columns when every tool sums to zero", (t) => {
+      captureStdout();
+      t.after(restoreStdout);
+      const e = (label: string, totalCost: number): UsageEntry => ({
+        label, totalCost, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0,
+      });
+      const data = new Map<string, UsageEntry[]>([
+        ["Claude Code", [e("2026-04-21", 0)]],
+        ["Codex", [e("2026-04-21", 0)]],
+      ]);
+      emitMarkdown(data, "total-history", { period: "daily" });
+      const lines = stdoutText().split("\n");
+      assert.equal(lines[2], "| Date | Claude Code | Codex | Cost |", "empty filter falls back to all tools");
     });
   });
 

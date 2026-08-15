@@ -1,3 +1,7 @@
+## 2026-08-15
+
+- **Update** [formatting](/display/formatting.md) — History views: month separators, current-period boldWhite marker, dim avg/this-month/peak footer, p95 two-zone bar scale with ┊ rule (oojd)
+
 ## 2026-04-23
 
 - **Update** [formatting](/display/formatting.md) — Added `emitCsv` and `emitMarkdown` renderers for snapshot/history/total-history kinds, selected via a single `outputFormat` dispatch; CSV uses RFC 4180 (raw numerics, no `$`, LF, no BOM, `machine_{name}_cost` columns); Markdown uses GFM tables (commas, `$` prefix, `## {title}` heading, bolded Total row, machine names in headers) (lx0g)

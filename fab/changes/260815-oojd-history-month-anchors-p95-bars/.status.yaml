@@ -1,0 +1,56 @@
+id: oojd
+name: 260815-oojd-history-month-anchors-p95-bars
+created: 2026-08-15T09:34:17Z
+created_by: sahil-noon
+change_type: fix
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
+plan:
+    generated: true
+    task_count: 11
+    acceptance_count: 20
+    acceptance_completed: 20
+confidence:
+    certain: 1
+    confident: 7
+    tentative: 0
+    unresolved: 0
+    score: 4.3
+    fuzzy: true
+    dimensions:
+        signal: 64.4
+        reversibility: 84.4
+        competence: 78.1
+        disambiguation: 71.9
+stage_metrics:
+    intake: {started_at: "2026-08-15T09:34:17Z", driver: fab-new, iterations: 1, completed_at: "2026-08-15T10:23:48Z"}
+    apply: {started_at: "2026-08-15T10:23:48Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-15T10:41:09Z"}
+    review: {started_at: "2026-08-15T10:41:09Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-15T10:49:05Z"}
+    hydrate: {started_at: "2026-08-15T10:49:05Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-15T10:51:56Z"}
+    ship: {started_at: "2026-08-15T10:51:56Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-15T10:54:58Z"}
+    review-pr: {started_at: "2026-08-15T10:54:58Z", driver: git-pr, iterations: 1, completed_at: "2026-08-15T11:05:14Z"}
+prs:
+    - https://github.com/sahil87/tu/pull/64
+true_impact:
+    added: 1764
+    deleted: 125
+    net: 1639
+    excluding:
+        added: 790
+        deleted: 78
+        net: 712
+    tests:
+        added: 617
+        deleted: 57
+        net: 560
+    computed_at: "2026-08-15T10:54:58Z"
+    computed_at_stage: ship
+summary: 'History views: month separators, current-period boldWhite marker, dim avg/this-month/peak footer, p95 two-zone bar scale with ┊ rule; version 0.10.0'
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-08-15T11:05:14Z
