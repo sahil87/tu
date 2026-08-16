@@ -25,7 +25,7 @@ function entry(label: string, totalCost: number): UsageEntry {
 
 const FULL_BLOCK = "█";
 const RULE = "┊";
-const PALETTE = [cyan, magenta, blue, green];
+const PALETTE = [green, magenta, blue, cyan];
 
 // The scale-break rule is always dim-wrapped in two-zone bars — split helper.
 function dimRule(): string {
@@ -122,18 +122,18 @@ describe("renderStackedScaledBar", () => {
     setNoColor(false);
     const scale = computeBarScale([450], 30); // single zone, max 450
     const bar = renderStackedScaledBar(450, [300, 100, 50], PALETTE, scale, 30);
-    const i36 = bar.indexOf("\x1b[36m");
+    const i32 = bar.indexOf("\x1b[32m");
     const i35 = bar.indexOf("\x1b[35m");
     const i34 = bar.indexOf("\x1b[34m");
-    assert.ok(i36 !== -1 && i35 !== -1 && i34 !== -1, "all three segment colors present");
-    assert.ok(i36 < i35 && i35 < i34, "cyan → magenta → blue in column order");
+    assert.ok(i32 !== -1 && i35 !== -1 && i34 !== -1, "all three segment colors present");
+    assert.ok(i32 < i35 && i35 < i34, "green → magenta → blue in column order");
   });
 
   it("gives a sub-dollar share no segment", () => {
     setNoColor(false);
     const scale = computeBarScale([400.04], 30);
     const bar = renderStackedScaledBar(400.04, [300, 100, 0.04], PALETTE, scale, 30);
-    assert.ok(bar.includes("\x1b[36m") && bar.includes("\x1b[35m"));
+    assert.ok(bar.includes("\x1b[32m") && bar.includes("\x1b[35m"));
     assert.ok(!bar.includes("\x1b[34m"), "Kimi's $0.04 share gets no blue segment");
   });
 
@@ -142,7 +142,7 @@ describe("renderStackedScaledBar", () => {
     // scaled = 4.5/16*8 = 2.25 → raw "██▎"; shares apportion 3 chars as [2, 1]
     const scale = { mode: "single" as const, max: 16 };
     const bar = renderStackedScaledBar(4.5, [3.375, 1.125], PALETTE, scale, 8);
-    assert.equal(bar, " " + cyan("██") + magenta("▎"));
+    assert.equal(bar, " " + green("██") + magenta("▎"));
   });
 
   it("keeps the overflow zone solid yellow, unsegmented", () => {
@@ -160,7 +160,7 @@ describe("renderStackedScaledBar", () => {
   it("leaves a 5th tool's segment uncolored", () => {
     setNoColor(false);
     const scale = computeBarScale([500], 30);
-    const palette = [cyan, magenta, blue, green, (s: string) => s];
+    const palette = [green, magenta, blue, cyan, (s: string) => s];
     const bar = renderStackedScaledBar(500, [100, 100, 100, 100, 100], palette, scale, 30);
     assert.equal((bar.match(/\x1b\[3[2-6]m/g) ?? []).length, 4, "exactly four colored runs");
     assert.ok(bar.endsWith("\x1b[0m" + FULL_BLOCK.repeat(6)), "5th tool's 6 blocks follow the last reset, uncolored");
@@ -200,14 +200,14 @@ describe("renderTotalHistory stacked bars", () => {
     assert.ok(row2.endsWith(renderScaledBar(800.04, scale, 30)), "row 2 bar == v0.10.1 primitive output");
   });
 
-  it("assigns cyan/magenta/blue in column order and skips a zero-rounded share", () => {
+  it("assigns green/magenta/blue in column order and skips a zero-rounded share", () => {
     setNoColor(false);
     const lines = renderTotalHistory("daily", dataset(), 200);
     const row1 = lines.find((l) => l.includes("2020-01-01"))!;
-    const i36 = row1.indexOf("\x1b[36m");
+    const i32 = row1.indexOf("\x1b[32m");
     const i35 = row1.indexOf("\x1b[35m");
     const i34 = row1.indexOf("\x1b[34m");
-    assert.ok(i36 !== -1 && i35 !== -1 && i34 !== -1 && i36 < i35 && i35 < i34, "Claude cyan → Codex magenta → Kimi blue");
+    assert.ok(i32 !== -1 && i35 !== -1 && i34 !== -1 && i32 < i35 && i35 < i34, "Claude green → Codex magenta → Kimi blue");
     const row2 = lines.find((l) => l.includes("2020-01-02"))!;
     assert.ok(!row2.includes("\x1b[34m"), "Kimi's $0.04 day rounds to zero — no blue segment");
   });
@@ -223,7 +223,7 @@ describe("renderTotalHistory stacked bars", () => {
     const clipped = lines.find((l) => l.includes("2026-06-23"))!;
     const overflow = clipped.split(RULE)[1];
     assert.ok(overflow.includes("\x1b[33m"), "overflow stays yellow");
-    assert.ok(!overflow.includes("\x1b[36m"), "overflow is not segmented");
+    assert.ok(!overflow.includes("\x1b[32m"), "overflow is not segmented");
     const dataLines = lines.filter((l) => /^2026-06-\d{2}/.test(stripAnsi(l)));
     const ruleCols = new Set(dataLines.map((l) => stripAnsi(l).indexOf(RULE)));
     assert.equal(ruleCols.size, 1, "rule column still aligns across rows");
@@ -264,7 +264,7 @@ describe("footer legend", () => {
       stripAnsi(footer),
       "avg $625.02/day · peak $800.04 (2020-01-02) · █ Claude Code █ Codex █ Kimi",
     );
-    assert.ok(footer.includes("\x1b[36m█\x1b[0m \x1b[2mClaude Code\x1b[0m"), "cyan swatch, dim name");
+    assert.ok(footer.includes("\x1b[32m█\x1b[0m \x1b[2mClaude Code\x1b[0m"), "green swatch, dim name");
     assert.ok(footer.includes("\x1b[35m█\x1b[0m \x1b[2mCodex\x1b[0m"), "magenta swatch, dim name");
     assert.ok(footer.includes("\x1b[34m█\x1b[0m \x1b[2mKimi\x1b[0m"), "blue swatch, dim name");
     setNoColor(true);
@@ -274,7 +274,7 @@ describe("footer legend", () => {
     setNoColor(false);
     const footer = footerOf(renderTotalHistory("daily", dataset(), 200));
     assert.ok(footer.startsWith("\x1b[2m"), "main footer is dim");
-    assert.ok(footer.includes("\x1b[0m\x1b[2m · \x1b[0m\x1b[36m"), "legend separator is re-dimmed after the footer reset");
+    assert.ok(footer.includes("\x1b[0m\x1b[2m · \x1b[0m\x1b[32m"), "legend separator is re-dimmed after the footer reset");
     setNoColor(true);
   });
 

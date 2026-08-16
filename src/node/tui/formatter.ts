@@ -196,7 +196,9 @@ export function renderScaledBar(value: number, scale: BarScale, barWidth: number
 
 // Tool segment palette, assigned in pivot column order. A 5th+ visible tool
 // falls back to uncolored segments (the palette is deliberately capped at 4).
-const STACK_PALETTE: Array<(s: string) => string> = [cyan, magenta, blue, green];
+// Green leads so the first (dominant) column matches the single-tool history
+// bar; yellow is excluded — it is reserved for the overflow zone.
+const STACK_PALETTE: Array<(s: string) => string> = [green, magenta, blue, cyan];
 
 // Identity fallback for palette overflow (5th+ visible tool).
 const noSegmentColor = (s: string): string => s;
