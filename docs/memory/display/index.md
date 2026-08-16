@@ -4,4 +4,4 @@
 
 | File | Description |
 |------|-------------|
-| [formatting](formatting.md) | Table rendering, bar charts, delta indicators, color system, snapshot cache column/width budget, history month separators/footer/p95 bar scale, stacked pivot tool bars and footer legend |
+| [formatting](formatting.md) | Table rendering, bar charts, delta indicators, color system, snapshot cache column/width budget, history month separators/footer/p95 bar scale, weekend date dimming, stacked pivot tool bars and footer legend |

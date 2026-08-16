@@ -18,6 +18,14 @@ function periodLabel(period: string, capActive?: boolean): string {
   return capActive ? `${period}, last 3 months` : period;
 }
 
+// Whether a daily ISO label (YYYY-MM-DD) falls on a Saturday or Sunday.
+// ISO date-only strings parse as UTC midnight, so UTC accessors make the
+// weekday a pure calendar fact, immune to the local timezone.
+function isWeekendLabel(label: string): boolean {
+  const day = new Date(label).getUTCDay();
+  return day === 0 || day === 6;
+}
+
 export function fmtNum(n: number): string {
   return n.toLocaleString("en-US");
 }
@@ -387,8 +395,14 @@ export function renderHistory(toolName: string, period: string, entries: UsageEn
     }
     prevMonthPrefix = monthPrefix;
 
-    // The current period's row renders its date cell in boldWhite (Total-row emphasis)
-    const labelCell = e.label === current ? boldWhite(e.label.padEnd(D)) : e.label;
+    // The current period's row renders its date cell in boldWhite (Total-row
+    // emphasis); otherwise weekend dates dim (daily only) to expose the weekly
+    // rhythm. One cell, one style — the today marker wins on a weekend today.
+    const labelCell = e.label === current
+      ? boldWhite(e.label.padEnd(D))
+      : period === "daily" && isWeekendLabel(e.label)
+        ? dim(e.label.padEnd(D))
+        : e.label;
     const rowStr = row(labelCell, fmtNum(e.inputTokens), fmtNum(e.outputTokens), fmtNum(e.cacheCreationTokens), fmtNum(e.cacheReadTokens), fmtNum(e.totalTokens));
     const costBase = " | " + fmtCost(e.totalCost).padStart(COST_WIDTH);
     const indicator = deltaIndicator(e.totalCost, `${toolName}:${e.label}`, prevCosts);
@@ -662,8 +676,14 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
     }
     prevMonthPrefix = monthPrefix;
 
-    // The current period's row renders its date cell in boldWhite (Total-row emphasis)
-    const labelCell = r.label === current ? boldWhite(r.label.padEnd(D)) : r.label;
+    // The current period's row renders its date cell in boldWhite (Total-row
+    // emphasis); otherwise weekend dates dim (daily only) to expose the weekly
+    // rhythm. One cell, one style — the today marker wins on a weekend today.
+    const labelCell = r.label === current
+      ? boldWhite(r.label.padEnd(D))
+      : period === "daily" && isWeekendLabel(r.label)
+        ? dim(r.label.padEnd(D))
+        : r.label;
     const rowStr = row(labelCell, ...r.cells);
     const costBase = " | " + fmtCost(r.rowTotal).padStart(COST_WIDTH);
     const indicator = deltaIndicator(r.rowTotal, `total:${r.label}`, prevCosts, true);
