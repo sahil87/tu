@@ -81,6 +81,7 @@ avg $1,535.41/day · this month $6,141.62 · peak $4,031.61 (2026-06-12) · ┊ 
 - **p95 two-zone scale:** when `max > 1.5 × p95` (95th percentile of the nonzero row costs, linear interpolation), the bar area splits into a green main zone (linear 0→p95), a dim `┊` (U+250A) scale-break rule rendered in every row (short bars space-pad up to the rule so it aligns vertically), and a yellow overflow zone (linear p95→max, `max(4, round(barWidth/4))` chars). Rows at exactly p95 end at the rule with no overflow segment. Below the trigger the single linear scale renders unchanged — no rule, no legend, no width change
 - **Month separators:** daily views emit a dim divider (same construction as the header divider) before each row whose `YYYY-MM` prefix differs from the previous row's — daily period only, computed on the post-`maxRows` window, never before the first visible row
 - **Current-period marker:** the row matching the current period's label (today / this week / this month) renders its date cell in **boldWhite** — color-only, no glyph, width unchanged, stripped by `--no-color`/`NO_COLOR`
+- **Weekend dimming:** daily views render Saturday/Sunday date cells in **dim** (date cell only — cost/token cells and the bar stay full-intensity), exposing the weekly sawtooth at zero width cost. The today marker wins on a weekend today (one cell, one style). Weekday derived via `getUTCDay()` on the UTC-parsed ISO label — timezone-independent. Daily period only (monthly/weekly labels carry no per-day weekday); compact mode, CSV, and Markdown are untouched; `--no-color`/`NO_COLOR` output is byte-identical to pre-change
 - **Summary footer:** one dim line after the Total row (≥2 data rows): `avg $X.XX/day · this month $X,XXX.XX · peak $X,XXX.XX (YYYY-MM-DD)` — avg is window total ÷ data-row count with a per-period unit suffix (`/day`, `/week`, `/month`); `this month` is daily-only and omitted when the window has no current-month rows; two-zone windows append `· ┊ = $X (p95)`. ANSI renderers only — compact, CSV, and Markdown output carry no separators, marker, or footer
 - Bars only render when terminal width allows (>= 10 chars remaining after cost column)
 - Total row shown when >1 entry
@@ -100,8 +101,10 @@ Date       | Claude Code |     Codex |      Cost
 2026-04-02 |   $1,007.85 |     $5.45 | $1,013.30 ████████████████████████▌
 ───────────|─────────────|───────────|─────────────────────────────────────────
 Total      |   $3,132.45 |    $14.75 | $3,147.20
-avg $1,049.07/day · this month $1,906.60 · peak $1,240.60 (2026-03-31)
+avg $1,049.07/day · this month $1,906.60 · peak $1,240.60 (2026-03-31) · █ Claude Code █ Codex
 ```
+
+Each bar is stacked per tool (colors not shown in ASCII): the Claude Code share of each row renders cyan, the Codex share magenta — see the stacking bullet below.
 
 Outlier window — 21 days in the $100–300 range (shown collapsed) plus two outliers; p95 = $1,012.50 and max $4,031.61 > 1.5 × p95, so the two-zone scale engages (see Layout 3 for the zone rules):
 
@@ -114,15 +117,16 @@ Date       | Claude Code |     Codex |      Cost
 2026-06-23 |   $4,025.50 |     $6.11 | $4,031.61 █████████████████████┊████████
 ───────────|─────────────|───────────|──────────────────────────────
 Total      |   $9,212.67 |   $110.61 | $9,323.28
-avg $405.36/day · this month $9,323.28 · peak $4,031.61 (2026-06-23) · ┊ = $1,012.50 (p95)
+avg $405.36/day · this month $9,323.28 · peak $4,031.61 (2026-06-23) · ┊ = $1,012.50 (p95) · █ Claude Code █ Codex
 ```
 
 - **Columns:** Date (10 left-aligned — ISO daily labels are 10 chars, monthly 7), one per tool sized to `max(toolName.length, 9)` right-aligned (variable per-tool width — e.g. `Claude Code` → 11, all shorter names floor to 9), row Cost (9 right-aligned — fits `$9,999.99` with thousands separators)
 - **Zero-column omission:** tool columns whose cost totals zero across the visible window (post-`maxRows` labels) are omitted entirely — above, Gemini/Copilot/Kimi/OpenCode have no cost in the window, so only Claude Code and Codex render. If every tool is zero the renderer falls back to the full list. The CSV emitter is the exception: it keeps every registry column with raw `0.00` cells (positional machine contract)
 - Variable-width columns keep the **full 6-tool data row — Date + tool columns + the 3-char gutter + the 9-wide Cost cell — at 96 chars**: `10 + (11+9+9+9+9+9) + 6×3 + 3 + 9 = 96`, so the all-tools-active pivot needs a ≥96-col terminal. With zero-column omission the typically rendered width is far below 80, restoring the inline bar chart on standard terminals (at 96–106 cols with all six tools active the bar is suppressed below the `MIN_BAR_AREA` threshold, so no line exceeds 96)
 - **Watch mode** appends a delta indicator (`↑`/`↓`) after the Cost cell when `prevCosts` is set. In this pivot only, the indicator is rendered **without its leading space** (`$1,013.30↑` — 1 visible char), so the full watch-mode row is 96 + 1 = **97 chars** and fits a ≥97-col terminal without wrapping (the spaced ` ↑` form would add one more char and wrap, corrupting the watch compositor's line-counting). Other renderers keep the spaced form (they have width headroom). A tool crossing $0 → nonzero mid-watch gains a column on the next render — the compositor re-measures every frame
-- Bars scale to row total cost, same rendering as Layout 3, when terminal width leaves room
-- **Month separators, current-period marker, summary footer, and p95 two-zone scale:** same rules as Layout 3 — separators daily-only, the current-period row's date cell renders boldWhite, the dim footer follows the Total row (≥2 labels), and the `┊` scale-break rule with yellow overflow zone engages when `max > 1.5 × p95` of the nonzero row totals
+- **Stacked bars:** bars scale to row total cost with the same length and two-zone geometry as Layout 3, but the main-zone fill (or the whole bar in a single-zone window) is split into contiguous per-tool segments, left to right in column order, each segment's length proportional to that tool's share of the row cost. Segments are apportioned by largest-remainder rounding over the bar's character count (ties break to the earlier column), so they always sum exactly to the unstacked bar's length; the fractional-eighths character rides the last (rightmost) segment; a tool whose share rounds to zero characters gets no segment. Segment colors come from the fixed palette **cyan, magenta, blue, green**, assigned in visible column order — a 5th+ visible tool renders uncolored. The overflow zone past the `┊` rule stays solid yellow with no segmentation (proportional segments would mislead on the compressed scale). Under `--no-color`/`NO_COLOR` the segments collapse to solid blocks indistinguishable from today's total bar
+- **Legend:** when stacked bars render (bars visible ∧ ≥2 visible tools ∧ color enabled), the summary footer appends one colored `█` swatch per visible tool in column order, each followed by the tool name — `· █ Claude Code █ Codex`. Omitted under `--no-color`/`NO_COLOR` (uncolored swatches carry no information), when bars are suppressed (narrow terminal), and with a single visible tool
+- **Month separators, current-period marker, weekend dimming, summary footer, and p95 two-zone scale:** same rules as Layout 3 — separators daily-only, the current-period row's date cell renders boldWhite, Saturday/Sunday date cells render dim (daily only, today marker wins), the dim footer follows the Total row (≥2 labels), and the `┊` scale-break rule with yellow overflow zone engages when `max > 1.5 × p95` of the nonzero row totals
 
 ## 5. Watch Mode — Full Screen
 
@@ -345,10 +349,13 @@ Flags:
 |----------|------|-------|
 | `boldWhite` | `\x1b[1;37m` | titles, total rows, stat values |
 | `boldCyan` | `\x1b[1;36m` | column headers |
-| `dim` | `\x1b[2m` | dividers, labels, footer |
-| `green` | `\x1b[32m` | bar charts, up-arrow delta |
+| `dim` | `\x1b[2m` | dividers, labels, footer, weekend dates |
+| `green` | `\x1b[32m` | single-tool history bars, up-arrow delta, pivot bar segment (4th tool) |
 | `red` | `\x1b[31m` | down-arrow delta |
-| `yellow` | `\x1b[33m` | burn rate |
+| `cyan` | `\x1b[36m` | pivot bar segment (1st tool) |
+| `magenta` | `\x1b[35m` | pivot bar segment (2nd tool) |
+| `blue` | `\x1b[34m` | pivot bar segment (3rd tool) |
+| `yellow` | `\x1b[33m` | p95 overflow zone (reserved — beyond-scale bars only), burn rate |
 | `brightGreen` | `\x1b[92m` | rain head |
 | `dimGreen` | `\x1b[2;32m` | rain tail |
 

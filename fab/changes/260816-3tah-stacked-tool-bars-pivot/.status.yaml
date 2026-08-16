@@ -5,17 +5,17 @@ created_by: sahil-noon
 change_type: fix
 issues: []
 progress:
-    intake: ready
-    apply: pending
-    review: pending
-    hydrate: pending
-    ship: pending
-    review-pr: pending
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
 plan:
-    generated: false
-    task_count: 0
-    acceptance_count: 0
-    acceptance_completed: 0
+    generated: true
+    task_count: 7
+    acceptance_count: 14
+    acceptance_completed: 14
 confidence:
     certain: 2
     confident: 5
@@ -29,7 +29,28 @@ confidence:
         competence: 82.1
         disambiguation: 76.4
 stage_metrics:
-    intake: {started_at: "2026-08-16T04:47:44Z", driver: fab-new, iterations: 1}
-prs: []
+    intake: {started_at: "2026-08-16T04:47:44Z", driver: fab-new, iterations: 1, completed_at: "2026-08-16T04:54:11Z"}
+    apply: {started_at: "2026-08-16T04:54:11Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-16T05:12:09Z"}
+    review: {started_at: "2026-08-16T05:12:09Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-16T05:16:33Z"}
+    hydrate: {started_at: "2026-08-16T05:16:33Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-16T05:19:51Z"}
+    ship: {started_at: "2026-08-16T05:19:51Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-16T05:22:31Z"}
+    review-pr: {started_at: "2026-08-16T05:22:31Z", driver: git-pr, iterations: 1, completed_at: "2026-08-16T05:27:45Z"}
+prs:
+    - https://github.com/sahil87/tu/pull/66
+true_impact:
+    added: 740
+    deleted: 32
+    net: 708
+    excluding:
+        added: 496
+        deleted: 10
+        net: 486
+    tests:
+        added: 366
+        deleted: 1
+        net: 365
+    computed_at: "2026-08-16T05:22:31Z"
+    computed_at_stage: ship
+summary: Pivot history bars are stacked per-tool (largest-remainder apportionment, cyan/magenta/blue/green palette by column order, 5th+ uncolored); yellow reserved for overflow; footer legend when bars+≥2 tools+color; colors.ts gains magenta/blue/colorDisabled
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-08-16T04:48:29Z
+last_updated: 2026-08-16T05:27:45Z

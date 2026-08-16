@@ -241,6 +241,86 @@ describe("current-period marker", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Weekend date-cell dimming (daily period only)
+// ---------------------------------------------------------------------------
+describe("weekend date-cell dimming", () => {
+  // 2026-06-05 Fri, 06-06 Sat, 06-07 Sun, 06-08 Mon — all safely in the past
+  const week = [
+    entry("2026-06-05", 100),
+    entry("2026-06-06", 100),
+    entry("2026-06-07", 100),
+    entry("2026-06-08", 100),
+  ];
+
+  // A dimmed date cell puts the dim code at the very start of the data row
+  function dateCellDim(line: string): boolean {
+    return line.startsWith("\x1b[2m");
+  }
+
+  it("renderHistory dims Saturday and Sunday date cells only, width unchanged", () => {
+    setNoColor(false);
+    const colored = renderHistory("Claude Code", "daily", week, 200);
+    setNoColor(true);
+    const plain = renderHistory("Claude Code", "daily", week, 200);
+
+    for (const label of ["2026-06-06", "2026-06-07"]) {
+      const line = colored.find((l) => l.includes(label))!;
+      assert.ok(dateCellDim(line), `${label} date cell should be dim`);
+      assert.equal(stripAnsi(line), plain.find((l) => l.includes(label))!, "dimming adds no width");
+    }
+    for (const label of ["2026-06-05", "2026-06-08"]) {
+      assert.ok(!dateCellDim(colored.find((l) => l.includes(label))!), `${label} date cell should not be dim`);
+    }
+  });
+
+  it("renderTotalHistory dims weekend date cells", () => {
+    const allToolEntries = new Map<string, UsageEntry[]>([
+      ["Claude Code", week],
+      ["Codex", week.map((e) => entry(e.label, 5))],
+    ]);
+    setNoColor(false);
+    const lines = renderTotalHistory("daily", allToolEntries, 200);
+    setNoColor(true);
+    assert.ok(dateCellDim(lines.find((l) => l.includes("2026-06-06"))!));
+    assert.ok(dateCellDim(lines.find((l) => l.includes("2026-06-07"))!));
+    assert.ok(!dateCellDim(lines.find((l) => l.includes("2026-06-08"))!));
+  });
+
+  it("the today marker wins over the weekend dim (one cell, one style)", () => {
+    // Fully exercised when today falls on a weekend; on weekdays it still
+    // verifies the marker renders boldWhite with no dim prefix.
+    const today = currentLabel("daily");
+    setNoColor(false);
+    const lines = renderHistory("Claude Code", "daily", [entry("2026-06-06", 100), entry(today, 100)], 200);
+    setNoColor(true);
+    const todayLine = lines.find((l) => l.includes(today))!;
+    assert.ok(todayLine.startsWith("\x1b[1;37m"), "today's date cell should be boldWhite");
+    assert.ok(!dateCellDim(todayLine), "today's date cell should never be dim");
+  });
+
+  it("monthly periods never dim, even when the month starts on a weekend", () => {
+    // 2020-08 parses to 2020-08-01, a Saturday — only the period gate protects it
+    setNoColor(false);
+    const lines = renderHistory("Claude Code", "monthly", [entry("2020-08", 100), entry("2020-09", 100)], 200);
+    setNoColor(true);
+    assert.ok(!dateCellDim(lines.find((l) => l.includes("2020-08"))!));
+  });
+
+  it("weekly periods never dim, even though week labels fall on Sundays", () => {
+    setNoColor(false);
+    const lines = renderHistory("Claude Code", "weekly", [entry("2026-08-02", 100), entry("2026-08-09", 100)], 200);
+    setNoColor(true);
+    assert.ok(!dateCellDim(lines.find((l) => l.includes("2026-08-02"))!));
+    assert.ok(!dateCellDim(lines.find((l) => l.includes("2026-08-09"))!));
+  });
+
+  it("no-color output carries no ANSI codes for weekend rows", () => {
+    const lines = renderHistory("Claude Code", "daily", week, 200);
+    assert.ok(lines.every((l) => !l.includes("\x1b[")), "NO_COLOR output should be ANSI-free");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Summary footer
 // ---------------------------------------------------------------------------
 describe("summary footer", () => {
