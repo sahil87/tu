@@ -11,6 +11,12 @@ function isColorDisabled(): boolean {
   return _noColor || !!process.env.NO_COLOR;
 }
 
+// Exported accessor so callers can gate color-only output (e.g. the pivot's
+// legend swatches) without duplicating the NO_COLOR check.
+export function colorDisabled(): boolean {
+  return isColorDisabled();
+}
+
 function wrap(code: string, reset: string, s: string): string {
   if (isColorDisabled()) return s;
   return `${code}${s}${reset}`;
@@ -40,6 +46,14 @@ export function cyan(s: string): string {
 
 export function yellow(s: string): string {
   return wrap("\x1b[33m", RESET, s);
+}
+
+export function magenta(s: string): string {
+  return wrap("\x1b[35m", RESET, s);
+}
+
+export function blue(s: string): string {
+  return wrap("\x1b[34m", RESET, s);
 }
 
 export function boldWhite(s: string): string {

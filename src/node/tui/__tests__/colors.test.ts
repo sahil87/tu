@@ -1,6 +1,6 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { bold, dim, green, red, cyan, yellow, boldWhite, boldCyan, brightGreen, dimGreen, setNoColor } from "../colors.js";
+import { bold, dim, green, red, cyan, yellow, magenta, blue, boldWhite, boldCyan, brightGreen, dimGreen, setNoColor, colorDisabled } from "../colors.js";
 
 afterEach(() => {
   setNoColor(false);
@@ -36,6 +36,16 @@ describe("color helpers", () => {
   it("yellow wraps with ANSI yellow code", () => {
     setNoColor(false);
     assert.equal(yellow("hello"), "\x1b[33mhello\x1b[0m");
+  });
+
+  it("magenta wraps with ANSI magenta code", () => {
+    setNoColor(false);
+    assert.equal(magenta("hello"), "\x1b[35mhello\x1b[0m");
+  });
+
+  it("blue wraps with ANSI blue code", () => {
+    setNoColor(false);
+    assert.equal(blue("hello"), "\x1b[34mhello\x1b[0m");
   });
 
   it("boldWhite wraps with ANSI bold white code", () => {
@@ -86,6 +96,21 @@ describe("setNoColor runtime flag", () => {
     assert.equal(green("hello"), "hello");
     setNoColor(false);
     assert.equal(green("hello"), "\x1b[32mhello\x1b[0m");
+  });
+});
+
+describe("colorDisabled accessor", () => {
+  it("reflects the setNoColor flag", () => {
+    setNoColor(false);
+    assert.equal(colorDisabled(), false);
+    setNoColor(true);
+    assert.equal(colorDisabled(), true);
+  });
+
+  it("reflects the NO_COLOR env var", () => {
+    setNoColor(false);
+    process.env.NO_COLOR = "1";
+    assert.equal(colorDisabled(), true);
   });
 });
 

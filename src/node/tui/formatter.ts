@@ -1,6 +1,6 @@
 import type { UsageTotals, UsageEntry } from "../core/types.js";
 import { currentLabel } from "../core/fetcher.js";
-import { bold, dim, green, red, cyan, yellow, boldWhite, boldCyan } from "./colors.js";
+import { bold, dim, green, red, cyan, yellow, magenta, blue, boldWhite, boldCyan, colorDisabled } from "./colors.js";
 
 export interface FormatOptions {
   prevCosts?: Map<string, number>;  // key: "{toolName}:{label}" or "{toolName}"
@@ -178,14 +178,108 @@ export function renderScaledBar(value: number, scale: BarScale, barWidth: number
   return " " + main + dim(SCALE_BREAK_RULE) + overflow;
 }
 
-// --- History summary footer (avg / this month / peak [+ p95 legend]) ---
+// --- Stacked per-tool bar fill (cross-tool pivot) ---
+//
+// The pivot's row bar keeps today's exact length and character sequence; only
+// the fill gains meaning. The main zone (or the whole bar in single-zone mode)
+// is split into contiguous per-tool segments, left to right in pivot column
+// order, apportioned by largest remainder so segments sum exactly to the
+// unstacked bar length. The overflow zone stays solid yellow, unsegmented.
+
+// Tool segment palette, assigned in pivot column order. A 5th+ visible tool
+// falls back to uncolored segments (the palette is deliberately capped at 4).
+const STACK_PALETTE: Array<(s: string) => string> = [cyan, magenta, blue, green];
+
+// Identity fallback for palette overflow (5th+ visible tool).
+const noSegmentColor = (s: string): string => s;
+
+export function stackedBarPalette(toolCount: number): Array<(s: string) => string> {
+  return Array.from({ length: toolCount }, (_, i) => STACK_PALETTE[i] ?? noSegmentColor);
+}
+
+// Largest-remainder apportionment: distribute `total` characters among the
+// shares proportionally — floor each quota, then hand the remaining characters
+// to the largest fractional remainders (ties break to the earlier column for
+// determinism). The result always sums exactly to `total`; a zero share gets
+// zero characters.
+export function apportionSegments(shares: number[], total: number): number[] {
+  const counts = shares.map(() => 0);
+  if (total <= 0) return counts;
+  const shareSum = shares.reduce((sum, s) => sum + s, 0);
+  if (shareSum <= 0) return counts;
+  const quotas = shares.map((s) => (s / shareSum) * total);
+  quotas.forEach((q, i) => {
+    counts[i] = Math.floor(q);
+  });
+  let remainder = total - counts.reduce((sum, c) => sum + c, 0);
+  const byRemainder = quotas
+    .map((q, i) => ({ i, frac: q - Math.floor(q) }))
+    .sort((a, b) => b.frac - a.frac || a.i - b.i);
+  for (const { i } of byRemainder) {
+    if (remainder <= 0) break;
+    counts[i]++;
+    remainder--;
+  }
+  return counts;
+}
+
+// Re-color an already-rendered raw bar string into contiguous per-tool runs.
+// `counts` must sum to raw.length (apportionSegments guarantees this), so the
+// runs are exact string slices — stripping ANSI from the result yields `raw`
+// unchanged, and a trailing fractional-eighths character rides the last
+// (rightmost) nonzero segment.
+function colorBarRuns(raw: string, counts: number[], colorFns: Array<(s: string) => string>): string {
+  let out = "";
+  let pos = 0;
+  for (let i = 0; i < counts.length; i++) {
+    if (counts[i] === 0) continue;
+    out += colorFns[i](raw.slice(pos, pos + counts[i]));
+    pos += counts[i];
+  }
+  return out;
+}
+
+// Stacked variant of renderScaledBar for the cross-tool pivot: same geometry,
+// same raw characters, but the main zone (or the whole single-zone bar) is
+// colored in per-tool segments by cost share instead of solid green. The
+// overflow zone keeps its solid yellow rendering — proportional segments
+// would be misleading on the compressed overflow scale.
+export function renderStackedScaledBar(
+  value: number,
+  toolCosts: number[],
+  colorFns: Array<(s: string) => string>,
+  scale: BarScale,
+  barWidth: number,
+): string {
+  if (scale.mode === "single") {
+    const raw = renderBar(value, scale.max, barWidth);
+    return raw ? " " + colorBarRuns(raw, apportionSegments(toolCosts, raw.length), colorFns) : "";
+  }
+  const mainRaw = renderBar(Math.min(value, scale.p95), scale.p95, scale.mainZone);
+  const main = colorBarRuns(mainRaw, apportionSegments(toolCosts, mainRaw.length), colorFns)
+    + " ".repeat(scale.mainZone - mainRaw.length);
+  const overflowRaw = value > scale.p95 ? renderBar(value - scale.p95, scale.max - scale.p95, scale.overflowZone) : "";
+  const overflow = yellow(overflowRaw) + " ".repeat(scale.overflowZone - overflowRaw.length);
+  return " " + main + dim(SCALE_BREAK_RULE) + overflow;
+}
+
+// --- History summary footer (avg / this month / peak [+ p95 legend] [+ tool legend]) ---
 
 const PERIOD_UNIT_SUFFIX: Record<string, string> = { daily: "/day", weekly: "/week", monthly: "/month" };
 
+// One legend swatch: the tool's segment color + name (pivot stacked bars only).
+interface FooterLegendEntry {
+  name: string;
+  colorFn: (s: string) => string;
+}
+
 // Dim footer appended after the Total row in history views. `this month` is
 // daily-only and omitted when the window has no current-month rows; the ┊
-// legend appears only when the two-zone scale is active.
-function renderHistoryFooter(labels: string[], costs: number[], period: string, scale: BarScale): string {
+// legend appears only when the two-zone scale is active. The tool legend
+// (stacked-bar pivot only) is built outside the dim wrapper: each swatch's
+// color reset (\x1b[0m) would otherwise strip dim from the rest of the line,
+// so the separator and each tool name are dim-wrapped individually.
+function renderHistoryFooter(labels: string[], costs: number[], period: string, scale: BarScale, legend?: FooterLegendEntry[]): string {
   const total = costs.reduce((sum, c) => sum + c, 0);
   const parts: string[] = [`avg ${fmtCost(total / costs.length)}${PERIOD_UNIT_SUFFIX[period] ?? "/row"}`];
   if (period === "daily") {
@@ -210,7 +304,10 @@ function renderHistoryFooter(labels: string[], costs: number[], period: string, 
   }
   parts.push(peakLabel === "" ? `peak ${fmtCost(peak)}` : `peak ${fmtCost(peak)} (${peakLabel})`);
   if (scale.mode === "two-zone") parts.push(`${SCALE_BREAK_RULE} = ${fmtCost(scale.p95)} (p95)`);
-  return dim(parts.join(" · "));
+  const footer = dim(parts.join(" · "));
+  if (!legend || legend.length === 0) return footer;
+  const swatches = legend.map((l) => `${l.colorFn(FULL_BLOCK)} ${dim(l.name)}`).join(" ");
+  return footer + dim(" · ") + swatches;
 }
 
 // --- Single-tool history table (tu cc daily, tu codex monthly, etc.) ---
@@ -497,6 +594,9 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
   // crowds out the bar chart. Falls back to the full registry list when every
   // tool is zero (defensive; cannot normally occur with nonempty labels).
   const toolNames = nonzeroCostTools(allToolNames, costMap, labels);
+  // Segment colors for the stacked bar, assigned in visible column order
+  // (5th+ tool falls back to uncolored segments).
+  const barPalette = stackedBarPalette(toolNames.length);
 
   const D = PIVOT_DATE_WIDTH;
   // Variable per-tool column width: each tool column is sized to its name, with
@@ -528,21 +628,23 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
   lines.push(dim(divStr + costDiv + barDiv));
 
   // Pre-compute row totals for maxCost (needed for bar scaling)
-  const rowData: { label: string; cells: string[]; rowTotal: number }[] = [];
+  const rowData: { label: string; cells: string[]; rowTotal: number; toolCosts: number[] }[] = [];
   const toolSums = new Map<string, number>(toolNames.map((t) => [t, 0]));
   let grandTotal = 0;
 
   for (const label of labels) {
     let rowTotal = 0;
     const cells: string[] = [];
+    const toolCosts: number[] = [];
     for (const tool of toolNames) {
       const cost = costMap.get(tool)?.get(label) || 0;
       cells.push(fmtCost(cost));
+      toolCosts.push(cost);
       toolSums.set(tool, (toolSums.get(tool) || 0) + cost);
       rowTotal += cost;
     }
     grandTotal += rowTotal;
-    rowData.push({ label, cells, rowTotal });
+    rowData.push({ label, cells, rowTotal, toolCosts });
   }
 
   const maxCost = Math.max(...rowData.map((r) => r.rowTotal));
@@ -565,7 +667,7 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
     const rowStr = row(labelCell, ...r.cells);
     const costBase = " | " + fmtCost(r.rowTotal).padStart(COST_WIDTH);
     const indicator = deltaIndicator(r.rowTotal, `total:${r.label}`, prevCosts, true);
-    const bar = showBars ? renderScaledBar(r.rowTotal, scale, barWidth) : "";
+    const bar = showBars ? renderStackedScaledBar(r.rowTotal, r.toolCosts, barPalette, scale, barWidth) : "";
     lines.push(rowStr + costBase + indicator + bar);
   }
 
@@ -575,7 +677,12 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
     const totalRow = colorRow(["Total", ...sumCells], boldWhite);
     const totalCost = " | " + boldWhite(fmtCost(grandTotal).padStart(COST_WIDTH));
     lines.push(totalRow + totalCost);
-    lines.push(renderHistoryFooter(rowData.map((r) => r.label), rowData.map((r) => r.rowTotal), period, scale));
+    // Legend: one colored swatch per visible tool, only when stacked bars are
+    // actually distinguishable (bars shown, ≥2 tools, color enabled).
+    const legend = showBars && toolNames.length >= 2 && !colorDisabled()
+      ? toolNames.map((name, i) => ({ name, colorFn: barPalette[i] }))
+      : undefined;
+    lines.push(renderHistoryFooter(rowData.map((r) => r.label), rowData.map((r) => r.rowTotal), period, scale, legend));
   }
   lines.push("");
   return lines;
