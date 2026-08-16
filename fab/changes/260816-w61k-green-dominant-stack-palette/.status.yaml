@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 3
@@ -33,23 +33,25 @@ stage_metrics:
     apply: {started_at: "2026-08-16T09:45:35Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-16T09:49:41Z"}
     review: {started_at: "2026-08-16T09:49:41Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-16T09:53:51Z"}
     hydrate: {started_at: "2026-08-16T09:53:51Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-16T09:55:10Z"}
-    ship: {started_at: "2026-08-16T09:55:10Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-08-16T09:55:10Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-16T09:58:11Z"}
+    review-pr: {started_at: "2026-08-16T09:58:11Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/tu/pull/68
 change_type_source: explicit
 true_impact:
-    added: 4
-    deleted: 3
-    net: 1
+    added: 345
+    deleted: 22
+    net: 323
     excluding:
-        added: 1
-        deleted: 0
-        net: 1
+        added: 17
+        deleted: 14
+        net: 3
     tests:
-        added: 0
-        deleted: 0
+        added: 13
+        deleted: 13
         net: 0
-    computed_at: "2026-08-16T09:55:10Z"
-    computed_at_stage: hydrate
+    computed_at: "2026-08-16T09:58:11Z"
+    computed_at_stage: ship
 summary: Reordered stacked-pivot STACK_PALETTE to [green, magenta, blue, cyan] so the dominant first column renders dark green
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-08-16T09:55:10Z
+last_updated: 2026-08-16T09:58:11Z
