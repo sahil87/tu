@@ -29,3 +29,4 @@ help/
 !fab/.fab-version
 
 /.kimi
+.uploads/
