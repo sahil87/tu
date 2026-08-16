@@ -1,0 +1,35 @@
+id: 3tah
+name: 260816-3tah-stacked-tool-bars-pivot
+created: 2026-08-16T04:47:44Z
+created_by: sahil-noon
+change_type: fix
+issues: []
+progress:
+    intake: ready
+    apply: pending
+    review: pending
+    hydrate: pending
+    ship: pending
+    review-pr: pending
+plan:
+    generated: false
+    task_count: 0
+    acceptance_count: 0
+    acceptance_completed: 0
+confidence:
+    certain: 2
+    confident: 5
+    tentative: 0
+    unresolved: 0
+    score: 4.5
+    fuzzy: true
+    dimensions:
+        signal: 65.7
+        reversibility: 85.7
+        competence: 82.1
+        disambiguation: 76.4
+stage_metrics:
+    intake: {started_at: "2026-08-16T04:47:44Z", driver: fab-new, iterations: 1}
+prs: []
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-08-16T04:48:29Z
