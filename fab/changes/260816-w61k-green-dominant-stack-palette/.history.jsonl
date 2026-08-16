@@ -1,0 +1,12 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-08-16T09:40:40Z"}
+{"args":"Reorder the stacked-bar tool palette so the dominant tool renders dark green again — STACK_PALETTE slot 0 becomes green, restoring the familiar dark-green dominant bar with colored slivers for other tools","cmd":"fab-new","event":"command","ts":"2026-08-16T09:40:40Z"}
+{"delta":"+4.7","event":"confidence","score":4.7,"trigger":"calc-score","ts":"2026-08-16T09:42:35Z"}
+{"cmd":"fab-switch","event":"command","ts":"2026-08-16T09:43:38Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-08-16T09:45:18Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-08-16T09:45:35Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-08-16T09:49:41Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-08-16T09:53:51Z"}
+{"event":"review","result":"passed","ts":"2026-08-16T09:53:51Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-08-16T09:55:10Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-08-16T09:58:11Z"}
+{"event":"review","result":"passed","ts":"2026-08-16T10:06:06Z"}
