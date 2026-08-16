@@ -223,7 +223,9 @@ describe("renderTotalHistory stacked bars", () => {
     const clipped = lines.find((l) => l.includes("2026-06-23"))!;
     const overflow = clipped.split(RULE)[1];
     assert.ok(overflow.includes("\x1b[33m"), "overflow stays yellow");
-    assert.ok(!overflow.includes("\x1b[32m"), "overflow is not segmented");
+    for (const code of ["\x1b[32m", "\x1b[35m", "\x1b[34m", "\x1b[36m"]) {
+      assert.ok(!overflow.includes(code), `overflow carries no tool color ${JSON.stringify(code)}`);
+    }
     const dataLines = lines.filter((l) => /^2026-06-\d{2}/.test(stripAnsi(l)));
     const ruleCols = new Set(dataLines.map((l) => stripAnsi(l).indexOf(RULE)));
     assert.equal(ruleCols.size, 1, "rule column still aligns across rows");
