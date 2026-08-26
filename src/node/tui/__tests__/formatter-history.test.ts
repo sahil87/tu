@@ -474,3 +474,86 @@ describe("compact mode", () => {
     assert.equal(lines.filter(isDivider).length, 1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// --metric: bar scale by tokens vs cost
+// ---------------------------------------------------------------------------
+describe("FormatOptions.metric", () => {
+  // Any Unicode block element (full block + fractional eighths) counts as bar fill.
+  function barLen(line: string): number {
+    return (stripAnsi(line).match(/[\u2588-\u258F]/g) ?? []).length;
+  }
+  function dataRows(lines: string[]): string[] {
+    return lines.filter((l) => /^\d{4}-\d{2}/.test(stripAnsi(l)));
+  }
+  function longestRowLabel(lines: string[]): string {
+    const rows = dataRows(lines);
+    let best = rows[0];
+    for (const r of rows) if (barLen(r) > barLen(best)) best = r;
+    return stripAnsi(best).slice(0, 10);
+  }
+
+  // Highest cost on 2026-06-01; highest tokens on 2026-06-02.
+  const entries: UsageEntry[] = [
+    { label: "2026-06-01", totalCost: 100, inputTokens: 100, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 100 },
+    { label: "2026-06-02", totalCost: 10, inputTokens: 9000, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 9000 },
+    { label: "2026-06-03", totalCost: 50, inputTokens: 500, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 500 },
+  ];
+
+  it("renderHistory: bars scale by cost by default and by tokens under metric: tokens", () => {
+    assert.equal(longestRowLabel(renderHistory("Claude Code", "daily", entries, 200)), "2026-06-01");
+    assert.equal(longestRowLabel(renderHistory("Claude Code", "daily", entries, 200, { metric: "tokens" })), "2026-06-02");
+  });
+
+  it("renderHistory: metric: cost is byte-identical to no option", () => {
+    assert.deepEqual(renderHistory("Claude Code", "daily", entries, 200, { metric: "cost" }), renderHistory("Claude Code", "daily", entries, 200));
+  });
+
+  it("renderHistory: footer formats token values with fmtNum (no $) under metric: tokens", () => {
+    const lines = renderHistory("Claude Code", "daily", entries, 200, { metric: "tokens" }).map(stripAnsi);
+    const footer = lines.find((l) => l.includes("avg "))!;
+    assert.ok(footer.includes("avg 3,200/day"), footer);
+    assert.ok(footer.includes("peak 9,000 (2026-06-02)"), footer);
+    assert.ok(!footer.includes("$"), footer);
+    // Cost cells are still cost-denominated.
+    assert.ok(lines.some((l) => l.startsWith("2026-06-02") && l.includes("$10.00")));
+  });
+
+  it("renderTotalHistory: bars and footer follow the metric; cells stay cost", () => {
+    const allToolEntries = new Map<string, UsageEntry[]>([
+      ["Claude Code", entries],
+      ["Codex", [{ label: "2026-06-03", totalCost: 1, inputTokens: 100, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 100 }]],
+    ]);
+    assert.equal(longestRowLabel(renderTotalHistory("daily", allToolEntries, 200)), "2026-06-01");
+    const tokenLines = renderTotalHistory("daily", allToolEntries, 200, { metric: "tokens" });
+    assert.equal(longestRowLabel(tokenLines), "2026-06-02");
+    const plain = tokenLines.map(stripAnsi);
+    const footer = plain.find((l) => l.includes("avg "))!;
+    assert.ok(footer.includes("peak 9,000 (2026-06-02)"), footer);
+    assert.ok(!footer.includes("$"), footer);
+    assert.ok(plain.some((l) => l.startsWith("2026-06-03") && l.includes("$51.00")), "row cost cell unchanged");
+    assert.deepEqual(renderTotalHistory("daily", allToolEntries, 200, { metric: "cost" }), renderTotalHistory("daily", allToolEntries, 200));
+  });
+});
+
+describe("FormatOptions.machineLegend", () => {
+  const entries: UsageEntry[] = [
+    { label: "2026-06-01", totalCost: 3, inputTokens: 1, outputTokens: 1, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 2 },
+    { label: "2026-06-02", totalCost: 4, inputTokens: 1, outputTokens: 1, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 2 },
+  ];
+  const machineCosts = new Map<string, Map<string, number>>([
+    ["2026-06-01", new Map([["alice", 1], ["bob", 2]])],
+    ["2026-06-02", new Map([["alice", 4], ["bob", 0]])],
+  ]);
+
+  it("defaults the breakdown legend to Machines", () => {
+    const lines = renderHistory("Claude Code", "daily", entries, 200, { machineCosts }).map(stripAnsi);
+    assert.ok(lines.some((l) => l.startsWith("Machines: A = alice, B = bob")), lines.join("\n"));
+  });
+
+  it("relabels the legend when machineLegend is set (-u all --by-machine keys columns by user)", () => {
+    const lines = renderHistory("Claude Code", "daily", entries, 200, { machineCosts, machineLegend: "Users" }).map(stripAnsi);
+    assert.ok(lines.some((l) => l.startsWith("Users: A = alice, B = bob")), lines.join("\n"));
+    assert.ok(!lines.some((l) => l.startsWith("Machines:")));
+  });
+});

@@ -73,7 +73,7 @@ When multi mode is configured (see the [install guide](install.md)), these flags
 
 - `--sync` — sync metrics before fetching (multi mode)
 - `--dry-run` — preview a sync without writing (`tu sync --dry-run` only)
-- `--user` / `-u <user>` — show usage for a specific user (multi mode only)
+- `--user` / `-u <user>` — show usage for a specific user, or `all` for every user in the metrics repo (multi mode only; reads synced repo data — pass `--sync` to include today)
 - `--by-machine` — show per-machine cost breakdown (data commands only)
 
 ```bash
@@ -81,6 +81,9 @@ tu --sync            # pull/push metrics, then show today's cost
 tu sync --dry-run    # preview what a sync would write/commit, no changes
 tu -u alice          # show usage recorded under the 'alice' profile
 tu --by-machine      # break today's cost down per machine
+tu mh -u all         # team-wide monthly cost history, every user in the repo
+tu mh -u all --metric tokens   # same rows, bars scaled by token volume
+tu --by-machine -u all         # today's cost broken down per user
 ```
 
 ## Cache control

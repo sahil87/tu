@@ -2,12 +2,17 @@ import type { UsageTotals, UsageEntry } from "../core/types.js";
 import { currentLabel } from "../core/fetcher.js";
 import { bold, dim, green, red, cyan, yellow, magenta, blue, boldWhite, boldCyan, colorDisabled } from "./colors.js";
 
+// Which UsageEntry field history bars (and the footer stats) scale on.
+export type BarMetric = "cost" | "tokens";
+
 export interface FormatOptions {
   prevCosts?: Map<string, number>;  // key: "{toolName}:{label}" or "{toolName}"
   compact?: boolean;
   maxRows?: number;  // truncate history to most recent N data rows (watch mode)
   machineCosts?: Map<string, Map<string, number>>;  // key: label/toolName → (machine → cost)
   capActive?: boolean;  // implicit 3-month history cap active → append "last 3 months" heading hint
+  metric?: BarMetric;  // history bar scale; absent ≡ "cost"
+  machineLegend?: string;  // legend noun for the machineCosts columns; absent ≡ "Machines" ("Users" under -u all)
 }
 
 // Build the parenthetical that follows a history title, e.g. "(daily)" or
@@ -32,6 +37,16 @@ export function fmtNum(n: number): string {
 
 export function fmtCost(n: number): string {
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// Format a bar-scale value in the unit the bars use (see BarMetric).
+function fmtMetric(n: number, metric: BarMetric): string {
+  return metric === "tokens" ? fmtNum(Math.round(n)) : fmtCost(n);
+}
+
+// The UsageEntry field a history bar scales on.
+function barValue(e: UsageEntry, metric: BarMetric): number {
+  return metric === "tokens" ? e.totalTokens : e.totalCost;
 }
 
 export function deltaIndicator(current: number, key: string, prevCosts?: Map<string, number>, noSpace = false): string {
@@ -103,8 +118,8 @@ export function buildMachineColumns(machineNames: string[]): MachineColumn[] {
   return sorted.map((name, i) => ({ letter: String.fromCharCode(65 + i), name }));
 }
 
-export function renderMachineLegend(columns: MachineColumn[]): string {
-  return "Machines: " + columns.map((c) => `${c.letter} = ${c.name}`).join(", ");
+export function renderMachineLegend(columns: MachineColumn[], label = "Machines"): string {
+  return `${label}: ` + columns.map((c) => `${c.letter} = ${c.name}`).join(", ");
 }
 
 export function renderBar(value: number, maxValue: number, barWidth: number): string {
@@ -289,9 +304,9 @@ interface FooterLegendEntry {
 // (stacked-bar pivot only) is built outside the dim wrapper: each swatch's
 // color reset (\x1b[0m) would otherwise strip dim from the rest of the line,
 // so the separator and each tool name are dim-wrapped individually.
-function renderHistoryFooter(labels: string[], costs: number[], period: string, scale: BarScale, legend?: FooterLegendEntry[]): string {
+function renderHistoryFooter(labels: string[], costs: number[], period: string, scale: BarScale, legend?: FooterLegendEntry[], metric: BarMetric = "cost"): string {
   const total = costs.reduce((sum, c) => sum + c, 0);
-  const parts: string[] = [`avg ${fmtCost(total / costs.length)}${PERIOD_UNIT_SUFFIX[period] ?? "/row"}`];
+  const parts: string[] = [`avg ${fmtMetric(total / costs.length, metric)}${PERIOD_UNIT_SUFFIX[period] ?? "/row"}`];
   if (period === "daily") {
     const monthPrefix = currentLabel("monthly");
     let monthSum = 0;
@@ -302,7 +317,7 @@ function renderHistoryFooter(labels: string[], costs: number[], period: string, 
         hasMonthRows = true;
       }
     }
-    if (hasMonthRows) parts.push(`this month ${fmtCost(monthSum)}`);
+    if (hasMonthRows) parts.push(`this month ${fmtMetric(monthSum, metric)}`);
   }
   let peak = 0;
   let peakLabel = "";
@@ -312,8 +327,8 @@ function renderHistoryFooter(labels: string[], costs: number[], period: string, 
       peakLabel = labels[i];
     }
   }
-  parts.push(peakLabel === "" ? `peak ${fmtCost(peak)}` : `peak ${fmtCost(peak)} (${peakLabel})`);
-  if (scale.mode === "two-zone") parts.push(`${SCALE_BREAK_RULE} = ${fmtCost(scale.p95)} (p95)`);
+  parts.push(peakLabel === "" ? `peak ${fmtMetric(peak, metric)}` : `peak ${fmtMetric(peak, metric)} (${peakLabel})`);
+  if (scale.mode === "two-zone") parts.push(`${SCALE_BREAK_RULE} = ${fmtMetric(scale.p95, metric)} (p95)`);
   const footer = dim(parts.join(" · "));
   if (!legend || legend.length === 0) return footer;
   const swatches = legend.map((l) => `${l.colorFn(FULL_BLOCK)} ${dim(l.name)}`).join(" ");
@@ -374,9 +389,11 @@ export function renderHistory(toolName: string, period: string, entries: UsageEn
   lines.push(colorRow(["Date", "Input", "Output", "Cache Write", "Cache Read", "Total"], boldCyan) + costHeader + machineHeader);
   lines.push(dim(divStr + costDiv + machineDiv + barDiv));
 
+  const metric = opts?.metric ?? "cost";
+  const barValues = entries.map((e) => barValue(e, metric));
   const scale = showBars
-    ? computeBarScale(entries.map((e) => e.totalCost), barWidth)
-    : { mode: "single" as const, max: Math.max(...entries.map((e) => e.totalCost)) };
+    ? computeBarScale(barValues, barWidth)
+    : { mode: "single" as const, max: Math.max(...barValues) };
   const current = currentLabel(period);
   const prevCosts = opts?.prevCosts;
 
@@ -419,7 +436,7 @@ export function renderHistory(toolName: string, period: string, entries: UsageEn
       }
     }
 
-    const bar = showBars ? renderScaledBar(e.totalCost, scale, barWidth) : "";
+    const bar = showBars ? renderScaledBar(barValue(e, metric), scale, barWidth) : "";
     lines.push(rowStr + costBase + machineCells + indicator + bar);
     sumCost += e.totalCost;
     sumInput += e.inputTokens;
@@ -440,11 +457,11 @@ export function renderHistory(toolName: string, period: string, entries: UsageEn
       }
     }
     lines.push(totalRow + totalCost + totalMachineCells);
-    lines.push(renderHistoryFooter(entries.map((e) => e.label), entries.map((e) => e.totalCost), period, scale));
+    lines.push(renderHistoryFooter(entries.map((e) => e.label), barValues, period, scale, undefined, metric));
   }
   if (hasMachines) {
     lines.push("");
-    lines.push(dim(renderMachineLegend(mcols)));
+    lines.push(dim(renderMachineLegend(mcols, opts?.machineLegend)));
   }
   lines.push("");
   return lines;
@@ -536,7 +553,7 @@ export function renderTotal(period: string, toolTotals: Map<string, UsageTotals>
   }
   if (hasMachines) {
     lines.push("");
-    lines.push(dim(renderMachineLegend(mcols)));
+    lines.push(dim(renderMachineLegend(mcols, opts?.machineLegend)));
   }
   lines.push("");
   return lines;
@@ -597,12 +614,21 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
     return lines;
   }
 
-  // Build lookup: tool -> label -> cost
+  // Build lookups: tool -> label -> cost (cells, Cost column, Total row) and
+  // tool -> label -> bar value (bars, stacked segments, footer). They coincide
+  // under the default cost metric.
+  const metric = opts?.metric ?? "cost";
   const costMap = new Map<string, Map<string, number>>();
+  const barMap = new Map<string, Map<string, number>>();
   for (const [tool, entries] of allToolEntries) {
-    const m = new Map<string, number>();
-    for (const e of entries) m.set(e.label, e.totalCost);
-    costMap.set(tool, m);
+    const costs = new Map<string, number>();
+    const bars = new Map<string, number>();
+    for (const e of entries) {
+      costs.set(e.label, e.totalCost);
+      bars.set(e.label, barValue(e, metric));
+    }
+    costMap.set(tool, costs);
+    barMap.set(tool, bars);
   }
 
   // Omit tool columns with zero total cost across the visible labels (the
@@ -643,28 +669,31 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
   lines.push(colorRow(["Date", ...toolNames], boldCyan) + costHeader);
   lines.push(dim(divStr + costDiv + barDiv));
 
-  // Pre-compute row totals for maxCost (needed for bar scaling)
-  const rowData: { label: string; cells: string[]; rowTotal: number; toolCosts: number[] }[] = [];
+  // Pre-compute per-row cost (cells/Cost column) and bar totals (bar scaling)
+  const rowData: { label: string; cells: string[]; rowCost: number; barTotal: number; toolBars: number[] }[] = [];
   const toolSums = new Map<string, number>(toolNames.map((t) => [t, 0]));
   let grandTotal = 0;
 
   for (const label of labels) {
-    let rowTotal = 0;
+    let rowCost = 0;
+    let barTotal = 0;
     const cells: string[] = [];
-    const toolCosts: number[] = [];
+    const toolBars: number[] = [];
     for (const tool of toolNames) {
       const cost = costMap.get(tool)?.get(label) || 0;
+      const bar = barMap.get(tool)?.get(label) || 0;
       cells.push(fmtCost(cost));
-      toolCosts.push(cost);
+      toolBars.push(bar);
       toolSums.set(tool, (toolSums.get(tool) || 0) + cost);
-      rowTotal += cost;
+      rowCost += cost;
+      barTotal += bar;
     }
-    grandTotal += rowTotal;
-    rowData.push({ label, cells, rowTotal, toolCosts });
+    grandTotal += rowCost;
+    rowData.push({ label, cells, rowCost, barTotal, toolBars });
   }
 
-  const maxCost = Math.max(...rowData.map((r) => r.rowTotal));
-  const scale = showBars ? computeBarScale(rowData.map((r) => r.rowTotal), barWidth) : { mode: "single" as const, max: maxCost };
+  const maxBar = Math.max(...rowData.map((r) => r.barTotal));
+  const scale = showBars ? computeBarScale(rowData.map((r) => r.barTotal), barWidth) : { mode: "single" as const, max: maxBar };
   const current = currentLabel(period);
 
   const prevCosts = opts?.prevCosts;
@@ -687,9 +716,9 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
         ? dim(r.label.padEnd(D))
         : r.label;
     const rowStr = row(labelCell, ...r.cells);
-    const costBase = " | " + fmtCost(r.rowTotal).padStart(COST_WIDTH);
-    const indicator = deltaIndicator(r.rowTotal, `total:${r.label}`, prevCosts, true);
-    const bar = showBars ? renderStackedScaledBar(r.rowTotal, r.toolCosts, barPalette, scale, barWidth) : "";
+    const costBase = " | " + fmtCost(r.rowCost).padStart(COST_WIDTH);
+    const indicator = deltaIndicator(r.rowCost, `total:${r.label}`, prevCosts, true);
+    const bar = showBars ? renderStackedScaledBar(r.barTotal, r.toolBars, barPalette, scale, barWidth) : "";
     lines.push(rowStr + costBase + indicator + bar);
   }
 
@@ -704,7 +733,7 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
     const legend = showBars && toolNames.length >= 2 && !colorDisabled()
       ? toolNames.map((name, i) => ({ name, colorFn: barPalette[i] }))
       : undefined;
-    lines.push(renderHistoryFooter(rowData.map((r) => r.label), rowData.map((r) => r.rowTotal), period, scale, legend));
+    lines.push(renderHistoryFooter(rowData.map((r) => r.label), rowData.map((r) => r.barTotal), period, scale, legend, metric));
   }
   lines.push("");
   return lines;

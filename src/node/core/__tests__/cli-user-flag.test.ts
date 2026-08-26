@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseGlobalFlags } from "../cli.js";
+import { parseGlobalFlags, isUserReserved } from "../cli.js";
 
 describe("--user / -u flag: argument filtering", () => {
   it("extracts -u with username from args", () => {
@@ -71,5 +71,20 @@ describe("--user / -u flag: same-user detection", () => {
 
   it("comparison is case-sensitive", () => {
     assert.equal(shouldUseRemoteOnlyPath("Sahil", "sahil"), true);
+  });
+});
+
+describe("--user all: reserved aggregate value", () => {
+  it("parses -u all like any other username", () => {
+    const result = parseGlobalFlags(["mh", "-u", "all"]);
+    assert.equal(result.userFlag, "all");
+    assert.deepEqual(result.filteredArgs, ["mh"]);
+  });
+
+  it("isUserReserved flags only the literal 'all'", () => {
+    assert.equal(isUserReserved("all"), true);
+    assert.equal(isUserReserved("alice"), false);
+    assert.equal(isUserReserved("All"), false);
+    assert.equal(isUserReserved(""), false);
   });
 });

@@ -158,6 +158,24 @@ export async function syncMetrics(metricsDir: string, user: string): Promise<boo
   return true;
 }
 
+// Top-level metrics-repo directories that are not user profiles.
+const NON_USER_DIRS = new Set(["docs"]);
+
+// User profile directories of the metrics repo: directories only, sorted,
+// skipping NON_USER_DIRS and dot-prefixed entries (e.g. `.git`). A missing or
+// unreadable metricsDir yields [] — the repo's absence is already reported by
+// checkMetricsDirGuard, so this stays silent like the other repo readers.
+export function listUsers(metricsDir: string): string[] {
+  try {
+    return readdirSync(metricsDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && !d.name.startsWith(".") && !NON_USER_DIRS.has(d.name))
+      .map((d) => d.name)
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
 export function readRemoteEntriesByMachine(
   metricsDir: string,
   targetUser: string,

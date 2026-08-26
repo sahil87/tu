@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 // ---------------------------------------------------------------------------
 // End-to-end exit-code contract (shll toolkit principle №4):
@@ -45,6 +47,18 @@ describe("exit codes: usage errors exit 2", () => {
     assert.ok(r.stderr.includes("-u requires a username"), `stderr: ${r.stderr}`);
   });
 
+  it("--metric with an invalid value exits 2", () => {
+    const r = runCli(["mh", "--metric", "bogus"]);
+    assert.equal(r.status, 2);
+    assert.ok(r.stderr.includes("--metric requires 'tokens' or 'cost'"), `stderr: ${r.stderr}`);
+  });
+
+  it("bare --metric (no value) exits 2", () => {
+    const r = runCli(["mh", "--metric"]);
+    assert.equal(r.status, 2);
+    assert.ok(r.stderr.includes("--metric requires 'tokens' or 'cost'"), `stderr: ${r.stderr}`);
+  });
+
   it("incompatible format flags exit 2", () => {
     const r = runCli(["cc", "--json", "--csv"]);
     assert.equal(r.status, 2);
@@ -56,5 +70,40 @@ describe("exit codes: success paths do not use the usage-error code", () => {
   it("`tu help` exits 0 (not a usage error)", () => {
     const r = runCli(["help"]);
     assert.equal(r.status, 0);
+  });
+});
+
+// Config-dependent paths: run with an isolated HOME so the dev machine's
+// ~/.tu.conf and TU_METRICS_REPO never leak into the assertion.
+describe("exit codes: -u all and the reserved username guard", () => {
+  function runCliWithConf(conf: string, args: string[]): { status: number | null; stderr: string; stdout: string } {
+    const home = mkdtempSync(join(tmpdir(), "tu-exit-codes-"));
+    try {
+      writeFileSync(join(home, ".tu.conf"), conf);
+      const env: NodeJS.ProcessEnv = { ...process.env, HOME: home };
+      delete env.TU_METRICS_REPO;
+      const r = spawnSync("npx", ["tsx", CLI, ...args], { encoding: "utf-8", env });
+      return { status: r.status, stderr: r.stderr, stdout: r.stdout };
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  }
+
+  it("-u all in single mode warns (existing -u guard) and exits 0", () => {
+    const r = runCliWithConf("", ["cc", "m", "-u", "all", "--no-color"]);
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+    assert.ok(r.stderr.includes("-u flag requires multi mode"), `stderr: ${r.stderr}`);
+  });
+
+  it("config user = all is rejected with exit 2", () => {
+    const r = runCliWithConf("user = all\n", ["cc", "--no-color"]);
+    assert.equal(r.status, 2);
+    assert.ok(r.stderr.includes('config user "all" is reserved'), `stderr: ${r.stderr}`);
+  });
+
+  it("`tu sync` with config user = all is rejected with exit 2 before any write", () => {
+    const r = runCliWithConf("user = all\n", ["sync"]);
+    assert.equal(r.status, 2);
+    assert.ok(r.stderr.includes('config user "all" is reserved'), `stderr: ${r.stderr}`);
   });
 });
