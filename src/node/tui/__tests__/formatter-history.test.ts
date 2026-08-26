@@ -609,6 +609,14 @@ describe("FormatOptions.total", () => {
     assert.deepEqual(renderTotalHistory("daily", allToolEntries, 200, { total: false }), renderTotalHistory("daily", allToolEntries, 200));
   });
 
+  it("suppresses the cost-denominated delta arrow on token-valued collapsed cells", () => {
+    const prevCosts = new Map<string, number>([["total:2026-06-02", 5]]);
+    const cost = renderTotalHistory("daily", allToolEntries, 80, { total: true, prevCosts }).map(stripAnsi);
+    assert.ok(cost.some((l) => l.startsWith("2026-06-02") && /[↑↓]/.test(l)), "cost view keeps the arrow");
+    const tokens = renderTotalHistory("daily", allToolEntries, 80, { total: true, metric: "tokens", prevCosts }).map(stripAnsi);
+    assert.ok(!tokens.some((l) => /[↑↓]/.test(l)), tokens.join("\n"));
+  });
+
   it("maxRows still truncates under total", () => {
     const rows = renderTotalHistory("daily", allToolEntries, 80, { total: true, maxRows: 2 }).filter((l) => /^\d{4}/.test(stripAnsi(l)));
     assert.equal(rows.length, 2);

@@ -729,7 +729,10 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
         : r.label;
     const rowStr = collapsed ? row(labelCell) : row(labelCell, ...r.cells);
     const costBase = " | " + (collapsed ? fmtMetric(r.barTotal, metric) : fmtCost(r.rowCost)).padStart(valueWidth);
-    const indicator = deltaIndicator(r.rowCost, `total:${r.label}`, prevCosts, true);
+    // The watch-mode prevCosts map is cost-denominated, so a token-valued
+    // collapsed cell gets no delta arrow (a cost delta beside a token count
+    // would mislead).
+    const indicator = collapsed && metric === "tokens" ? "" : deltaIndicator(r.rowCost, `total:${r.label}`, prevCosts, true);
     const bar = !showBars ? "" : collapsed
       ? renderScaledBar(r.barTotal, scale, barWidth)
       : renderStackedScaledBar(r.barTotal, r.toolBars, barPalette, scale, barWidth);
