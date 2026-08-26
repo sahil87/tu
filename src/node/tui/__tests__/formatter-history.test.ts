@@ -557,3 +557,60 @@ describe("FormatOptions.machineLegend", () => {
     assert.ok(!lines.some((l) => l.startsWith("Machines:")));
   });
 });
+
+// ---------------------------------------------------------------------------
+// FormatOptions.total — collapsed all-tools history (Date | value | bar)
+// ---------------------------------------------------------------------------
+describe("FormatOptions.total", () => {
+  function barLen(line: string): number {
+    return (stripAnsi(line).match(/[\u2588-\u258F]/g) ?? []).length;
+  }
+  const mk = (label: string, cost: number, tokens: number): UsageEntry =>
+    ({ label, totalCost: cost, inputTokens: tokens, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: tokens });
+  const allToolEntries = new Map<string, UsageEntry[]>([
+    ["Claude Code", [mk("2026-06-01", 100, 1000), mk("2026-06-02", 10, 9000), mk("2026-07-01", 50, 500)]],
+    ["Codex", [mk("2026-06-02", 1, 100), mk("2026-07-01", 2, 200)]],
+  ]);
+
+  it("renders Date | Cost | bar with no tool columns, a grand-total-only Total row and no legend", () => {
+    setNoColor(false);
+    const lines = renderTotalHistory("daily", allToolEntries, 80, { total: true });
+    const plain = lines.map(stripAnsi);
+    assert.equal(plain[3], "Date       |      Cost");
+    assert.ok(!plain.some((l) => l.includes("Claude Code") || l.includes("Codex")), plain.join("\n"));
+    const rows = lines.filter((l) => /^\d{4}-\d{2}-\d{2}/.test(stripAnsi(l)));
+    assert.equal(rows.length, 3);
+    assert.ok(rows.every((r) => barLen(r) > 0), "every row has a bar");
+    const longest = rows.reduce((a, b) => (barLen(b) > barLen(a) ? b : a));
+    assert.ok(stripAnsi(longest).startsWith("2026-06-01"), stripAnsi(longest));
+    assert.ok(stripAnsi(rows[0]).includes("$100.00"));
+    const total = plain.find((l) => l.startsWith("Total"))!;
+    assert.equal(total, "Total      |   $163.00");
+    const footer = plain.find((l) => l.includes("avg "))!;
+    assert.ok(!footer.includes("█"), footer);
+    // Daily month separator still present between 2026-06-02 and 2026-07-01
+    const idx = lines.findIndex((l) => stripAnsi(l).startsWith("2026-07-01"));
+    assert.ok(isDivider(lines[idx - 1]), "month separator before 2026-07-01");
+    // Full 30-char bar fits at 80 cols
+    assert.equal(barLen(longest), 30);
+  });
+
+  it("shows a Tokens header and fmtNum values under metric: tokens", () => {
+    const plain = renderTotalHistory("daily", allToolEntries, 80, { total: true, metric: "tokens" }).map(stripAnsi);
+    assert.ok(plain[3].startsWith("Date       |") && plain[3].endsWith("Tokens"), plain[3]);
+    assert.ok(plain.some((l) => l.startsWith("2026-06-02") && l.includes("9,100")), plain.join("\n"));
+    const total = plain.find((l) => l.startsWith("Total"))!;
+    assert.ok(total.endsWith("10,800"), total);
+    const footer = plain.find((l) => l.includes("avg "))!;
+    assert.ok(footer.includes("peak 9,100 (2026-06-02)") && !footer.includes("$"), footer);
+  });
+
+  it("total: false and absent are byte-identical", () => {
+    assert.deepEqual(renderTotalHistory("daily", allToolEntries, 200, { total: false }), renderTotalHistory("daily", allToolEntries, 200));
+  });
+
+  it("maxRows still truncates under total", () => {
+    const rows = renderTotalHistory("daily", allToolEntries, 80, { total: true, maxRows: 2 }).filter((l) => /^\d{4}/.test(stripAnsi(l)));
+    assert.equal(rows.length, 2);
+  });
+});

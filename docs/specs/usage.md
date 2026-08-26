@@ -61,6 +61,7 @@ tu [source] [period] [display] [flags]
 | `--fresh` | `-f` | Bypass cache, fetch fresh data |
 | `--full` | — | Show full history (default is the last 3 months for daily/weekly history; no effect on monthly or snapshot) |
 | `--metric` | `<cost\|tokens>` | Scale history bars (and the footer stats) by cost (default) or total tokens; history display only — warns and is ignored on snapshots; no effect on `--json`/`--csv`/`--md` |
+| `--total` | `-t` | Collapse the all-tools history pivot to Date + total + bar (no per-tool columns, no stacked segments; `Tokens` value column under `--metric tokens`); all-tools history only — warns and is ignored on snapshots and single-tool sources; no effect on `--json`/`--csv`/`--md` |
 | `--user` | `-u <user>` | Show usage for a specific user, or `all` to sum every user directory in the metrics repo (multi mode only; `all` reads synced repo data only, so today lags until `--sync`; `all` is a reserved profile name — a config `user = all` is rejected with exit 2). With `--by-machine`, `-u all` breaks the total down per user instead of per machine (legend `Users:`; the JSON `machines` key carries user names) |
 | `--watch` | `-w` | Persistent polling mode with live TUI display |
 | `--interval` | `-i <s>` | Poll interval in seconds (default: 10, range: 5-3600, requires `--watch`) |

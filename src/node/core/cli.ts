@@ -132,6 +132,7 @@ Flags:
   --until <date>       Only include entries on/before date (YYYY-MM-DD or YYYYMMDD, history display)
   --full               Show full history (default: last 3 months for daily/weekly history)
   --metric <m>         Scale history bars by 'cost' (default) or 'tokens' (history display)
+  --total / -t         Collapse all-tools history to Date + total + bar (no per-tool columns)
   --sync               Sync metrics before fetching (multi mode)
   --dry-run            Preview sync without writing (tu sync only)
   --fresh / -f         Bypass cache, fetch fresh data (data commands only)
@@ -732,6 +733,7 @@ export interface GlobalFlags {
   untilFlag: string | undefined; // normalized ISO YYYY-MM-DD
   fullFlag: boolean; // --full: disable the implicit 3-month cap on daily/weekly history
   metricFlag: BarMetric; // --metric: history bar scale — "cost" (default) or "tokens"
+  totalFlag: boolean; // --total / -t: collapse the all-tools history pivot to Date + total + bar
   filteredArgs: string[];
 }
 
@@ -785,6 +787,7 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   const noRainFlag = rawArgs.includes("--no-rain");
   const byMachineFlag = rawArgs.includes("--by-machine");
   const fullFlag = rawArgs.includes("--full");
+  const totalFlag = rawArgs.includes("--total") || rawArgs.includes("-t");
 
   let watchInterval = 10;
   let hasIntervalFlag = false;
@@ -803,7 +806,7 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   const filteredArgs: string[] = [];
   for (let i = 0; i < rawArgs.length; i++) {
     const a = rawArgs[i];
-    if (a === "--json" || a === "-j" || a === "--csv" || a === "--md" || a === "--sync" || a === "--dry-run" || a === "--fresh" || a === "-f" || a === "--watch" || a === "-w" || a === "--no-color" || a === "--no-rain" || a === "--by-machine" || a === "--full" || a === "--skip-brew-update") continue;
+    if (a === "--json" || a === "-j" || a === "--csv" || a === "--md" || a === "--sync" || a === "--dry-run" || a === "--fresh" || a === "-f" || a === "--watch" || a === "-w" || a === "--no-color" || a === "--no-rain" || a === "--by-machine" || a === "--full" || a === "--total" || a === "-t" || a === "--skip-brew-update") continue;
     if (a === "--interval" || a === "-i") {
       hasIntervalFlag = true;
       const next = rawArgs[i + 1];
@@ -932,7 +935,7 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   else if (csvFlag) outputFormat = "csv";
   else if (mdFlag) outputFormat = "md";
 
-  return { outputFormat, jsonFlag, syncFlag, dryRunFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, fullFlag, metricFlag, filteredArgs };
+  return { outputFormat, jsonFlag, syncFlag, dryRunFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, fullFlag, metricFlag, totalFlag, filteredArgs };
 }
 
 const KNOWN_SOURCES = new Set(["cc", "codex", "co", "oc", "gemini", "gem", "copilot", "cop", "kimi", "ki", "all"]);
@@ -1453,7 +1456,7 @@ function sumToolTotalsTokens(m: Map<string, UsageTotals>): number {
 async function main() {
   _mark("main() entered");
   const rawArgs = process.argv.slice(2);
-  let { outputFormat, syncFlag, dryRunFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, fullFlag, metricFlag, filteredArgs } = parseGlobalFlags(rawArgs);
+  let { outputFormat, syncFlag, dryRunFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, fullFlag, metricFlag, totalFlag, filteredArgs } = parseGlobalFlags(rawArgs);
 
   if (noColorFlag) setNoColor(true);
 
@@ -1571,6 +1574,15 @@ async function main() {
     metricFlag = "cost";
   }
 
+  // --total collapses the all-tools history pivot to Date + total + bar. On a
+  // snapshot display or a single-tool source it warns once and is cleared
+  // (same spot as the guards above). JSON/CSV/MD have no pivot columns to
+  // collapse and ignore it silently.
+  if (totalFlag && !(source === "all" && display === "history")) {
+    process.stderr.write("Warning: --total applies to all-tools history — ignoring.\n");
+    totalFlag = false;
+  }
+
   // Implicit 3-month cap: daily/weekly history only, no explicit window, no
   // --full. Default sinceFlag to the floor so the cap reuses the existing
   // --since machinery (filterEntriesByRange) with zero new filtering logic;
@@ -1584,19 +1596,20 @@ async function main() {
   }
 
   // Merge the flag-derived FormatOptions (capActive heading hint, bar metric,
-  // and the "Users" legend when -u all --by-machine keys the breakdown columns
-  // by user) into whatever options a dispatch path uses, without overriding a
+  // the "Users" legend when -u all --by-machine keys the breakdown columns by
+  // user, and the --total pivot collapse) into whatever options a dispatch path uses, without overriding a
   // caller's other options. Renderers that do not read a field pass it through
   // harmlessly. Nothing is stamped when every field is at its default, so
   // existing output stays byte-identical.
   const usersLegend = userFlag === ALL_USERS && byMachineFlag;
   const withCap = (fmtOpts?: FormatOptions): FormatOptions | undefined => {
-    if (!capActive && metricFlag === "cost" && !usersLegend) return fmtOpts;
+    if (!capActive && metricFlag === "cost" && !usersLegend && !totalFlag) return fmtOpts;
     return {
       ...fmtOpts,
       ...(capActive ? { capActive: true } : {}),
       ...(metricFlag !== "cost" ? { metric: metricFlag } : {}),
       ...(usersLegend ? { machineLegend: "Users" } : {}),
+      ...(totalFlag ? { total: true } : {}),
     };
   };
 

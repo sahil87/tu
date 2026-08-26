@@ -604,3 +604,22 @@ describe("--metric flag", () => {
     assert.deepEqual(result.filteredArgs, ["h"]);
   });
 });
+
+describe("--total / -t flag", () => {
+  it("defaults to false", () => {
+    assert.equal(parseGlobalFlags(["mh"]).totalFlag, false);
+  });
+
+  it("-t sets totalFlag and is stripped from filteredArgs", () => {
+    const result = parseGlobalFlags(["mh", "-t"]);
+    assert.equal(result.totalFlag, true);
+    assert.deepEqual(result.filteredArgs, ["mh"]);
+  });
+
+  it("--total sets totalFlag and is stripped from filteredArgs", () => {
+    const result = parseGlobalFlags(["--total", "h", "-u", "all"]);
+    assert.equal(result.totalFlag, true);
+    assert.equal(result.userFlag, "all");
+    assert.deepEqual(result.filteredArgs, ["h"]);
+  });
+});
