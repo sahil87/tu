@@ -60,6 +60,8 @@ tu [source] [period] [display] [flags]
 | `--dry-run` | — | Preview a sync without writing (honored only by `tu sync`; other invocations error) |
 | `--fresh` | `-f` | Bypass cache, fetch fresh data |
 | `--full` | — | Show full history (default is the last 3 months for daily/weekly history; no effect on monthly or snapshot) |
+| `--metric` | `<cost\|tokens>` | Scale history bars (and the footer stats) by cost (default) or total tokens; history display only — warns and is ignored on snapshots; no effect on `--json`/`--csv`/`--md` |
+| `--user` | `-u <user>` | Show usage for a specific user, or `all` to sum every user directory in the metrics repo (multi mode only; `all` reads synced repo data only, so today lags until `--sync`; `all` is a reserved profile name — a config `user = all` is rejected with exit 2). With `--by-machine`, `-u all` breaks the total down per user instead of per machine (legend `Users:`; the JSON `machines` key carries user names) |
 | `--watch` | `-w` | Persistent polling mode with live TUI display |
 | `--interval` | `-i <s>` | Poll interval in seconds (default: 10, range: 5-3600, requires `--watch`) |
 | `--no-color` | — | Disable ANSI color output (also respects `NO_COLOR` env var) |
@@ -92,7 +94,7 @@ Per-subcommand exit codes:
 
 | Command | `0` | `1` | `2` |
 |---------|-----|-----|-----|
-| `tu [source] [period] [display]` (data commands, incl. `--watch`) | success | unexpected runtime error | unknown argument/tool, bad flag value, incompatible format flags (`--json`/`--csv`/`--md`/`--watch`), bad/inverted `--since`/`--until`, bad `--interval`, missing `-u` value, `--dry-run` without `tu sync` |
+| `tu [source] [period] [display]` (data commands, incl. `--watch`) | success | unexpected runtime error | unknown argument/tool, bad flag value, incompatible format flags (`--json`/`--csv`/`--md`/`--watch`), bad/inverted `--since`/`--until`, bad `--interval`, missing `-u` value, bad/missing `--metric` value, config `user = all` (reserved), `--dry-run` without `tu sync` |
 | `tu sync` | success | `metrics_repo` unset, clone/sync failure | — |
 | `tu init-metrics` | success | `metrics_repo` unset, metrics dir exists but is not a git repo | — |
 | `tu update` | success (incl. non-Homebrew install message, "already up to date") | `brew update`/`brew info`/`brew upgrade` failure | — |

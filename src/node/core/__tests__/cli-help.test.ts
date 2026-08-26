@@ -100,3 +100,15 @@ describe("FULL_HELP", () => {
     assert.ok(!FULL_HELP.includes("tu setup"), "help should not reference old 'tu setup' command");
   });
 });
+
+describe("FULL_HELP: -u all and --metric", () => {
+  it("documents 'all' on the --user line", () => {
+    const userLine = FULL_HELP.split("\n").find((l) => l.includes("--user / -u"));
+    assert.ok(userLine !== undefined && userLine.includes("'all'"), userLine ?? "no --user line");
+  });
+
+  it("documents --metric with both values", () => {
+    const metricLine = FULL_HELP.split("\n").find((l) => l.includes("--metric"));
+    assert.ok(metricLine !== undefined && metricLine.includes("'cost'") && metricLine.includes("'tokens'"), metricLine ?? "no --metric line");
+  });
+});

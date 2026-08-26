@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execSync } from "node:child_process";
 
-import { writeMetrics, readRemoteEntries, isStale, touchLastSync, syncMetrics, fullSync } from "../sync.js";
+import { writeMetrics, readRemoteEntries, listUsers, isStale, touchLastSync, syncMetrics, fullSync } from "../sync.js";
+import { mergeEntries } from "../../core/fetcher.js";
 import type { UsageEntry } from "../../core/types.js";
 import type { TuConfig } from "../../core/config.js";
 
@@ -323,6 +324,60 @@ describe("readRemoteEntries", () => {
     const result = readRemoteEntries(TEST_DIR, "sahil", "macbook", "cc");
     assert.equal(result.length, 1);
     assert.equal(result[0].totalCost, 0.5);
+  });
+});
+
+describe("listUsers", () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it("returns sorted user dirs, skipping docs/ and dot-prefixed entries", () => {
+    for (const d of ["bob", "alice", "docs", ".git"]) mkdirSync(join(TEST_DIR, d));
+    writeFileSync(join(TEST_DIR, ".last-sync"), "");
+    writeFileSync(join(TEST_DIR, "README.md"), "");
+    assert.deepEqual(listUsers(TEST_DIR), ["alice", "bob"]);
+  });
+
+  it("returns [] for a missing metrics dir", () => {
+    assert.deepEqual(listUsers(join(TEST_DIR, "nope")), []);
+  });
+
+  it("returns [] for an empty metrics dir", () => {
+    assert.deepEqual(listUsers(TEST_DIR), []);
+  });
+});
+
+describe("all-users aggregate (listUsers + readRemoteEntries + mergeEntries)", () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  const tokens = (label: string, cost: number, total: number): UsageEntry => ({
+    label,
+    totalCost: cost,
+    inputTokens: total,
+    outputTokens: 0,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 0,
+    totalTokens: total,
+  });
+
+  it("sums cost and tokens per label across 2 users x 2 machines", () => {
+    mkdirSync(join(TEST_DIR, "docs"));
+    writeMetrics(TEST_DIR, "alice", "m1", "cc", [tokens("2026-08-01", 1.0, 100), tokens("2026-08-02", 0.5, 50)]);
+    writeMetrics(TEST_DIR, "alice", "m2", "cc", [tokens("2026-08-01", 2.0, 200)]);
+    writeMetrics(TEST_DIR, "bob", "m1", "cc", [tokens("2026-08-01", 4.0, 400)]);
+    writeMetrics(TEST_DIR, "bob", "m2", "cc", [tokens("2026-08-02", 8.0, 800)]);
+
+    const summed = listUsers(TEST_DIR)
+      .map((u) => readRemoteEntries(TEST_DIR, u, null, "cc"))
+      .reduce((acc, entries) => mergeEntries(acc, entries), [] as UsageEntry[]);
+
+    const byLabel = new Map(summed.map((e) => [e.label, e]));
+    assert.equal(byLabel.size, 2);
+    assert.equal(byLabel.get("2026-08-01")!.totalCost, 7.0);
+    assert.equal(byLabel.get("2026-08-01")!.totalTokens, 700);
+    assert.equal(byLabel.get("2026-08-02")!.totalCost, 8.5);
+    assert.equal(byLabel.get("2026-08-02")!.totalTokens, 850);
   });
 });
 

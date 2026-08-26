@@ -84,8 +84,9 @@ pivot), `tu cc mh` (Claude Code monthly history), `tu wh` (weekly history).
   the cache and refetch.
 - **Single vs multi mode.** Behavior depends on `~/.tu.conf`: single mode reads
   only local data; multi mode aggregates across machines via the metrics repo.
-  Run `tu status` to see which mode is active. `--user` / `-u` and multi-machine
-  views apply in multi mode only (warned-and-ignored in single mode).
+  Run `tu status` to see which mode is active. `--user` / `-u` (including
+  `-u all`, which sums every user in the metrics repo from synced data) and
+  multi-machine views apply in multi mode only (warned-and-ignored in single mode).
 - **`--watch` / `-w` is an interactive TUI** (live-refreshing display). Do not
   invoke it from an agent — it does not terminate on its own and produces no
   parseable single-shot output.
@@ -94,4 +95,5 @@ pivot), `tu cc mh` (Claude Code monthly history), `tu wh` (weekly history).
   calendar months. Pass `--full` for the complete history. Monthly history
   (`mh`) is never capped.
 - **History-only flags.** `--since` / `-s` and `--until` bound a history window
-  (`YYYY-MM-DD` or `YYYYMMDD`); on a snapshot display they warn and are ignored.
+  (`YYYY-MM-DD` or `YYYYMMDD`); `--metric tokens` scales the history bars by
+  token volume instead of cost. On a snapshot display they warn and are ignored.

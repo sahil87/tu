@@ -77,7 +77,7 @@ avg $1,535.41/day · this month $6,141.62 · peak $4,031.61 (2026-06-12) · ┊ 
 ```
 
 - **Columns:** Date (12 left-aligned), Input/Output/Cache Write/Cache Read/Total (14 right-aligned), Cost (9 right-aligned — fits `$9,999.99` with thousands separators)
-- **Bar chart:** green Unicode block elements (full + fractional eighths), max width 30, scaled to max cost
+- **Bar chart:** green Unicode block elements (full + fractional eighths), max width 30, scaled to max cost — or to max total tokens under `--metric tokens` (bars, stacked segments, and the footer `avg`/`this month`/`peak`/`p95` follow the metric and format as plain counts; the token/cost cells are unchanged)
 - **p95 two-zone scale:** when `max > 1.5 × p95` (95th percentile of the nonzero row costs, linear interpolation), the bar area splits into a green main zone (linear 0→p95), a dim `┊` (U+250A) scale-break rule rendered in every row (short bars space-pad up to the rule so it aligns vertically), and a yellow overflow zone (linear p95→max, `max(4, round(barWidth/4))` chars). Rows at exactly p95 end at the rule with no overflow segment. Below the trigger the single linear scale renders unchanged — no rule, no legend, no width change
 - **Month separators:** daily views emit a dim divider (same construction as the header divider) before each row whose `YYYY-MM` prefix differs from the previous row's — daily period only, computed on the post-`maxRows` window, never before the first visible row
 - **Current-period marker:** the row matching the current period's label (today / this week / this month) renders its date cell in **boldWhite** — color-only, no glyph, width unchanged, stripped by `--no-color`/`NO_COLOR`

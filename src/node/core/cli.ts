@@ -1,8 +1,8 @@
 import { TOOLS, EMPTY, fetchHistory, fetchAllTotals, fetchAllHistory, aggregateForPeriod, mergeEntries, maxMergeEntries, currentLabel, filterEntriesByRange } from "./fetcher.js";
 import { printHistory, printTotal, printTotalHistory, renderHistory, renderTotal, renderTotalHistory, emitCsv, emitMarkdown } from "../tui/formatter.js";
-import type { FormatOptions } from "../tui/formatter.js";
+import type { FormatOptions, BarMetric } from "../tui/formatter.js";
 import { readConfig, CONFIG_PATH, TU_HOME, THREE_HOURS_MS, resolveHome, DEFAULT_CONFIG_PATH } from "./config.js";
-import { writeMetrics, readRemoteEntries, readRemoteEntriesByMachine, fullSync } from "../sync/sync.js";
+import { writeMetrics, readRemoteEntries, readRemoteEntriesByMachine, listUsers, fullSync } from "../sync/sync.js";
 import type { DrySyncReport } from "../sync/sync.js";
 import { runWatch } from "../tui/watch.js";
 import { setNoColor } from "../tui/colors.js";
@@ -70,6 +70,25 @@ function tildefy(p: string): string {
 // keep their literal 1.
 const EXIT_USAGE = 2;
 
+// Reserved `-u` value: aggregate every user profile in the metrics repo. A real
+// profile named "all" would be indistinguishable from the flag and would be
+// double-counted by listUsers, so config.user === ALL_USERS is rejected.
+const ALL_USERS = "all";
+
+export function isUserReserved(user: string): boolean {
+  return user === ALL_USERS;
+}
+
+// Runs right after readConfig() on every path that loads config for data or
+// writes (main() data commands, `tu sync`): a bad config value is
+// invocation-fixable, so it exits with the usage code.
+function assertUserNotReserved(config: TuConfig): void {
+  if (isUserReserved(config.user)) {
+    console.error(`Error: config user "${ALL_USERS}" is reserved (used by -u ${ALL_USERS})`);
+    process.exit(EXIT_USAGE);
+  }
+}
+
 export const SHORT_USAGE = `Usage: tu [source] [period] [display]
 
   tu                Today's cost, all tools
@@ -112,12 +131,14 @@ Flags:
   --since / -s <date>  Only include entries on/after date (YYYY-MM-DD or YYYYMMDD, history display)
   --until <date>       Only include entries on/before date (YYYY-MM-DD or YYYYMMDD, history display)
   --full               Show full history (default: last 3 months for daily/weekly history)
+  --metric <m>         Scale history bars by 'cost' (default) or 'tokens' (history display)
   --sync               Sync metrics before fetching (multi mode)
   --dry-run            Preview sync without writing (tu sync only)
   --fresh / -f         Bypass cache, fetch fresh data (data commands only)
   --watch / -w         Persistent polling mode with live display (data commands only)
   --interval / -i <s>  Poll interval in seconds (default: 10, range: 5-3600)
-  --user / -u <user>   Show usage for a specific user (multi mode only)
+  --user / -u <user>   Show usage for a specific user, or 'all' for every user
+                       in the metrics repo (multi mode only; repo data — sync for today)
   --by-machine         Show per-machine cost breakdown (data commands only)
   --skip-brew-update   Skip 'brew update' tap refresh during 'tu update'
   --no-color           Disable ANSI color output
@@ -512,6 +533,9 @@ export async function runSync(
   dryRun = false,
 ): Promise<void> {
   const config = readConfig(configPath, defaultsPath);
+  // `tu sync` is the other path that writes day-files, so the reserved-user
+  // guard runs here too — otherwise `user = all` would create {metricsDir}/all/.
+  assertUserNotReserved(config);
   if (config.mode !== "multi") {
     console.error(
       "tu sync requires metrics_repo to be set.\nAdd metrics_repo to ~/.tu.conf or set TU_METRICS_REPO.",
@@ -552,6 +576,18 @@ async function fetchToolMerged(
   since?: string,
   until?: string,
 ): Promise<UsageEntry[]> {
+  if (targetUser === ALL_USERS) {
+    // Repo-only, like -u <other-user>: every profile's day-files summed per
+    // label. A plain sum is exact here — day-files are never-shrink high-water
+    // marks and there is no live view to reconcile, so no maxMergeEntries.
+    _mark(`fetchToolMerged(${toolKey}) → readRemote for all users`);
+    const summed = readAllUsersByUser(config.metricsDir, toolKey);
+    const entries: UsageEntry[] = [];
+    for (const userEntries of summed.values()) entries.push(...userEntries);
+    const merged = filterEntriesByRange(mergeEntries(entries, []), since, until);
+    _mark(`fetchToolMerged(${toolKey}) → readRemote done (${merged.length} entries)`);
+    return aggregateForPeriod(period, merged);
+  }
   if (targetUser && targetUser !== config.user) {
     _mark(`fetchToolMerged(${toolKey}) → readRemote for ${targetUser}`);
     const entries = filterEntriesByRange(readRemoteEntries(config.metricsDir, targetUser, null, toolKey), since, until);
@@ -598,6 +634,31 @@ function filterMachineMap(
   return out;
 }
 
+// Every user profile's repo entries (all machines flattened), keyed by user.
+// The -u all breakdown reuses the machine-column rendering with users as the
+// column keys.
+function readAllUsersByUser(metricsDir: string, toolKey: string): Map<string, UsageEntry[]> {
+  const byUser = new Map<string, UsageEntry[]>();
+  for (const user of listUsers(metricsDir)) byUser.set(user, readRemoteEntries(metricsDir, user, null, toolKey));
+  return byUser;
+}
+
+// Window a per-key map (machine or user → daily entries), flatten it into one
+// summed series, and aggregate both to the requested period.
+function aggregateMachineMap(machineMap: Map<string, UsageEntry[]>, period: string, since?: string, until?: string): MergedResult {
+  const windowed = filterMachineMap(machineMap, since, until);
+  const entries: UsageEntry[] = [];
+  for (const mEntries of windowed.values()) entries.push(...mEntries);
+  const merged = mergeEntries(entries, []);
+  if (period !== "daily") {
+    const aggregatedEntries = aggregateForPeriod(period, merged);
+    const aggregatedMap = new Map<string, UsageEntry[]>();
+    for (const [key, mEntries] of windowed) aggregatedMap.set(key, aggregateForPeriod(period, mEntries));
+    return { entries: aggregatedEntries, machineMap: aggregatedMap };
+  }
+  return { entries: merged, machineMap: windowed };
+}
+
 async function fetchToolMergedWithMachines(
   config: TuConfig,
   toolKey: string,
@@ -608,26 +669,20 @@ async function fetchToolMergedWithMachines(
   since?: string,
   until?: string,
 ): Promise<MergedResult> {
+  if (targetUser === ALL_USERS) {
+    _mark(`fetchToolMergedWithMachines(${toolKey}) → readRemote for all users`);
+    return aggregateMachineMap(readAllUsersByUser(config.metricsDir, toolKey), period, since, until);
+  }
   if (targetUser && targetUser !== config.user) {
     _mark(`fetchToolMergedWithMachines(${toolKey}) → readRemoteByMachine for ${targetUser}`);
-    const machineMap = filterMachineMap(readRemoteEntriesByMachine(config.metricsDir, targetUser, null, toolKey), since, until);
-    const entries: UsageEntry[] = [];
-    for (const machineEntries of machineMap.values()) entries.push(...machineEntries);
-    const merged = mergeEntries(entries, []);
-    if (period !== "daily") {
-      const aggregatedEntries = aggregateForPeriod(period, merged);
-      const aggregatedMap = new Map<string, UsageEntry[]>();
-      for (const [machine, mEntries] of machineMap) aggregatedMap.set(machine, aggregateForPeriod(period, mEntries));
-      return { entries: aggregatedEntries, machineMap: aggregatedMap };
-    }
-    return { entries: merged, machineMap };
+    return aggregateMachineMap(readRemoteEntriesByMachine(config.metricsDir, targetUser, null, toolKey), period, since, until);
   }
 
   _mark(`fetchToolMergedWithMachines(${toolKey}) → fetchHistory`);
   const local = await fetchHistory(toolKey, "daily", extra, skipCache);
   _mark(`fetchToolMergedWithMachines(${toolKey}) → fetchHistory done`);
 
-  let machineMap = new Map<string, UsageEntry[]>();
+  const machineMap = new Map<string, UsageEntry[]>();
   machineMap.set(config.machine, local);
 
   if (config.mode === "multi") {
@@ -642,22 +697,10 @@ async function fetchToolMergedWithMachines(
     }
   }
 
-  // Filter each machine's entries so the flattened view and the per-machine
-  // --by-machine columns both reflect the window (built after max-merge so
+  // Window each machine's entries so the flattened view and the per-machine
+  // --by-machine columns both reflect the window (after max-merge, so
   // purge-corrected days are still windowed).
-  machineMap = filterMachineMap(machineMap, since, until);
-  const allEntries: UsageEntry[] = [];
-  for (const mEntries of machineMap.values()) allEntries.push(...mEntries);
-  const merged = mergeEntries(allEntries, []);
-
-  if (period !== "daily") {
-    const aggregatedEntries = aggregateForPeriod(period, merged);
-    const aggregatedMap = new Map<string, UsageEntry[]>();
-    for (const [machine, mEntries] of machineMap) aggregatedMap.set(machine, aggregateForPeriod(period, mEntries));
-    return { entries: aggregatedEntries, machineMap: aggregatedMap };
-  }
-
-  return { entries: merged, machineMap };
+  return aggregateMachineMap(machineMap, period, since, until);
 }
 
 function emitJson(data: unknown): void {
@@ -688,6 +731,7 @@ export interface GlobalFlags {
   sinceFlag: string | undefined; // normalized ISO YYYY-MM-DD
   untilFlag: string | undefined; // normalized ISO YYYY-MM-DD
   fullFlag: boolean; // --full: disable the implicit 3-month cap on daily/weekly history
+  metricFlag: BarMetric; // --metric: history bar scale — "cost" (default) or "tokens"
   filteredArgs: string[];
 }
 
@@ -753,6 +797,9 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   let untilFlag: string | undefined;
   let hasUntilFlag = false;
   let rawUntilVal: string | undefined;
+  let metricFlag: BarMetric = "cost";
+  let hasMetricFlag = false;
+  let rawMetricVal: string | undefined;
   const filteredArgs: string[] = [];
   for (let i = 0; i < rawArgs.length; i++) {
     const a = rawArgs[i];
@@ -789,6 +836,15 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
       const next = rawArgs[i + 1];
       if (next !== undefined && !next.startsWith("-")) {
         rawUntilVal = next;
+        i++;
+      }
+      continue;
+    }
+    if (a === "--metric") {
+      hasMetricFlag = true;
+      const next = rawArgs[i + 1];
+      if (next !== undefined && !next.startsWith("-")) {
+        rawMetricVal = next;
         i++;
       }
       continue;
@@ -863,13 +919,20 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
     console.error("Error: --since must be on or before --until");
     process.exit(EXIT_USAGE);
   }
+  if (hasMetricFlag) {
+    if (rawMetricVal !== "tokens" && rawMetricVal !== "cost") {
+      console.error("Error: --metric requires 'tokens' or 'cost'");
+      process.exit(EXIT_USAGE);
+    }
+    metricFlag = rawMetricVal;
+  }
 
   let outputFormat: OutputFormat = "table";
   if (jsonFlag) outputFormat = "json";
   else if (csvFlag) outputFormat = "csv";
   else if (mdFlag) outputFormat = "md";
 
-  return { outputFormat, jsonFlag, syncFlag, dryRunFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, fullFlag, filteredArgs };
+  return { outputFormat, jsonFlag, syncFlag, dryRunFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, fullFlag, metricFlag, filteredArgs };
 }
 
 const KNOWN_SOURCES = new Set(["cc", "codex", "co", "oc", "gemini", "gem", "copilot", "cop", "kimi", "ki", "all"]);
@@ -1390,7 +1453,7 @@ function sumToolTotalsTokens(m: Map<string, UsageTotals>): number {
 async function main() {
   _mark("main() entered");
   const rawArgs = process.argv.slice(2);
-  let { outputFormat, syncFlag, dryRunFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, fullFlag, filteredArgs } = parseGlobalFlags(rawArgs);
+  let { outputFormat, syncFlag, dryRunFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, fullFlag, metricFlag, filteredArgs } = parseGlobalFlags(rawArgs);
 
   if (noColorFlag) setNoColor(true);
 
@@ -1455,6 +1518,7 @@ async function main() {
 
   _mark("readConfig()");
   const config = checkMetricsDirGuard(readConfig());
+  assertUserNotReserved(config);
   _mark(`config loaded (mode=${config.mode})`);
 
   if (userFlag && config.mode !== "multi") {
@@ -1498,6 +1562,15 @@ async function main() {
     process.stderr.write("Warning: --full applies to daily/weekly history — ignoring.\n");
   }
 
+  // --metric scales history bars only. A non-default value on a snapshot
+  // display warns once and is cleared (same spot as the since/until guard, so
+  // watch snapshot warns once at startup). JSON/CSV/MD have no bars and
+  // ignore it silently.
+  if (metricFlag !== "cost" && display !== "history") {
+    process.stderr.write("Warning: --metric applies to history display — ignoring.\n");
+    metricFlag = "cost";
+  }
+
   // Implicit 3-month cap: daily/weekly history only, no explicit window, no
   // --full. Default sinceFlag to the floor so the cap reuses the existing
   // --since machinery (filterEntriesByRange) with zero new filtering logic;
@@ -1510,11 +1583,22 @@ async function main() {
     capActive = true;
   }
 
-  // Merge the capActive heading hint into whatever FormatOptions a dispatch path
-  // uses, without overriding a caller's other options. Only the history renderers
-  // read capActive; snapshot paths pass it through harmlessly.
-  const withCap = (fmtOpts?: FormatOptions): FormatOptions | undefined =>
-    capActive ? { ...fmtOpts, capActive: true } : fmtOpts;
+  // Merge the flag-derived FormatOptions (capActive heading hint, bar metric,
+  // and the "Users" legend when -u all --by-machine keys the breakdown columns
+  // by user) into whatever options a dispatch path uses, without overriding a
+  // caller's other options. Renderers that do not read a field pass it through
+  // harmlessly. Nothing is stamped when every field is at its default, so
+  // existing output stays byte-identical.
+  const usersLegend = userFlag === ALL_USERS && byMachineFlag;
+  const withCap = (fmtOpts?: FormatOptions): FormatOptions | undefined => {
+    if (!capActive && metricFlag === "cost" && !usersLegend) return fmtOpts;
+    return {
+      ...fmtOpts,
+      ...(capActive ? { capActive: true } : {}),
+      ...(metricFlag !== "cost" ? { metric: metricFlag } : {}),
+      ...(usersLegend ? { machineLegend: "Users" } : {}),
+    };
+  };
 
   if (watchFlag) {
     const action = async (skipCache: boolean, fmtOpts?: FormatOptions): Promise<string[]> => {
@@ -1537,7 +1621,7 @@ async function main() {
   } else {
     if (source === "all") {
       if (display === "history") { await dispatchAllHistory(config, period, outputFormat, freshFlag, withCap(undefined), userFlag, sinceFlag, untilFlag); }
-      else { await dispatchAllSnapshot(config, period, outputFormat, freshFlag, undefined, userFlag, byMachineFlag); }
+      else { await dispatchAllSnapshot(config, period, outputFormat, freshFlag, withCap(undefined), userFlag, byMachineFlag); }
     } else {
       await dispatchSingleTool(config, source, period, display, outputFormat, freshFlag, withCap(undefined), userFlag, byMachineFlag, sinceFlag, untilFlag);
     }

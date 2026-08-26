@@ -576,3 +576,31 @@ describe("capApplies", () => {
     assert.equal(capApplies("history", "weekly", undefined, undefined, true), false);
   });
 });
+
+describe("--metric flag", () => {
+  it("defaults to cost when absent", () => {
+    assert.equal(parseGlobalFlags(["mh"]).metricFlag, "cost");
+  });
+
+  it("parses --metric tokens and strips the flag + value", () => {
+    const result = parseGlobalFlags(["mh", "--metric", "tokens"]);
+    assert.equal(result.metricFlag, "tokens");
+    assert.deepEqual(result.filteredArgs, ["mh"]);
+  });
+
+  it("parses --metric cost explicitly", () => {
+    const result = parseGlobalFlags(["--metric", "cost", "cc", "h"]);
+    assert.equal(result.metricFlag, "cost");
+    assert.deepEqual(result.filteredArgs, ["cc", "h"]);
+  });
+
+  it("does not consume a following flag as the value", () => {
+    // Bare --metric followed by another flag is a usage error (exit 2); the
+    // subprocess contract lives in cli-exit-codes.test.ts. Here we only pin
+    // that a valid value adjacent to other flags is parsed correctly.
+    const result = parseGlobalFlags(["h", "--metric", "tokens", "--full"]);
+    assert.equal(result.metricFlag, "tokens");
+    assert.equal(result.fullFlag, true);
+    assert.deepEqual(result.filteredArgs, ["h"]);
+  });
+});

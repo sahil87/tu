@@ -69,12 +69,14 @@ Sources: `cc` (Claude Code), `codex`/`co` (Codex), `oc` (OpenCode), `gemini`/`ge
   --since / -s <date>  Only include entries on/after date (YYYY-MM-DD or YYYYMMDD, history display)
   --until <date>       Only include entries on/before date (YYYY-MM-DD or YYYYMMDD, history display)
   --full               Show full history (default: last 3 months for daily/weekly history)
+  --metric <m>         Scale history bars by 'cost' (default) or 'tokens' (history display)
   --sync               Sync metrics before fetching (multi mode)
   --dry-run            Preview sync without writing (tu sync only)
   --fresh / -f         Bypass cache, fetch fresh data (data commands only)
   --watch / -w         Persistent polling mode with live display (data commands only)
   --interval / -i <s>  Poll interval in seconds (default: 10, range: 5-3600)
-  --user / -u <user>   Show usage for a specific user (multi mode only)
+  --user / -u <user>   Show usage for a specific user, or 'all' for every user
+                       in the metrics repo (multi mode only; repo data — sync for today)
   --by-machine         Show per-machine cost breakdown (data commands only)
   --no-color           Disable ANSI color output
   --no-rain            Disable matrix rain animation in watch mode
