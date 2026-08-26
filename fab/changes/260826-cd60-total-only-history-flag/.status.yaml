@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 5
@@ -33,23 +33,25 @@ stage_metrics:
     apply: {started_at: "2026-08-26T22:05:39Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-26T22:07:23Z"}
     review: {started_at: "2026-08-26T22:07:23Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-26T22:13:06Z"}
     hydrate: {started_at: "2026-08-26T22:13:06Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-26T22:13:07Z"}
-    ship: {started_at: "2026-08-26T22:13:07Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-08-26T22:13:07Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-26T22:13:45Z"}
+    review-pr: {started_at: "2026-08-26T22:13:45Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/tu/pull/71
 change_type_source: explicit
 true_impact:
-    added: 909
-    deleted: 90
-    net: 819
+    added: 1419
+    deleted: 104
+    net: 1315
     excluding:
-        added: 457
-        deleted: 75
-        net: 382
+        added: 601
+        deleted: 89
+        net: 512
     tests:
-        added: 245
-        deleted: 2
-        net: 243
-    computed_at: "2026-08-26T22:13:07Z"
-    computed_at_stage: hydrate
+        added: 342
+        deleted: 3
+        net: 339
+    computed_at: "2026-08-26T22:13:45Z"
+    computed_at_stage: ship
 summary: 'Added `--total`/`-t`: collapses the all-tools history pivot to Date + total + bar (solid bar, grand-total-only Total row, legend-less footer; `Tokens` column under `--metric tokens`); warns and is ignored outside all-tools history; v0.12.0'
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-08-26T22:13:07Z
+last_updated: 2026-08-26T22:13:45Z
