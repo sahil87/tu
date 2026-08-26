@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 5
@@ -33,23 +33,25 @@ stage_metrics:
     apply: {started_at: "2026-08-26T20:26:53Z", driver: fab-fff, iterations: 2, completed_at: "2026-08-26T20:27:49Z"}
     review: {started_at: "2026-08-26T20:27:49Z", driver: fab-fff, iterations: 2, completed_at: "2026-08-26T20:32:57Z"}
     hydrate: {started_at: "2026-08-26T20:32:57Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-26T20:34:17Z"}
-    ship: {started_at: "2026-08-26T20:34:17Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-08-26T20:34:17Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-26T20:36:50Z"}
+    review-pr: {started_at: "2026-08-26T20:36:50Z", driver: git-pr, iterations: 1}
+prs:
+    - ""
 change_type_source: explicit
 true_impact:
-    added: 0
-    deleted: 0
-    net: 0
+    added: 904
+    deleted: 89
+    net: 815
     excluding:
-        added: 0
-        deleted: 0
-        net: 0
+        added: 457
+        deleted: 75
+        net: 382
     tests:
-        added: 0
-        deleted: 0
-        net: 0
-    computed_at: "2026-08-26T20:34:17Z"
-    computed_at_stage: hydrate
+        added: 245
+        deleted: 2
+        net: 243
+    computed_at: "2026-08-26T20:36:50Z"
+    computed_at_stage: ship
 summary: Added `-u all` (sum every metrics-repo user via new `listUsers`, repo-only; per-user columns with `--by-machine`), reserved the `all` profile name (exit 2 on data commands and `tu sync`), and `--metric cost|tokens` scaling history bars/segments/footer by token volume; v0.11.0
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-08-26T20:34:17Z
+last_updated: 2026-08-26T20:36:50Z
