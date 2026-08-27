@@ -1,7 +1,7 @@
 import { TOOLS, EMPTY, fetchHistory, fetchAllTotals, fetchAllHistory, aggregateForPeriod, mergeEntries, maxMergeEntries, currentLabel, filterEntriesByRange } from "./fetcher.js";
 import { printHistory, printTotal, printTotalHistory, renderHistory, renderTotal, renderTotalHistory, emitCsv, emitMarkdown } from "../tui/formatter.js";
 import type { FormatOptions, BarMetric } from "../tui/formatter.js";
-import { readConfig, CONFIG_PATH, TU_HOME, THREE_HOURS_MS, resolveHome, DEFAULT_CONFIG_PATH } from "./config.js";
+import { readConfig, resolveConfigPaths, selectUserConfPath, TU_HOME, THREE_HOURS_MS, resolveHome, DEFAULT_CONFIG_PATH } from "./config.js";
 import { writeMetrics, readRemoteEntries, readRemoteEntriesByMachine, listUsers, fullSync } from "../sync/sync.js";
 import type { DrySyncReport } from "../sync/sync.js";
 import { runWatch } from "../tui/watch.js";
@@ -15,7 +15,7 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import type { UsageEntry, UsageTotals } from "./types.js";
-import type { TuConfig } from "./config.js";
+import type { TuConfig, ConfigPaths } from "./config.js";
 
 const _dbg = process.env.TU_DEBUG === "1";
 const _t0 = _dbg ? Number(process.env.TU_DEBUG_T0 || Date.now()) : 0;
@@ -114,8 +114,8 @@ Examples:
   tu m                 This month's cost, all tools
 
 Setup:
-  tu init-conf         Scaffold ~/.tu.conf
-  tu init-metrics      Clone metrics repo
+  tu init-conf         Scaffold ~/.config/tu/tu.conf
+  tu init-metrics [url] Clone metrics repo (url also sets metrics_repo)
   tu sync              Push/pull metrics manually
   tu status            Show config and sync state
   tu update            Update tu to latest version
@@ -170,15 +170,66 @@ function fieldMentioned(content: string, field: string): boolean {
   return new RegExp(`^\\s*#?\\s*${field}\\s*=`, "m").test(content);
 }
 
-export function runInitConf(configPath: string = CONFIG_PATH, defaultsPath: string = DEFAULT_CONFIG_PATH): void {
-  const dp = tildefy(configPath);
-  if (!existsSync(configPath)) {
-    mkdirSync(dirname(configPath), { recursive: true });
-    writeFileSync(configPath, readFileSync(defaultsPath, "utf-8"));
-    console.log(`Created ${dp} — edit it to configure multi-machine sync.`);
+// A bare string argument is treated as userConf only (no org layer, no legacy
+// fallback) — the form existing tests use. The directory component keeps
+// ensureUserConf's mkdir working for that form.
+function normalizePaths(paths: ConfigPaths | string): ConfigPaths {
+  return typeof paths === "string"
+    ? { configDir: dirname(paths), userConf: paths }
+    : paths;
+}
+
+// Ensure the user conf exists, creating the config dir and file when missing.
+// A legacy ~/.tu.conf seeds the new file (write-time copy — the user's
+// machine/user/metrics_dir overrides are not silently orphaned; this is not
+// the rejected read-time auto-migration). Returns true when the file was
+// created. Shared by runInitConf and runInitMetrics.
+export function ensureUserConf(paths: ConfigPaths, defaultsPath: string): boolean {
+  if (existsSync(paths.userConf)) return false;
+  mkdirSync(paths.configDir, { recursive: true });
+  if (paths.legacyConf !== undefined && existsSync(paths.legacyConf)) {
+    writeFileSync(paths.userConf, readFileSync(paths.legacyConf, "utf-8"));
+    console.log(`Copied ${tildefy(paths.legacyConf)} → ${tildefy(paths.userConf)}`);
+  } else {
+    writeFileSync(paths.userConf, readFileSync(defaultsPath, "utf-8"));
+    console.log(`Created ${tildefy(paths.userConf)} — edit it to configure multi-machine sync.`);
+  }
+  return true;
+}
+
+// Write metrics_repo = <url> into the user conf: replace an active assignment
+// in place, else replace the scaffold's commented sample line, else append the
+// FIELD_BLOCKS.metrics_repo block with the value filled in.
+function setMetricsRepoInConf(userConf: string, repoUrl: string): void {
+  const content = readFileSync(userConf, "utf-8");
+  const lines = content.split("\n");
+  const activeIdx = lines.findIndex((l) => {
+    const t = l.trimStart();
+    return !t.startsWith("#") && /^metrics_repo\s*=/.test(t);
+  });
+  if (activeIdx >= 0) {
+    lines[activeIdx] = `metrics_repo = ${repoUrl}`;
+    writeFileSync(userConf, lines.join("\n"));
     return;
   }
+  const commentedIdx = lines.findIndex((l) => /^\s*#\s*metrics_repo\s*=/.test(l));
+  if (commentedIdx >= 0) {
+    lines[commentedIdx] = `metrics_repo = ${repoUrl}`;
+    writeFileSync(userConf, lines.join("\n"));
+    return;
+  }
+  appendFileSync(
+    userConf,
+    FIELD_BLOCKS.metrics_repo.replace("# metrics_repo = git@github.com:you/tu-metrics.git", `metrics_repo = ${repoUrl}`),
+  );
+}
 
+export function runInitConf(paths: ConfigPaths | string = resolveConfigPaths(), defaultsPath: string = DEFAULT_CONFIG_PATH): void {
+  const p = normalizePaths(paths);
+  if (ensureUserConf(p, defaultsPath)) return;
+
+  const configPath = p.userConf;
+  const dp = tildefy(configPath);
   const content = readFileSync(configPath, "utf-8");
   const missing: string[] = [];
   const commented: string[] = [];
@@ -211,12 +262,33 @@ export function runInitConf(configPath: string = CONFIG_PATH, defaultsPath: stri
   }
 }
 
-export function runInitMetrics(configPath: string = CONFIG_PATH, defaultsPath: string = DEFAULT_CONFIG_PATH, tuHome: string = TU_HOME): void {
-  const dp = tildefy(configPath);
-  const config = readConfig(configPath, defaultsPath);
+export function runInitMetrics(
+  paths: ConfigPaths | string = resolveConfigPaths(),
+  defaultsPath: string = DEFAULT_CONFIG_PATH,
+  tuHome: string = TU_HOME,
+  repoUrl?: string,
+): void {
+  const p = normalizePaths(paths);
+  let overrides: { metrics_repo?: string } = {};
+  if (repoUrl !== undefined) {
+    // The URL is written verbatim into tu.conf — reject newline/CR so a
+    // crafted argument cannot inject extra config lines into the file.
+    if (/[\r\n]/.test(repoUrl)) {
+      console.error("Error: repo-url must be a single line (no newline or carriage-return characters).");
+      process.exit(1);
+    }
+    // CLI-flag layer: the typed URL is written into tu.conf and beats an
+    // exported TU_METRICS_REPO for this invocation's clone (CLI > env).
+    ensureUserConf(p, defaultsPath);
+    setMetricsRepoInConf(p.userConf, repoUrl);
+    console.log(`Set metrics_repo = ${repoUrl} in ${tildefy(p.userConf)}`);
+    overrides = { metrics_repo: repoUrl };
+  }
+  const config = readConfig(p, defaultsPath, overrides);
+  const dp = tildefy(p.userConf);
 
   if (!config.metricsRepo) {
-    console.error(`Error: metrics_repo is not set. Add it to ${dp} or set TU_METRICS_REPO.`);
+    console.error(`Error: metrics_repo is not set. Add it to ${dp}, run 'tu init-metrics <repo-url>', or set TU_METRICS_REPO.`);
     process.exit(1);
   }
 
@@ -266,22 +338,44 @@ function formatLastSync(tuHome: string, now: Date): string {
   }
 }
 
+// Printed only when an org.conf exists, directly after the Config: line (or
+// after the single-mode no-config line) — explains why a teammate is in multi
+// mode with no metrics_repo in their own file.
+function printOrgLine(p: ConfigPaths): void {
+  if (p.orgConf !== undefined && existsSync(p.orgConf)) {
+    console.log(`Org config:  ${tildefy(p.orgConf)}`);
+  }
+}
+
 export function runStatus(
-  configPath: string = CONFIG_PATH,
+  paths: ConfigPaths | string = resolveConfigPaths(),
   tuHome: string = TU_HOME,
   now: Date = new Date(),
   defaultsPath: string = DEFAULT_CONFIG_PATH,
 ): void {
-  if (!existsSync(configPath)) {
-    console.log(`Mode:        single (no ${tildefy(configPath)})`);
+  const p = normalizePaths(paths);
+  const orgExists = p.orgConf !== undefined && existsSync(p.orgConf);
+  // Mirror the readConfig selection rule exactly: a file counts as selected
+  // only when it actually reads (an existing-but-unreadable file falls back,
+  // same as readConfig). The legacy fallback's deprecation warning goes to
+  // stderr (emitted at most once per process).
+  const selected = selectUserConfPath(p);
+
+  // No config file at all: the original no-config line. An org-only setup
+  // falls through to the full layout (with the Config: line omitted), so the
+  // teammate sees the resulting mode.
+  if (selected === null && !orgExists) {
+    console.log(`Mode:        single (no ${tildefy(p.userConf)})`);
     return;
   }
 
-  const config = readConfig(configPath, defaultsPath);
+  const config = readConfig(p, defaultsPath);
+  const configLine = selected !== null ? `Config:      ${tildefy(selected)} (v${config.version})` : null;
 
   if (config.mode !== "multi") {
     console.log("Mode:        single");
-    console.log(`Config:      ${tildefy(configPath)} (v${config.version})`);
+    if (configLine !== null) console.log(configLine);
+    printOrgLine(p);
     return;
   }
 
@@ -293,7 +387,8 @@ export function runStatus(
   console.log("Mode:        multi");
   console.log(`User:        ${config.user}`);
   console.log(`Machine:     ${config.machine}`);
-  console.log(`Config:      ${tildefy(configPath)} (v${config.version})`);
+  if (configLine !== null) console.log(configLine);
+  printOrgLine(p);
   console.log(`Metrics:     ${metricsLine}`);
   console.log(`Last sync:   ${formatLastSync(tuHome, now)}`);
   console.log(`Auto-sync:   ${config.autoSync ? "on" : "off"}`);
@@ -527,18 +622,18 @@ export function formatDrySyncReport(report: DrySyncReport): string {
 }
 
 export async function runSync(
-  configPath: string = CONFIG_PATH,
+  paths: ConfigPaths | string = resolveConfigPaths(),
   tuHome: string = TU_HOME,
   defaultsPath: string = DEFAULT_CONFIG_PATH,
   dryRun = false,
 ): Promise<void> {
-  const config = readConfig(configPath, defaultsPath);
+  const config = readConfig(paths, defaultsPath);
   // `tu sync` is the other path that writes day-files, so the reserved-user
   // guard runs here too — otherwise `user = all` would create {metricsDir}/all/.
   assertUserNotReserved(config);
   if (config.mode !== "multi") {
     console.error(
-      "tu sync requires metrics_repo to be set.\nAdd metrics_repo to ~/.tu.conf or set TU_METRICS_REPO.",
+      "tu sync requires metrics_repo to be set.\nAdd metrics_repo to ~/.config/tu/tu.conf, run 'tu init-metrics <repo-url>', or set TU_METRICS_REPO.",
     );
     process.exit(1);
   }
@@ -1487,8 +1582,16 @@ async function main() {
   if (filteredArgs.length > 0) {
     const cmd = filteredArgs[0];
     if (cmd === "init-conf") { runInitConf(); return; }
-    if (cmd === "init-metrics") { runInitMetrics(); return; }
-    if (cmd === "sync") { await runSync(CONFIG_PATH, TU_HOME, DEFAULT_CONFIG_PATH, dryRunFlag); return; }
+    if (cmd === "init-metrics") {
+      if (filteredArgs.length > 2) {
+        console.error("Error: init-metrics takes at most one argument (repo-url)");
+        console.error(SHORT_USAGE);
+        process.exit(EXIT_USAGE);
+      }
+      runInitMetrics(resolveConfigPaths(), DEFAULT_CONFIG_PATH, TU_HOME, filteredArgs[1]);
+      return;
+    }
+    if (cmd === "sync") { await runSync(resolveConfigPaths(), TU_HOME, DEFAULT_CONFIG_PATH, dryRunFlag); return; }
     if (cmd === "status") { runStatus(); return; }
     if (cmd === "update") {
       // Toolkit `update` standard: `tu update --help` MUST print help (advertising

@@ -39,8 +39,9 @@ pivot), `tu cc mh` (Claude Code monthly history), `tu wh` (weekly history).
 
 ### Non-data commands
 
-- `tu init-conf` — scaffold `~/.tu.conf`.
-- `tu init-metrics` — clone the metrics repo (multi mode).
+- `tu init-conf` — scaffold `~/.config/tu/tu.conf`.
+- `tu init-metrics [url]` — clone the metrics repo (multi mode); with `url`, also
+  writes `metrics_repo` into `~/.config/tu/tu.conf` first.
 - `tu sync` — push/pull metrics manually (multi mode).
 - `tu status` — show config and sync state (reports single vs multi mode).
 - `tu update` — update `tu` via Homebrew.
@@ -82,7 +83,10 @@ pivot), `tu cc mh` (Claude Code monthly history), `tu wh` (weekly history).
 
 - **Cached data.** Fetches are cached (~60s TTL). Pass `--fresh` / `-f` to bypass
   the cache and refetch.
-- **Single vs multi mode.** Behavior depends on `~/.tu.conf`: single mode reads
+- **Single vs multi mode.** Behavior depends on `~/.config/tu/tu.conf` (legacy
+  `~/.tu.conf` is read as a fallback with a stderr deprecation warning; an
+  optional `~/.config/tu/org.conf` supplies org-wide defaults under it): single
+  mode reads
   only local data; multi mode aggregates across machines via the metrics repo.
   Run `tu status` to see which mode is active. `--user` / `-u` (including
   `-u all`, which sums every user in the metrics repo from synced data) and

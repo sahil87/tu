@@ -1,0 +1,13 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-08-27T05:13:50Z"}
+{"args":"Conform tu to the shll config-home standard: move config to $HOME/.config/tu/tu.conf with legacy ~/.tu.conf fallback + deprecation warning, add optional org.conf layer, and tu init-metrics [repo-url] that writes metrics_repo before cloning","cmd":"fab-new","event":"command","ts":"2026-08-27T05:13:50Z"}
+{"delta":"+4.1","event":"confidence","score":4.1,"trigger":"calc-score","ts":"2026-08-27T05:17:01Z"}
+{"delta":"-0.1","event":"confidence","score":4,"trigger":"calc-score","ts":"2026-08-27T05:17:28Z"}
+{"cmd":"fab-switch","event":"command","ts":"2026-08-27T05:18:29Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-08-27T05:19:43Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-08-27T05:20:06Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-08-27T05:42:31Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-08-27T05:48:57Z"}
+{"event":"review","result":"passed","ts":"2026-08-27T05:48:57Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-08-27T05:58:36Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-08-27T06:00:34Z"}
+{"event":"review","result":"passed","ts":"2026-08-27T06:26:23Z"}

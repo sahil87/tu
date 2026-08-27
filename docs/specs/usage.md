@@ -75,8 +75,8 @@ Flag parsing strips all flags before positional argument parsing. Unknown positi
 
 | Command | Description |
 |---------|-------------|
-| `tu init-conf` | Scaffold `~/.tu.conf` with all fields; if file exists, appends missing fields and warns about commented-out ones |
-| `tu init-metrics` | Clone the metrics git repo (requires `mode=multi` and `metrics_repo` set in config) |
+| `tu init-conf` | Scaffold `~/.config/tu/tu.conf` with all fields; if file exists, appends missing fields and warns about commented-out ones |
+| `tu init-metrics [repo-url]` | Clone the metrics git repo; with `<repo-url>`, write `metrics_repo` into `~/.config/tu/tu.conf` first (URL beats `TU_METRICS_REPO`). Without `<repo-url>`, requires `metrics_repo` set via org.conf, tu.conf, or `TU_METRICS_REPO` |
 | `tu sync` | Manually push/pull metrics (requires multi mode) |
 | `tu status` | Show current config: mode, user, machine, metrics dir, last sync time, auto-sync state |
 
@@ -96,7 +96,7 @@ Per-subcommand exit codes:
 |---------|-----|-----|-----|
 | `tu [source] [period] [display]` (data commands, incl. `--watch`) | success | unexpected runtime error | unknown argument/tool, bad flag value, incompatible format flags (`--json`/`--csv`/`--md`/`--watch`), bad/inverted `--since`/`--until`, bad `--interval`, missing `-u` value, bad/missing `--metric` value, config `user = all` (reserved), `--dry-run` without `tu sync` |
 | `tu sync` | success | `metrics_repo` unset, clone/sync failure | — |
-| `tu init-metrics` | success | `metrics_repo` unset, metrics dir exists but is not a git repo | — |
+| `tu init-metrics [repo-url]` | success | `metrics_repo` unset, metrics dir exists but is not a git repo, `$HOME` unset | more than one positional argument |
 | `tu update` | success (incl. non-Homebrew install message, "already up to date") | `brew update`/`brew info`/`brew upgrade` failure | — |
 | `tu shell-init [shell]` | success (script emitted; no-arg usage listing) | — | unknown shell |
 | `tu init-conf`, `tu status`, `tu help`, `tu --version` | success | unexpected runtime error | — |
@@ -169,21 +169,30 @@ In watch mode, cost cells show up/down arrows (green up-arrow when cost increase
 
 ## Multi-Machine Mode
 
-### Configuration (`~/.tu.conf`)
+### Configuration (`~/.config/tu/tu.conf`)
 
 INI-style key=value file (lines starting with `#` are comments). Fields:
 
 | Field | Default | Description |
 |-------|---------|-------------|
 | `version` | 2 | Config schema version |
-| `mode` | `single` | `single` or `multi` |
 | `metrics_repo` | — | Git repo URL for metrics storage (required for multi) |
 | `metrics_dir` | `~/.tu/metrics_repo` | Local clone path |
 | `machine` | `$HOSTNAME` | Machine label |
 | `user` | `$USER` | User/profile label |
 | `auto_sync` | `true` | Whether auto-sync is enabled |
 
-A defaults file (`tu.default.conf`) provides base values; user config overrides. Sentinel values `$HOSTNAME` and `$USER` are expanded at runtime. Supports a `WEAVER_DEV` env var that switches the defaults file to `tu.default.weaver.conf`.
+The config path is built from `$HOME` only (`$HOME/.config/tu/tu.conf`) — no `XDG_CONFIG_HOME`, no other env var can move it; an unset `$HOME` is an actionable error on config-reading commands. Values layer in exactly this order (later wins, no per-key exceptions):
+
+```
+tu.default.conf  <  ~/.config/tu/org.conf  <  ~/.config/tu/tu.conf  <  TU_METRICS_REPO  <  CLI argument
+ (shipped)          (optional org layer)      (personal overrides)     (metrics_repo      (e.g. the
+                                                                       only)               init-metrics URL)
+```
+
+- `~/.config/tu/org.conf` is an optional org-wide layer (same format): an org's dotfiles/MDM/bootstrap drops it in and every machine runs in multi mode with zero per-user edits; absence is silent.
+- A legacy `~/.tu.conf` is read only when `~/.config/tu/tu.conf` does not exist, with a one-line deprecation warning on stderr. It is never moved or deleted by tu; creating the new file via `tu init-conf` / `tu init-metrics <url>` seeds it from the legacy contents.
+- A defaults file (`tu.default.conf`) provides base values; user config overrides. Sentinel values `$HOSTNAME` and `$USER` are expanded at runtime.
 
 ### Metrics Repo Layout
 

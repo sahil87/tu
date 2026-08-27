@@ -279,13 +279,35 @@ Incompatible with `--watch` (exits with error).
 
 ```
 Mode:        single
-Config:      ~/.tu.conf (v2)
+Config:      ~/.config/tu/tu.conf (v2)
 ```
 
 Or when no config file exists:
 
 ```
-Mode:        single (no ~/.tu.conf)
+Mode:        single (no ~/.config/tu/tu.conf)
+```
+
+When a legacy `~/.tu.conf` is the file actually read (fallback), the `Config:` line shows `~/.tu.conf` instead, and a one-line deprecation warning goes to stderr.
+
+When an org config exists, an `Org config:` line prints directly after the `Config:` line (in both single and multi layouts):
+
+```
+Mode:        single
+Config:      ~/.config/tu/tu.conf (v2)
+Org config:  ~/.config/tu/org.conf
+```
+
+For an org-only setup (no personal or legacy file) the `Config:` line is omitted:
+
+```
+Mode:        multi
+User:        sahil
+Machine:     my-macbook
+Org config:  ~/.config/tu/org.conf
+Metrics:     ~/.tu/metrics_repo
+Last sync:   5m ago (2026-03-06T14:23:45.123Z)
+Auto-sync:   on
 ```
 
 ### Multi mode
@@ -294,7 +316,7 @@ Mode:        single (no ~/.tu.conf)
 Mode:        multi
 User:        sahil
 Machine:     my-macbook
-Config:      ~/.tu.conf (v2)
+Config:      ~/.config/tu/tu.conf (v2)
 Metrics:     ~/.tu/metrics_repo
 Last sync:   5m ago (2026-03-06T14:23:45.123Z)
 Auto-sync:   on
@@ -326,8 +348,8 @@ Examples:
   tu m                 This month's cost, all tools
 
 Setup:
-  tu init-conf         Scaffold ~/.tu.conf
-  tu init-metrics      Clone metrics repo
+  tu init-conf         Scaffold ~/.config/tu/tu.conf
+  tu init-metrics [url] Clone metrics repo (url also sets metrics_repo)
   tu sync              Push/pull metrics manually
   tu status            Show config and sync state
 

@@ -25,7 +25,7 @@ CLI tool that aggregates cost/usage data from multiple AI coding assistant tools
 | `types.ts` | Core data interfaces (`UsageEntry`, `UsageTotals`, `ToolConfig`) |
 | `fetcher.ts` | Tool execution, JSON parsing, caching, data aggregation |
 | `formatter.ts` | Table rendering (print to stdout, render to string[]) |
-| `config.ts` | Config file reading (`~/.tu.conf`) |
+| `config.ts` | Config file reading (`~/.config/tu/tu.conf`, org.conf layer) |
 | `sync.ts` | Multi-machine metrics sync via git repo |
 | `watch.ts` | Live polling mode with terminal refresh |
 | `rain.ts` | Matrix rain animation for watch mode |

@@ -62,17 +62,27 @@ Open a new shell (or `source` the relevant rc file) for completions to take effe
 
 By default, `tu` runs in **single mode**: it reads `ccusage` output from the local machine only and shows you that machine's costs. No configuration is required.
 
-**Multi mode** aggregates usage across several machines by pushing and pulling metrics through a shared git repository. Enable it by pointing `tu` at a metrics repo, then cloning it locally. The steps:
+**Multi mode** aggregates usage across several machines by pushing and pulling metrics through a shared git repository. Enable it by pointing `tu` at a metrics repo, then cloning it locally.
 
-### 1. Scaffold the config
+### 1. Point tu at your metrics repo and clone it (one-liner)
+
+```bash
+tu init-metrics git@github.com:you/tu-metrics.git
+```
+
+This writes `metrics_repo = <url>` into `~/.config/tu/tu.conf` (creating the file from the scaffold if needed) and clones the repo into `metrics_dir` (defaulting to `~/.tu/metrics_repo`). The URL you type wins over an exported `TU_METRICS_REPO` for that invocation.
+
+**Alternative — edit the config by hand:**
 
 ```bash
 tu init-conf
 ```
 
-This creates `~/.tu.conf` (or fills in any missing fields if it already exists). Then open `~/.tu.conf` and edit it.
+This creates `~/.config/tu/tu.conf` (or fills in any missing fields if it already exists). Then open `~/.config/tu/tu.conf` and set `metrics_repo`:
 
-### 2. Edit `~/.tu.conf`
+```ini
+metrics_repo = git@github.com:you/tu-metrics.git
+```
 
 The config fields are:
 
@@ -85,21 +95,25 @@ The config fields are:
 | `user` | Optional profile name that groups your machines in the metrics repo. | system username |
 | `auto_sync` | Note: this no longer auto-triggers a sync. Use `tu <cmd> --sync` to sync before a fetch instead. | `true` |
 
-At minimum, set `metrics_repo` (or export `TU_METRICS_REPO`) to a git repo you control, for example:
+Then clone with `tu init-metrics` (no argument). If `metrics_repo` isn't set anywhere, `tu` tells you to add it to `~/.config/tu/tu.conf`, run `tu init-metrics <repo-url>`, or set `TU_METRICS_REPO`.
 
-```ini
-metrics_repo = git@github.com:you/tu-metrics.git
-```
+### 2. Config locations & precedence
 
-### 3. Clone the metrics repo
+`tu` reads its config from a fixed root built from `$HOME` only — no `XDG_CONFIG_HOME`, no other env var can move it. Values stack in exactly this order (later wins, no per-key exceptions):
 
-```bash
-tu init-metrics
-```
+| Layer | File / source | Purpose |
+|-------|---------------|---------|
+| 1 | `tu.default.conf` (shipped with tu) | Base defaults |
+| 2 | `~/.config/tu/org.conf` (optional) | Org-wide defaults — dropped in by an org's dotfiles/MDM/bootstrap; silent when absent |
+| 3 | `~/.config/tu/tu.conf` | Personal overrides (created by `tu init-conf` / `tu init-metrics <url>`) |
+| 4 | `TU_METRICS_REPO` env var | Deployment bootstrap for `metrics_repo` only |
+| 5 | CLI argument | e.g. the `tu init-metrics <repo-url>` argument |
 
-Clones `metrics_repo` into `metrics_dir` (defaulting to `~/.tu/metrics_repo`). If `metrics_repo` isn't set, `tu` tells you to add it to `~/.tu.conf` or set `TU_METRICS_REPO`.
+**Team setup:** an org ships `~/.config/tu/org.conf` with `metrics_repo = …` and every employee's `tu` is in multi mode with zero per-user edits; personal `tu.conf` values still win over the org layer.
 
-### 4. Sync metrics
+**Legacy fallback:** an old `~/.tu.conf` is still read when `~/.config/tu/tu.conf` does not exist, with a one-line deprecation warning on stderr. Move it when convenient (`tu init-conf` or `tu init-metrics <url>` seeds the new file from it automatically); the legacy file is never moved or deleted by tu.
+
+### 3. Sync metrics
 
 ```bash
 tu sync
@@ -107,12 +121,12 @@ tu sync
 
 Pushes your local metrics up and pulls everyone else's down. Because `auto_sync` no longer triggers automatically, run `tu sync` (or pass `--sync` to a data command, e.g. `tu --sync`) whenever you want fresh cross-machine data before a fetch. To preview what a sync would write, commit, and push without changing anything, run `tu sync --dry-run`.
 
-### 5. Check status
+### 4. Check status
 
 ```bash
 tu status
 ```
 
-Shows your current config and sync state — which machine and user you're recording as, where the metrics repo lives, and whether it's been cloned yet.
+Shows your current config and sync state — which machine and user you're recording as, where the metrics repo lives, and whether it's been cloned yet. When an `org.conf` is in play it also prints an `Org config:` line so you can see where the org defaults come from.
 
-Repeat steps 1–4 on each machine you want to include (pointing them all at the same `metrics_repo`), and `tu` will aggregate their costs together in multi mode.
+Repeat step 1 on each machine you want to include (pointing them all at the same `metrics_repo`), and `tu` will aggregate their costs together in multi mode.

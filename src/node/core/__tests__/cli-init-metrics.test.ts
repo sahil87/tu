@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
 
 import { runInitMetrics, checkMetricsDirGuard, removeCloneMarker } from "../cli.js";
 
@@ -408,5 +410,176 @@ describe("removeCloneMarker", () => {
     assert.ok(!existsSync(join(tuHome, ".clone-failed")));
     removeCloneMarker(tuHome);
     assert.ok(!existsSync(join(tuHome, ".clone-failed")));
+  });
+});
+
+
+describe("runInitMetrics with a repo-url argument", () => {
+  function makePaths(dir: string) {
+    return {
+      configDir: join(dir, ".config", "tu"),
+      userConf: join(dir, ".config", "tu", "tu.conf"),
+      orgConf: join(dir, ".config", "tu", "org.conf"),
+      legacyConf: join(dir, ".tu.conf"),
+    };
+  }
+
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+    writeFileSync(defaultsPath(), STOCK_DEFAULTS);
+  });
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it("creates tu.conf from defaults, writes metrics_repo, and clones", () => {
+    const p = makePaths(TEST_DIR);
+    const metricsDir = join(TEST_DIR, "metrics-clone");
+    writeFileSync(defaultsPath(), `version = 2\nmetrics_dir = ${metricsDir}\nmachine = $HOSTNAME\nuser = $USER\nauto_sync = true\n`);
+    const bareRepo = join(TEST_DIR, "bare-repo.git");
+    execSync(`git init --bare "${bareRepo}"`, { stdio: "pipe" });
+
+    const logs: string[] = [];
+    const orig = console.log;
+    console.log = (...args: unknown[]) => logs.push(String(args[0]));
+    try {
+      runInitMetrics(p, defaultsPath(), TEST_DIR, bareRepo);
+      assert.ok(existsSync(p.userConf), "tu.conf should be created");
+      const content = readFileSync(p.userConf, "utf-8");
+      assert.ok(content.includes(`metrics_repo = ${bareRepo}`), `conf content:\n${content}`);
+      assert.ok(logs.some((l) => l.includes(`Set metrics_repo = ${bareRepo}`)), `logs: ${logs}`);
+      assert.ok(existsSync(metricsDir), "metricsDir should exist after clone");
+      assert.ok(logs.some((l) => l.includes("Cloned")));
+    } finally {
+      console.log = orig;
+    }
+  });
+
+  it("replaces an existing active metrics_repo line in place", () => {
+    const p = makePaths(TEST_DIR);
+    mkdirSync(p.configDir, { recursive: true });
+    const metricsDir = join(TEST_DIR, "metrics-replace");
+    mkdirSync(metricsDir, { recursive: true });
+    execSync(`git init "${metricsDir}"`, { stdio: "pipe" });
+    writeFileSync(p.userConf, `version = 2\nmetrics_repo = git@example.com:old.git\nmetrics_dir = ${metricsDir}\n`);
+    const bareRepo = join(TEST_DIR, "bare-repo.git");
+    execSync(`git init --bare "${bareRepo}"`, { stdio: "pipe" });
+
+    const orig = console.log;
+    console.log = () => {};
+    try {
+      runInitMetrics(p, defaultsPath(), TEST_DIR, bareRepo);
+      const lines = readFileSync(p.userConf, "utf-8").split("\n");
+      const active = lines.filter((l) => /^metrics_repo\s*=/.test(l));
+      assert.equal(active.length, 1);
+      assert.ok(active[0].includes(bareRepo));
+    } finally {
+      console.log = orig;
+    }
+  });
+
+  it("replaces the scaffold's commented # metrics_repo line instead of appending", () => {
+    const p = makePaths(TEST_DIR);
+    mkdirSync(p.configDir, { recursive: true });
+    const metricsDir = join(TEST_DIR, "metrics-commented");
+    mkdirSync(metricsDir, { recursive: true });
+    execSync(`git init "${metricsDir}"`, { stdio: "pipe" });
+    writeFileSync(p.userConf, `# Git repo URL for metrics storage\n# metrics_repo = git@github.com:you/tu-metrics.git\nversion = 2\nmetrics_dir = ${metricsDir}\n`);
+    const bareRepo = join(TEST_DIR, "bare-repo.git");
+    execSync(`git init --bare "${bareRepo}"`, { stdio: "pipe" });
+
+    const orig = console.log;
+    console.log = () => {};
+    try {
+      runInitMetrics(p, defaultsPath(), TEST_DIR, bareRepo);
+      const lines = readFileSync(p.userConf, "utf-8").split("\n");
+      const active = lines.filter((l) => /^metrics_repo\s*=/.test(l));
+      const commented = lines.filter((l) => /^\s*#\s*metrics_repo\s*=/.test(l));
+      assert.equal(active.length, 1);
+      assert.equal(commented.length, 0);
+      assert.ok(active[0].includes(bareRepo));
+    } finally {
+      console.log = orig;
+    }
+  });
+
+  it("prints Already initialized (exit 0) after the config write when metricsDir is a git repo", () => {
+    const p = makePaths(TEST_DIR);
+    mkdirSync(p.configDir, { recursive: true });
+    const metricsDir = join(TEST_DIR, "metrics-idem");
+    mkdirSync(metricsDir, { recursive: true });
+    execSync(`git init "${metricsDir}"`, { stdio: "pipe" });
+    writeFileSync(p.userConf, `version = 2\nmetrics_repo = git@example.com:old.git\nmetrics_dir = ${metricsDir}\n`);
+    const bareRepo = join(TEST_DIR, "bare-repo.git");
+    execSync(`git init --bare "${bareRepo}"`, { stdio: "pipe" });
+
+    const logs: string[] = [];
+    const orig = console.log;
+    console.log = (...args: unknown[]) => logs.push(String(args[0]));
+    try {
+      runInitMetrics(p, defaultsPath(), TEST_DIR, bareRepo);
+      assert.ok(logs.some((l) => l.includes(`Set metrics_repo = ${bareRepo}`)));
+      assert.ok(logs.some((l) => l.includes("Already initialized")));
+      const content = readFileSync(p.userConf, "utf-8");
+      assert.ok(content.includes(`metrics_repo = ${bareRepo}`));
+    } finally {
+      console.log = orig;
+    }
+  });
+
+  it("the URL argument beats an exported TU_METRICS_REPO (CLI > env)", () => {
+    const p = makePaths(TEST_DIR);
+    const metricsDir = join(TEST_DIR, "metrics-env");
+    writeFileSync(defaultsPath(), `version = 2\nmetrics_dir = ${metricsDir}\nmachine = $HOSTNAME\nuser = $USER\nauto_sync = true\n`);
+    const bareRepo = join(TEST_DIR, "bare-repo.git");
+    execSync(`git init --bare "${bareRepo}"`, { stdio: "pipe" });
+    const decoyRepo = join(TEST_DIR, "decoy-repo.git");
+    execSync(`git init --bare "${decoyRepo}"`, { stdio: "pipe" });
+
+    const origEnv = process.env.TU_METRICS_REPO;
+    process.env.TU_METRICS_REPO = decoyRepo;
+    const logs: string[] = [];
+    const orig = console.log;
+    console.log = (...args: unknown[]) => logs.push(String(args[0]));
+    try {
+      runInitMetrics(p, defaultsPath(), TEST_DIR, bareRepo);
+      assert.ok(logs.some((l) => l.includes(`Cloned ${bareRepo}`)), `logs: ${logs}`);
+      const remote = execSync(`git -C "${metricsDir}" remote get-url origin`, { encoding: "utf-8" }).trim();
+      assert.equal(remote, bareRepo);
+    } finally {
+      console.log = orig;
+      if (origEnv === undefined) delete process.env.TU_METRICS_REPO;
+      else process.env.TU_METRICS_REPO = origEnv;
+    }
+  });
+
+  it("seeds a newly created tu.conf from a legacy ~/.tu.conf", () => {
+    const p = makePaths(TEST_DIR);
+    writeFileSync(p.legacyConf, `version = 2\nmetrics_dir = ${join(TEST_DIR, "legacy-metrics")}\nuser = someone\n`);
+    const bareRepo = join(TEST_DIR, "bare-repo.git");
+    execSync(`git init --bare "${bareRepo}"`, { stdio: "pipe" });
+
+    const logs: string[] = [];
+    const orig = console.log;
+    console.log = (...args: unknown[]) => logs.push(String(args[0]));
+    try {
+      runInitMetrics(p, defaultsPath(), TEST_DIR, bareRepo);
+      assert.ok(logs.some((l) => l.includes("Copied") && l.includes(".tu.conf")));
+      const content = readFileSync(p.userConf, "utf-8");
+      assert.ok(content.includes("user = someone"), "legacy fields should be seeded");
+      assert.ok(content.includes(`metrics_repo = ${bareRepo}`), "URL should be written into the seeded file");
+    } finally {
+      console.log = orig;
+    }
+  });
+});
+
+describe("tu init-metrics argument validation (subprocess)", () => {
+  const __test_dirname = dirname(fileURLToPath(import.meta.url));
+  const CLI = join(__test_dirname, "..", "cli.ts");
+
+  it("two positional args exit 2 with the short usage on stderr", () => {
+    const r = spawnSync("npx", ["tsx", CLI, "init-metrics", "a", "b"], { encoding: "utf-8" });
+    assert.equal(r.status, 2, `stderr: ${r.stderr}`);
+    assert.ok(r.stderr.includes("at most one argument"), `stderr: ${r.stderr}`);
+    assert.ok(r.stderr.includes("Usage: tu [source] [period] [display]"), `stderr: ${r.stderr}`);
   });
 });

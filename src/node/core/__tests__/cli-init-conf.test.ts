@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, mkdirSync, rmSync, readFileSync } from "node:fs";
+import { writeFileSync, mkdirSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -167,6 +167,73 @@ describe("runInitConf", () => {
       runInitConf(path);
       const second = readFileSync(path, "utf-8");
       assert.equal(first, second);
+    } finally {
+      console.log = orig;
+    }
+  });
+});
+
+
+describe("runInitConf with ConfigPaths (new config home)", () => {
+  function makePaths(dir: string) {
+    return {
+      configDir: join(dir, ".config", "tu"),
+      userConf: join(dir, ".config", "tu", "tu.conf"),
+      orgConf: join(dir, ".config", "tu", "org.conf"),
+      legacyConf: join(dir, ".tu.conf"),
+    };
+  }
+
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it("creates the nested ~/.config/tu/tu.conf path (mkdir recursive)", () => {
+    const p = makePaths(TEST_DIR);
+    const logs: string[] = [];
+    const orig = console.log;
+    console.log = (...args: unknown[]) => logs.push(String(args[0]));
+    try {
+      runInitConf(p);
+      assert.ok(existsSync(p.userConf));
+      const content = readFileSync(p.userConf, "utf-8");
+      const defaults = readFileSync(DEFAULT_CONFIG_PATH, "utf-8");
+      assert.equal(content, defaults);
+      assert.ok(logs.some((l) => l.includes("Created") && l.includes(".config/tu/tu.conf")));
+    } finally {
+      console.log = orig;
+    }
+  });
+
+  it("seeds the new file from a legacy ~/.tu.conf with a Copied note", () => {
+    const p = makePaths(TEST_DIR);
+    writeFileSync(p.legacyConf, "version = 2\nuser = someone\nmachine = my-mac\n");
+    const logs: string[] = [];
+    const orig = console.log;
+    console.log = (...args: unknown[]) => logs.push(String(args[0]));
+    try {
+      runInitConf(p);
+      const content = readFileSync(p.userConf, "utf-8");
+      assert.ok(content.includes("user = someone"), "legacy fields should be seeded");
+      assert.ok(content.includes("machine = my-mac"));
+      assert.ok(logs.some((l) => l.includes("Copied") && l.includes(".tu.conf")));
+    } finally {
+      console.log = orig;
+    }
+  });
+
+  it("does not seed from legacy when the new file already exists", () => {
+    const p = makePaths(TEST_DIR);
+    mkdirSync(p.configDir, { recursive: true });
+    writeFileSync(p.userConf, "version = 2\nmetrics_repo = git@example.com:repo.git\nmetrics_dir = /data\nmachine = m\nuser = u\nauto_sync = true\n");
+    writeFileSync(p.legacyConf, "user = legacy-user\n");
+    const logs: string[] = [];
+    const orig = console.log;
+    console.log = (...args: unknown[]) => logs.push(String(args[0]));
+    try {
+      runInitConf(p);
+      const content = readFileSync(p.userConf, "utf-8");
+      assert.ok(!content.includes("legacy-user"));
+      assert.ok(logs.some((l) => l.includes("already complete")));
     } finally {
       console.log = orig;
     }

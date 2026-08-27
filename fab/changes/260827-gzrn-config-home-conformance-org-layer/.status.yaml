@@ -1,0 +1,57 @@
+id: gzrn
+name: 260827-gzrn-config-home-conformance-org-layer
+created: 2026-08-27T05:13:50Z
+created_by: sahil-noon
+change_type: feat
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
+plan:
+    generated: true
+    task_count: 16
+    acceptance_count: 27
+    acceptance_completed: 27
+confidence:
+    certain: 10
+    confident: 2
+    tentative: 1
+    unresolved: 0
+    score: 4.0
+    fuzzy: true
+    dimensions:
+        signal: 70.0
+        reversibility: 83.8
+        competence: 83.5
+        disambiguation: 82.3
+stage_metrics:
+    intake: {started_at: "2026-08-27T05:13:50Z", driver: fab-new, iterations: 1, completed_at: "2026-08-27T05:20:06Z"}
+    apply: {started_at: "2026-08-27T05:20:06Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-27T05:42:31Z"}
+    review: {started_at: "2026-08-27T05:42:31Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-27T05:48:57Z"}
+    hydrate: {started_at: "2026-08-27T05:48:57Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-27T05:58:36Z"}
+    ship: {started_at: "2026-08-27T05:58:36Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-27T06:00:34Z"}
+    review-pr: {started_at: "2026-08-27T06:00:34Z", driver: git-pr, iterations: 1, completed_at: "2026-08-27T06:26:23Z"}
+prs:
+    - https://github.com/sahil87/tu/pull/72
+change_type_source: explicit
+true_impact:
+    added: 1374
+    deleted: 98
+    net: 1276
+    excluding:
+        added: 678
+        deleted: 47
+        net: 631
+    tests:
+        added: 471
+        deleted: 6
+        net: 465
+    computed_at: "2026-08-27T06:00:34Z"
+    computed_at_stage: ship
+summary: Config root moved to ~/.config/tu/tu.conf (/home/sahil-only lazy resolution, legacy ~/.tu.conf fallback with deprecation warning), added optional org.conf layer (defaults < org < user < env < CLI), tu init-metrics [repo-url] writes metrics_repo then clones, status shows the selected path plus an optional Org config line
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-08-27T06:26:23Z
