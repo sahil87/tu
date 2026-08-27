@@ -20,8 +20,8 @@ _tu_complete() {
   local sources="cc codex co oc gemini gem copilot cop kimi ki all"
   local periods="d w m daily weekly monthly"
   local display="h history dh wh mh"
-  local long_flags="--json --csv --md --since --until --full --metric --sync --dry-run --fresh --watch --interval --user --by-machine --skip-brew-update --no-color --no-rain --version --help"
-  local short_flags="-f -w -i -u -s -j -v -V -h"
+  local long_flags="--json --csv --md --since --until --full --metric --total --sync --dry-run --fresh --watch --interval --user --by-machine --skip-brew-update --no-color --no-rain --version --help"
+  local short_flags="-f -w -i -u -s -j -t -v -V -h"
   local shells="bash zsh fish"
 
   # Argument to --interval/--user/--since/--until takes a value; no completion
@@ -78,8 +78,8 @@ _tu() {
   sources=(cc codex co oc gemini gem copilot cop kimi ki all)
   periods=(d w m daily weekly monthly)
   display=(h history dh wh mh)
-  long_flags=(--json --csv --md --since --until --full --metric --sync --dry-run --fresh --watch --interval --user --by-machine --skip-brew-update --no-color --no-rain --version --help)
-  short_flags=(-f -w -i -u -s -j -v -V -h)
+  long_flags=(--json --csv --md --since --until --full --metric --total --sync --dry-run --fresh --watch --interval --user --by-machine --skip-brew-update --no-color --no-rain --version --help)
+  short_flags=(-f -w -i -u -s -j -t -v -V -h)
   shells=(bash zsh fish)
 
   local curcontext="$curcontext" state line
@@ -97,6 +97,8 @@ _tu() {
     '--until[only include entries on/before date]:date:' \\
     '--full[show full history (no 3-month cap)]' \\
     '--metric[scale history bars by cost or tokens]:metric:(cost tokens)' \\
+    '--total[all-tools history as Date + total + bar]' \\
+    '-t[all-tools history as Date + total + bar]' \\
     '--sync[sync metrics before fetch]' \\
     '--dry-run[preview sync without writing]' \\
     '--fresh[bypass cache]' \\
@@ -199,6 +201,7 @@ complete -c tu -l since -r -d 'only include entries on/after date'
 complete -c tu -l until -r -d 'only include entries on/before date'
 complete -c tu -l full -d 'show full history (no 3-month cap)'
 complete -c tu -l metric -r -a 'cost tokens' -d 'scale history bars by cost or tokens'
+complete -c tu -l total -d 'all-tools history as Date + total + bar'
 complete -c tu -l sync -d 'sync metrics before fetch'
 complete -c tu -l dry-run -d 'preview sync without writing'
 complete -c tu -l fresh -d 'bypass cache'
@@ -217,6 +220,7 @@ complete -c tu -s f -d 'bypass cache'
 complete -c tu -s w -d 'persistent polling mode'
 complete -c tu -s i -r -d 'poll interval in seconds'
 complete -c tu -s u -r -d 'show usage for a specific user'
+complete -c tu -s t -d 'all-tools history as Date + total + bar'
 complete -c tu -s s -r -d 'only include entries on/after date'
 complete -c tu -s j -d 'emit JSON'
 complete -c tu -s v -d 'print version'

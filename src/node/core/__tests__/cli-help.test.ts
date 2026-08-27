@@ -112,3 +112,10 @@ describe("FULL_HELP: -u all and --metric", () => {
     assert.ok(metricLine !== undefined && metricLine.includes("'cost'") && metricLine.includes("'tokens'"), metricLine ?? "no --metric line");
   });
 });
+
+describe("FULL_HELP: --total / -t", () => {
+  it("documents the collapsed all-tools history flag", () => {
+    const line = FULL_HELP.split("\n").find((l) => l.includes("--total / -t"));
+    assert.ok(line !== undefined && line.includes("per-tool"), line ?? "no --total line");
+  });
+});

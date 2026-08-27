@@ -101,6 +101,18 @@ describe("exit codes: -u all and the reserved username guard", () => {
     assert.ok(r.stderr.includes('config user "all" is reserved'), `stderr: ${r.stderr}`);
   });
 
+  it("-t on a snapshot display warns and exits 0", () => {
+    const r = runCliWithConf("", ["-t", "--no-color"]);
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+    assert.ok(r.stderr.includes("--total applies to all-tools history"), `stderr: ${r.stderr}`);
+  });
+
+  it("-t on a single-tool history warns and exits 0", () => {
+    const r = runCliWithConf("", ["cc", "mh", "-t", "--no-color"]);
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+    assert.ok(r.stderr.includes("--total applies to all-tools history"), `stderr: ${r.stderr}`);
+  });
+
   it("`tu sync` with config user = all is rejected with exit 2 before any write", () => {
     const r = runCliWithConf("user = all\n", ["sync"]);
     assert.equal(r.status, 2);

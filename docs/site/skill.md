@@ -96,4 +96,6 @@ pivot), `tu cc mh` (Claude Code monthly history), `tu wh` (weekly history).
   (`mh`) is never capped.
 - **History-only flags.** `--since` / `-s` and `--until` bound a history window
   (`YYYY-MM-DD` or `YYYYMMDD`); `--metric tokens` scales the history bars by
-  token volume instead of cost. On a snapshot display they warn and are ignored.
+  token volume instead of cost; `--total` / `-t` collapses the all-tools history
+  to date + total + bar (no per-tool columns). On a snapshot display they warn
+  and are ignored (`--total` also warns on single-tool sources).

@@ -13,6 +13,7 @@ export interface FormatOptions {
   capActive?: boolean;  // implicit 3-month history cap active → append "last 3 months" heading hint
   metric?: BarMetric;  // history bar scale; absent ≡ "cost"
   machineLegend?: string;  // legend noun for the machineCosts columns; absent ≡ "Machines" ("Users" under -u all)
+  total?: boolean;  // all-tools history: Date + total + bar only, no per-tool columns; absent ≡ false
 }
 
 // Build the parenthetical that follows a history title, e.g. "(daily)" or
@@ -91,6 +92,8 @@ const MIN_BAR_AREA = 10;
 const MAX_BAR_WIDTH = 30;
 const GUTTER = 3; // " | " separator between main table and cost area
 const COST_WIDTH = 9; // fits $9,999.99 — fmtCost renders thousands separators
+// Value-cell width for the collapsed (--total) pivot under --metric tokens: team-level token totals run to 11–15 chars with separators.
+const TOKENS_COL_WIDTH = 15;
 // Floor for a variable-width cross-tool pivot column (renderTotalHistory): each
 // column is sized to its tool name but never narrower than this. 9 chars holds
 // a typical cost cell ($9,999.99 is 9; $99,999.99 — a five-figure daily total —
@@ -636,9 +639,17 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
   // crowds out the bar chart. Falls back to the full registry list when every
   // tool is zero (defensive; cannot normally occur with nonempty labels).
   const toolNames = nonzeroCostTools(allToolNames, costMap, labels);
+  // --total: collapse to Date + value + bar. Emptying the visible tool list lets
+  // the per-column-width machinery below produce the collapsed shape; only the
+  // value cell, the bar (solid vs stacked), the Total row and the legend branch.
+  const collapsed = opts?.total === true;
+  const visibleTools = collapsed ? [] : toolNames;
   // Segment colors for the stacked bar, assigned in visible column order
   // (5th+ tool falls back to uncolored segments).
   const barPalette = stackedBarPalette(toolNames.length);
+  // Collapsed token totals run to 11–14 digits, so the value cell widens; every
+  // other shape keeps the cost width so existing output is byte-identical.
+  const valueWidth = collapsed && metric === "tokens" ? TOKENS_COL_WIDTH : COST_WIDTH;
 
   const D = PIVOT_DATE_WIDTH;
   // Variable per-tool column width: each tool column is sized to its name, with
@@ -646,7 +657,7 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
   // Fixed-width columns overflowed 80-col terminals once the pivot grew to 5
   // tools; sizing per column keeps the full data row as narrow as the cost
   // cells allow (96 cols at 6 tools, before zero-column omission).
-  const toolWidths = toolNames.map((name) => Math.max(name.length, MIN_TOOL_COL_WIDTH));
+  const toolWidths = visibleTools.map((name) => Math.max(name.length, MIN_TOOL_COL_WIDTH));
   // Date + each tool column + the " | " (3-char) separator before each column.
   const tableWidth = D + toolWidths.reduce((sum, w) => sum + w + 3, 0);
   const width = termWidth ?? process.stdout.columns ?? 80;
@@ -655,18 +666,19 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
   // cell before the bar, so reserve one more char when prevCosts is set —
   // otherwise the max-cost row measures width+1 and wraps across the bars band.
   const indicatorReserve = opts?.prevCosts ? 1 : 0;
-  const barWidth = Math.min(width - tableWidth - GUTTER - COST_WIDTH - 1 - indicatorReserve, MAX_BAR_WIDTH);
+  const barWidth = Math.min(width - tableWidth - GUTTER - valueWidth - 1 - indicatorReserve, MAX_BAR_WIDTH);
   const showBars = barWidth >= MIN_BAR_AREA;
 
   const row = (...cols: string[]) => cols.map((c, i) => (i === 0 ? c.padEnd(D) : c.padStart(toolWidths[i - 1]))).join(" | ");
   const colorRow = (cols: string[], colorFn: (s: string) => string) =>
     cols.map((c, i) => colorFn(i === 0 ? c.padEnd(D) : c.padStart(toolWidths[i - 1]))).join(" | ");
   const divStr = [D, ...toolWidths].map((w) => "─".repeat(w)).join("─|─");
-  const costDiv = "─|─" + "─".repeat(COST_WIDTH);
+  const costDiv = "─|─" + "─".repeat(valueWidth);
   const barDiv = showBars ? "─" + "─".repeat(barWidth) : "";
 
-  const costHeader = " | " + boldCyan("Cost".padStart(COST_WIDTH));
-  lines.push(colorRow(["Date", ...toolNames], boldCyan) + costHeader);
+  const valueHeader = collapsed && metric === "tokens" ? "Tokens" : "Cost";
+  const costHeader = " | " + boldCyan(valueHeader.padStart(valueWidth));
+  lines.push(colorRow(["Date", ...visibleTools], boldCyan) + costHeader);
   lines.push(dim(divStr + costDiv + barDiv));
 
   // Pre-compute per-row cost (cells/Cost column) and bar totals (bar scaling)
@@ -715,22 +727,29 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
       : period === "daily" && isWeekendLabel(r.label)
         ? dim(r.label.padEnd(D))
         : r.label;
-    const rowStr = row(labelCell, ...r.cells);
-    const costBase = " | " + fmtCost(r.rowCost).padStart(COST_WIDTH);
-    const indicator = deltaIndicator(r.rowCost, `total:${r.label}`, prevCosts, true);
-    const bar = showBars ? renderStackedScaledBar(r.barTotal, r.toolBars, barPalette, scale, barWidth) : "";
+    const rowStr = collapsed ? row(labelCell) : row(labelCell, ...r.cells);
+    const costBase = " | " + (collapsed ? fmtMetric(r.barTotal, metric) : fmtCost(r.rowCost)).padStart(valueWidth);
+    // The watch-mode prevCosts map is cost-denominated, so a token-valued
+    // collapsed cell gets no delta arrow (a cost delta beside a token count
+    // would mislead).
+    const indicator = collapsed && metric === "tokens" ? "" : deltaIndicator(r.rowCost, `total:${r.label}`, prevCosts, true);
+    const bar = !showBars ? "" : collapsed
+      ? renderScaledBar(r.barTotal, scale, barWidth)
+      : renderStackedScaledBar(r.barTotal, r.toolBars, barPalette, scale, barWidth);
     lines.push(rowStr + costBase + indicator + bar);
   }
 
   if (labels.length > 1) {
     lines.push(dim(divStr + costDiv + barDiv));
-    const sumCells = toolNames.map((t) => fmtCost(toolSums.get(t) || 0));
+    const sumCells = visibleTools.map((t) => fmtCost(toolSums.get(t) || 0));
     const totalRow = colorRow(["Total", ...sumCells], boldWhite);
-    const totalCost = " | " + boldWhite(fmtCost(grandTotal).padStart(COST_WIDTH));
+    const grandBar = rowData.reduce((sum, r) => sum + r.barTotal, 0);
+    const totalCost = " | " + boldWhite((collapsed ? fmtMetric(grandBar, metric) : fmtCost(grandTotal)).padStart(valueWidth));
     lines.push(totalRow + totalCost);
     // Legend: one colored swatch per visible tool, only when stacked bars are
-    // actually distinguishable (bars shown, ≥2 tools, color enabled).
-    const legend = showBars && toolNames.length >= 2 && !colorDisabled()
+    // actually distinguishable (bars shown, ≥2 tools, color enabled). The
+    // collapsed layout has no per-tool segments, so no legend.
+    const legend = !collapsed && showBars && toolNames.length >= 2 && !colorDisabled()
       ? toolNames.map((name, i) => ({ name, colorFn: barPalette[i] }))
       : undefined;
     lines.push(renderHistoryFooter(rowData.map((r) => r.label), rowData.map((r) => r.barTotal), period, scale, legend, metric));

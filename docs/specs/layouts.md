@@ -106,6 +106,8 @@ avg $1,049.07/day · this month $1,906.60 · peak $1,240.60 (2026-03-31) · █ 
 
 Each bar is stacked per tool (colors not shown in ASCII): the Claude Code share of each row renders green, the Codex share magenta — see the stacking bullet below.
 
+- **Collapsed (`--total` / `-t`):** the pivot drops every tool column and renders `Date | Cost | bar` — a solid (unstacked) bar on the same two-zone scale, a `Total` row carrying only the grand total, and the summary footer without the tool legend. Under `--metric tokens` the value column is headed `Tokens` (15 wide) and shows the row's total tokens via `fmtNum`, so the bar always has a visible number. The row is ~22 chars, so the full 30-char bar fits an 80-col terminal. All-tools history only; compact, CSV, and Markdown are unaffected
+
 Outlier window — 21 days in the $100–300 range (shown collapsed) plus two outliers; p95 = $1,012.50 and max $4,031.61 > 1.5 × p95, so the two-zone scale engages (see Layout 3 for the zone rules):
 
 ```

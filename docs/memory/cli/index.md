@@ -4,4 +4,4 @@
 
 | File | Description |
 |------|-------------|
-| [data-pipeline](data-pipeline.md) | CLI argument parsing (incl. the sync-only --dry-run global flag + fail-fast misuse guard, --metric bar scale, -u all aggregate and the reserved "all" profile guard), data fetching, caching, tool registry |
+| [data-pipeline](data-pipeline.md) | CLI argument parsing (incl. the sync-only --dry-run global flag + fail-fast misuse guard, --metric bar scale, --total/-t pivot collapse, -u all aggregate and the reserved "all" profile guard), data fetching, caching, tool registry |
