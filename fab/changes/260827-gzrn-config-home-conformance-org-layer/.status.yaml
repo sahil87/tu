@@ -10,7 +10,7 @@ progress:
     review: done
     hydrate: done
     ship: done
-    review-pr: active
+    review-pr: done
 plan:
     generated: true
     task_count: 16
@@ -34,7 +34,7 @@ stage_metrics:
     review: {started_at: "2026-08-27T05:42:31Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-27T05:48:57Z"}
     hydrate: {started_at: "2026-08-27T05:48:57Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-27T05:58:36Z"}
     ship: {started_at: "2026-08-27T05:58:36Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-27T06:00:34Z"}
-    review-pr: {started_at: "2026-08-27T06:00:34Z", driver: git-pr, iterations: 1}
+    review-pr: {started_at: "2026-08-27T06:00:34Z", driver: git-pr, iterations: 1, completed_at: "2026-08-27T06:26:23Z"}
 prs:
     - https://github.com/sahil87/tu/pull/72
 change_type_source: explicit
@@ -54,4 +54,4 @@ true_impact:
     computed_at_stage: ship
 summary: Config root moved to ~/.config/tu/tu.conf (/home/sahil-only lazy resolution, legacy ~/.tu.conf fallback with deprecation warning), added optional org.conf layer (defaults < org < user < env < CLI), tu init-metrics [repo-url] writes metrics_repo then clones, status shows the selected path plus an optional Org config line
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-08-27T06:00:34Z
+last_updated: 2026-08-27T06:26:23Z
