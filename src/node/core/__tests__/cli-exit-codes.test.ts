@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 // ---------------------------------------------------------------------------
@@ -74,12 +74,14 @@ describe("exit codes: success paths do not use the usage-error code", () => {
 });
 
 // Config-dependent paths: run with an isolated HOME so the dev machine's
-// ~/.tu.conf and TU_METRICS_REPO never leak into the assertion.
+// ~/.config/tu/tu.conf and TU_METRICS_REPO never leak into the assertion.
 describe("exit codes: -u all and the reserved username guard", () => {
   function runCliWithConf(conf: string, args: string[]): { status: number | null; stderr: string; stdout: string } {
     const home = mkdtempSync(join(tmpdir(), "tu-exit-codes-"));
     try {
-      writeFileSync(join(home, ".tu.conf"), conf);
+      const confPath = join(home, ".config", "tu", "tu.conf");
+      mkdirSync(dirname(confPath), { recursive: true });
+      writeFileSync(confPath, conf);
       const env: NodeJS.ProcessEnv = { ...process.env, HOME: home };
       delete env.TU_METRICS_REPO;
       const r = spawnSync("npx", ["tsx", CLI, ...args], { encoding: "utf-8", env });

@@ -4,7 +4,7 @@ import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir, hostname, userInfo } from "node:os";
 
-import { readConfig, CURRENT_CONFIG_VERSION, DEFAULT_CONFIG_PATH } from "../config.js";
+import { readConfig, resolveConfigPaths, ConfigHomeError, CURRENT_CONFIG_VERSION, DEFAULT_CONFIG_PATH } from "../config.js";
 
 const TEST_DIR = join(tmpdir(), "tu-config-test-" + process.pid);
 
@@ -271,5 +271,150 @@ describe("readConfig", () => {
     const cfg = readConfig(confPath("nonexistent"), confPath("also-nonexistent"));
     assert.equal(cfg.mode, "single");
     assert.equal(cfg.metricsRepo, "");
+  });
+});
+
+// shll config-home standard: the config root is $HOME/.config/tu, built from
+// $HOME and nothing else; no env var can move it; unset $HOME is an
+// actionable error.
+describe("resolveConfigPaths", () => {
+  it("builds all paths under $HOME/.config/tu (plus the legacy path)", () => {
+    const p = resolveConfigPaths({ HOME: "/home/alice" });
+    assert.equal(p.configDir, "/home/alice/.config/tu");
+    assert.equal(p.userConf, "/home/alice/.config/tu/tu.conf");
+    assert.equal(p.orgConf, "/home/alice/.config/tu/org.conf");
+    assert.equal(p.legacyConf, "/home/alice/.tu.conf");
+  });
+
+  it("pin: XDG_CONFIG_HOME, TU_CONFIG, TU_CONFIG_HOME cannot move the path", () => {
+    const p = resolveConfigPaths({
+      HOME: "/home/alice",
+      XDG_CONFIG_HOME: "/elsewhere/xdg",
+      TU_CONFIG: "/elsewhere/tu.conf",
+      TU_CONFIG_HOME: "/elsewhere/tu",
+      TU_HOME: "/elsewhere/state",
+    });
+    assert.equal(p.userConf, "/home/alice/.config/tu/tu.conf");
+  });
+
+  it("throws an actionable error when HOME is unset", () => {
+    assert.throws(() => resolveConfigPaths({}), (e: unknown) => {
+      assert.ok(e instanceof ConfigHomeError);
+      assert.ok(String(e).includes("$HOME is not set"));
+      return true;
+    });
+  });
+
+  it("throws an actionable error when HOME is empty", () => {
+    assert.throws(() => resolveConfigPaths({ HOME: "" }), /\$HOME is not set/);
+  });
+});
+
+function makePaths(dir: string) {
+  return {
+    configDir: join(dir, ".config", "tu"),
+    userConf: join(dir, ".config", "tu", "tu.conf"),
+    orgConf: join(dir, ".config", "tu", "org.conf"),
+    legacyConf: join(dir, ".tu.conf"),
+  };
+}
+
+function captureStderr(fn: () => void): string[] {
+  const errors: string[] = [];
+  const origError = console.error;
+  console.error = (...args: unknown[]) => errors.push(String(args[0]));
+  try {
+    fn();
+  } finally {
+    console.error = origError;
+  }
+  return errors;
+}
+
+describe("readConfig org layer and cascade", () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it("org.conf alone enables multi mode, silently", () => {
+    const defaults = writeDefaults(STOCK_DEFAULTS);
+    const p = makePaths(TEST_DIR);
+    mkdirSync(p.configDir, { recursive: true });
+    writeFileSync(p.orgConf, "metrics_repo = git@example.com:org.git\n");
+    const errors = captureStderr(() => {
+      const cfg = readConfig(p, defaults);
+      assert.equal(cfg.mode, "multi");
+      assert.equal(cfg.metricsRepo, "git@example.com:org.git");
+    });
+    assert.equal(errors.length, 0);
+  });
+
+  it("user conf overrides org.conf for the same key", () => {
+    const defaults = writeDefaults(STOCK_DEFAULTS);
+    const p = makePaths(TEST_DIR);
+    mkdirSync(p.configDir, { recursive: true });
+    writeFileSync(p.orgConf, "metrics_repo = git@example.com:org.git\n");
+    writeFileSync(p.userConf, "metrics_repo = git@example.com:user.git\n");
+    const cfg = readConfig(p, defaults);
+    assert.equal(cfg.metricsRepo, "git@example.com:user.git");
+  });
+
+  it("TU_METRICS_REPO overrides user conf", () => {
+    const defaults = writeDefaults(STOCK_DEFAULTS);
+    const p = makePaths(TEST_DIR);
+    mkdirSync(p.configDir, { recursive: true });
+    writeFileSync(p.userConf, "metrics_repo = git@example.com:user.git\n");
+    const origEnv = process.env.TU_METRICS_REPO;
+    process.env.TU_METRICS_REPO = "git@example.com:env.git";
+    try {
+      const cfg = readConfig(p, defaults);
+      assert.equal(cfg.metricsRepo, "git@example.com:env.git");
+    } finally {
+      if (origEnv === undefined) delete process.env.TU_METRICS_REPO;
+      else process.env.TU_METRICS_REPO = origEnv;
+    }
+  });
+
+  it("CLI overrides argument beats TU_METRICS_REPO", () => {
+    const defaults = writeDefaults(STOCK_DEFAULTS);
+    const p = makePaths(TEST_DIR);
+    mkdirSync(p.configDir, { recursive: true });
+    writeFileSync(p.userConf, "metrics_repo = git@example.com:user.git\n");
+    const origEnv = process.env.TU_METRICS_REPO;
+    process.env.TU_METRICS_REPO = "git@example.com:env.git";
+    try {
+      const cfg = readConfig(p, defaults, { metrics_repo: "git@example.com:cli.git" });
+      assert.equal(cfg.metricsRepo, "git@example.com:cli.git");
+    } finally {
+      if (origEnv === undefined) delete process.env.TU_METRICS_REPO;
+      else process.env.TU_METRICS_REPO = origEnv;
+    }
+  });
+
+  it("legacy ~/.tu.conf is read when the new file is absent, warning once across two calls", () => {
+    const defaults = writeDefaults(STOCK_DEFAULTS);
+    const p = makePaths(TEST_DIR);
+    writeFileSync(p.legacyConf, "metrics_repo = git@example.com:legacy.git\n");
+    const errors = captureStderr(() => {
+      const a = readConfig(p, defaults);
+      const b = readConfig(p, defaults);
+      assert.equal(a.metricsRepo, "git@example.com:legacy.git");
+      assert.equal(b.metricsRepo, "git@example.com:legacy.git");
+      assert.equal(a.mode, "multi");
+    });
+    const warnings = errors.filter((e) => e.includes("is deprecated; move it to ~/.config/tu/tu.conf"));
+    assert.equal(warnings.length, 1);
+  });
+
+  it("new file wins over legacy, silently (no deprecation warning)", () => {
+    const defaults = writeDefaults(STOCK_DEFAULTS);
+    const p = makePaths(TEST_DIR);
+    mkdirSync(p.configDir, { recursive: true });
+    writeFileSync(p.userConf, "metrics_repo = git@example.com:new.git\n");
+    writeFileSync(p.legacyConf, "metrics_repo = git@example.com:legacy.git\n");
+    const errors = captureStderr(() => {
+      const cfg = readConfig(p, defaults);
+      assert.equal(cfg.metricsRepo, "git@example.com:new.git");
+    });
+    assert.equal(errors.filter((e) => e.includes("is deprecated")).length, 0);
   });
 });

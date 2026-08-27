@@ -150,7 +150,7 @@ export const FISH_COMPLETION = `# tu(1) fish completion
 
 # Non-data subcommands (first positional only)
 complete -c tu -n '__fish_use_subcommand' -a 'help' -d 'show full help'
-complete -c tu -n '__fish_use_subcommand' -a 'init-conf' -d 'scaffold ~/.tu.conf'
+complete -c tu -n '__fish_use_subcommand' -a 'init-conf' -d 'scaffold ~/.config/tu/tu.conf'
 complete -c tu -n '__fish_use_subcommand' -a 'init-metrics' -d 'clone metrics repo'
 complete -c tu -n '__fish_use_subcommand' -a 'sync' -d 'push/pull metrics'
 complete -c tu -n '__fish_use_subcommand' -a 'status' -d 'show config and sync state'

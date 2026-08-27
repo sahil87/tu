@@ -4,4 +4,4 @@
 
 | File | Description |
 |------|-------------|
-| [config-system](config-system.md) | INI config format, layered defaults, sentinel expansion, init-conf command |
+| [config-system](config-system.md) | INI config format, $HOME-only path resolution (~/.config/tu/tu.conf), cascade tu.default.conf < org.conf < tu.conf < TU_METRICS_REPO < CLI, legacy ~/.tu.conf fallback with deprecation warning, sentinel expansion, init-conf/init-metrics scaffolding |

@@ -85,11 +85,14 @@ Sources: `cc` (Claude Code), `codex`/`co` (Codex), `oc` (OpenCode), `gemini`/`ge
 ### Setup (multi-machine sync)
 
 ```bash
-tu init-conf         # Scaffold ~/.tu.conf
-tu init-metrics      # Clone metrics repo
-tu sync              # Push/pull metrics
-tu status            # Show config and sync state
+tu init-metrics git@github.com:you/tu-metrics.git   # Write metrics_repo + clone (one-liner)
+tu sync                                             # Push/pull metrics
+tu status                                           # Show config and sync state
 ```
+
+Or set it up by hand: `tu init-conf` scaffolds `~/.config/tu/tu.conf`, edit `metrics_repo` there, then `tu init-metrics` clones it.
+
+**Team setup:** an org can drop `~/.config/tu/org.conf` (via dotfiles/MDM/bootstrap) with `metrics_repo = …` and every machine's `tu` runs in multi mode with zero per-user edits. Personal `~/.config/tu/tu.conf` values still win over org defaults.
 
 For end-to-end recipes — daily snapshots, history pivots, multi-machine sync, and watch mode — see [workflows](docs/site/workflows.md).
 

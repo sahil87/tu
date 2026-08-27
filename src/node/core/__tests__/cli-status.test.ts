@@ -134,3 +134,81 @@ describe("runStatus", () => {
     assert.ok(logs.some((l) => l.includes("off")));
   });
 });
+
+
+describe("runStatus with ConfigPaths (new config home)", () => {
+  function makePaths(dir: string) {
+    return {
+      configDir: join(dir, ".config", "tu"),
+      userConf: join(dir, ".config", "tu", "tu.conf"),
+      orgConf: join(dir, ".config", "tu", "org.conf"),
+      legacyConf: join(dir, ".tu.conf"),
+    };
+  }
+
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+    mkdirSync(tuHome(), { recursive: true });
+    writeFileSync(defaultsPath(), STOCK_DEFAULTS);
+  });
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it("shows the new path when only ~/.config/tu/tu.conf exists", () => {
+    const p = makePaths(TEST_DIR);
+    mkdirSync(p.configDir, { recursive: true });
+    writeFileSync(p.userConf, "version = 2\n");
+    const logs = capture(() => runStatus(p, tuHome(), new Date(), defaultsPath()));
+    assert.ok(logs.some((l) => l.includes("Config:") && l.includes(".config/tu/tu.conf")));
+    assert.ok(!logs.some((l) => l.includes("Org config:")));
+  });
+
+  it("shows the legacy path (and warns on stderr) when only ~/.tu.conf exists", () => {
+    const p = makePaths(TEST_DIR);
+    writeFileSync(p.legacyConf, "version = 2\n");
+    const logs = capture(() => runStatus(p, tuHome(), new Date(), defaultsPath()));
+    assert.ok(logs.some((l) => l.includes("Config:") && l.includes(".tu.conf") && !l.includes(".config/")));
+  });
+
+  it("shows the new path when both files exist", () => {
+    const p = makePaths(TEST_DIR);
+    mkdirSync(p.configDir, { recursive: true });
+    writeFileSync(p.userConf, "version = 2\n");
+    writeFileSync(p.legacyConf, "version = 1\n");
+    const logs = capture(() => runStatus(p, tuHome(), new Date(), defaultsPath()));
+    const configLine = logs.find((l) => l.includes("Config:"));
+    assert.ok(configLine?.includes(".config/tu/tu.conf"));
+    assert.ok(configLine?.includes("(v2)"));
+  });
+
+  it("names the new path when neither file exists", () => {
+    const p = makePaths(TEST_DIR);
+    const logs = capture(() => runStatus(p, tuHome(), new Date(), defaultsPath()));
+    assert.equal(logs.length, 1);
+    assert.ok(logs[0].includes("single (no "));
+    assert.ok(logs[0].includes(".config/tu/tu.conf"));
+  });
+
+  it("prints Org config: directly after Config: when org.conf exists", () => {
+    const p = makePaths(TEST_DIR);
+    mkdirSync(p.configDir, { recursive: true });
+    writeFileSync(p.userConf, "version = 2\n");
+    writeFileSync(p.orgConf, "metrics_repo = git@example.com:org.git\n");
+    const logs = capture(() => runStatus(p, tuHome(), new Date(), defaultsPath()));
+    const configIdx = logs.findIndex((l) => l.includes("Config:"));
+    const orgIdx = logs.findIndex((l) => l.includes("Org config:"));
+    assert.ok(configIdx >= 0, `logs: ${logs}`);
+    assert.equal(orgIdx, configIdx + 1, `logs: ${logs}`);
+    assert.ok(logs[orgIdx].includes(".config/tu/org.conf"));
+  });
+
+  it("omits Config: but still shows Org config: for an org-only setup", () => {
+    const p = makePaths(TEST_DIR);
+    mkdirSync(p.configDir, { recursive: true });
+    writeFileSync(p.orgConf, "metrics_repo = git@example.com:org.git\n");
+    const logs = capture(() => runStatus(p, tuHome(), new Date(), defaultsPath()));
+    assert.ok(!logs.some((l) => /^Config:/.test(l)), `logs: ${logs}`);
+    assert.ok(logs.some((l) => l.includes("Org config:") && l.includes(".config/tu/org.conf")));
+    // org.conf alone puts us in multi mode
+    assert.ok(logs.some((l) => l.includes("multi")), `logs: ${logs}`);
+  });
+});
