@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { homedir, hostname, userInfo } from "node:os";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -135,6 +135,14 @@ function selectUserConf(paths: ConfigPaths): { conf: Record<string, string>; pat
   return { conf: {}, path: null };
 }
 
+// The user-conf path readConfig will actually read (new conf wins, legacy is
+// the fallback, null when neither reads) — exported so `tu status` reports the
+// same selection readConfig makes. An existsSync-based check would misreport
+// an existing-but-unreadable file as selected while readConfig falls back.
+export function selectUserConfPath(paths: ConfigPaths): string | null {
+  return selectUserConf(paths).path;
+}
+
 export function readConfig(
   paths: ConfigPaths | string = resolveConfigPaths(),
   defaultsPath: string = DEFAULT_CONFIG_PATH,
@@ -146,10 +154,10 @@ export function readConfig(
 
   // Cascade: tu.default.conf < org.conf < user conf < env < CLI overrides.
   const defaults = readConfFile(defaultsPath) ?? {};
-  const org = p.orgConf !== undefined ? (readConfFile(p.orgConf) ?? {}) : {};
+  const orgRaw = p.orgConf !== undefined ? readConfFile(p.orgConf) : null;
   const userSel = selectUserConf(p);
 
-  const merged: Record<string, string> = { ...defaults, ...org, ...userSel.conf };
+  const merged: Record<string, string> = { ...defaults, ...(orgRaw ?? {}), ...userSel.conf };
 
   // TU_METRICS_REPO env var takes precedence over config files; an explicit
   // CLI-layer override (e.g. `tu init-metrics <url>`) beats the env var.
@@ -163,8 +171,10 @@ export function readConfig(
   const version = Number.isNaN(versionRaw) ? 1 : versionRaw;
   if (version > CURRENT_CONFIG_VERSION) {
     // Name the file the value came from: the user conf actually read, else the
-    // org layer when present, else the shipped defaults.
-    const versionSource = userSel.path ?? (p.orgConf !== undefined && existsSync(p.orgConf) ? p.orgConf : defaultsPath);
+    // org layer when it was actually read, else the shipped defaults. (An
+    // org.conf that failed to read/parse never fed the merge, so blaming it
+    // would misattribute the version's source.)
+    const versionSource = userSel.path ?? (orgRaw !== null ? p.orgConf! : defaultsPath);
     console.error(
       `Warning: ${versionSource} version ${version} is newer than tu supports (${CURRENT_CONFIG_VERSION}). Please update tu.`,
     );

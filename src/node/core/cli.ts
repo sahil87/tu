@@ -1,7 +1,7 @@
 import { TOOLS, EMPTY, fetchHistory, fetchAllTotals, fetchAllHistory, aggregateForPeriod, mergeEntries, maxMergeEntries, currentLabel, filterEntriesByRange } from "./fetcher.js";
 import { printHistory, printTotal, printTotalHistory, renderHistory, renderTotal, renderTotalHistory, emitCsv, emitMarkdown } from "../tui/formatter.js";
 import type { FormatOptions, BarMetric } from "../tui/formatter.js";
-import { readConfig, resolveConfigPaths, TU_HOME, THREE_HOURS_MS, resolveHome, DEFAULT_CONFIG_PATH } from "./config.js";
+import { readConfig, resolveConfigPaths, selectUserConfPath, TU_HOME, THREE_HOURS_MS, resolveHome, DEFAULT_CONFIG_PATH } from "./config.js";
 import { writeMetrics, readRemoteEntries, readRemoteEntriesByMachine, listUsers, fullSync } from "../sync/sync.js";
 import type { DrySyncReport } from "../sync/sync.js";
 import { runWatch } from "../tui/watch.js";
@@ -271,6 +271,12 @@ export function runInitMetrics(
   const p = normalizePaths(paths);
   let overrides: { metrics_repo?: string } = {};
   if (repoUrl !== undefined) {
+    // The URL is written verbatim into tu.conf — reject newline/CR so a
+    // crafted argument cannot inject extra config lines into the file.
+    if (/[\r\n]/.test(repoUrl)) {
+      console.error("Error: repo-url must be a single line (no newline or carriage-return characters).");
+      process.exit(1);
+    }
     // CLI-flag layer: the typed URL is written into tu.conf and beats an
     // exported TU_METRICS_REPO for this invocation's clone (CLI > env).
     ensureUserConf(p, defaultsPath);
@@ -348,12 +354,12 @@ export function runStatus(
   defaultsPath: string = DEFAULT_CONFIG_PATH,
 ): void {
   const p = normalizePaths(paths);
-  const userExists = existsSync(p.userConf);
-  const legacyExists = p.legacyConf !== undefined && existsSync(p.legacyConf);
   const orgExists = p.orgConf !== undefined && existsSync(p.orgConf);
-  // Mirror the readConfig selection rule: new file wins; legacy is the
-  // fallback (its deprecation warning goes to stderr via readConfig below).
-  const selected = userExists ? p.userConf : legacyExists ? p.legacyConf! : null;
+  // Mirror the readConfig selection rule exactly: a file counts as selected
+  // only when it actually reads (an existing-but-unreadable file falls back,
+  // same as readConfig). The legacy fallback's deprecation warning goes to
+  // stderr (emitted at most once per process).
+  const selected = selectUserConfPath(p);
 
   // No config file at all: the original no-config line. An org-only setup
   // falls through to the full layout (with the Config: line omitted), so the
