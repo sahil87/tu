@@ -4,4 +4,4 @@
 
 | File | Description |
 |------|-------------|
-| [multi-machine](multi-machine.md) | Git-based metrics sync, JSONL high-water-mark storage (never-shrink writes, self-view max-merge), remote merging, user-directory enumeration for the all-users aggregate, auto-clone, init-metrics [repo-url] bootstrap (writes metrics_repo then clones), repair script, dry-run preview (shared decision path, no-mutation, local git preview) |
+| [multi-machine](multi-machine.md) | Git-based metrics sync, JSONL high-water-mark storage (never-shrink writes, self-view max-merge), remote merging, user-directory enumeration for the all-users aggregate (incl. the user/machine-keyed leaderboard reader and its .last-sync staleness footer), auto-clone, init-metrics [repo-url] bootstrap (writes metrics_repo then clones), repair script, dry-run preview (shared decision path, no-mutation, local git preview) |

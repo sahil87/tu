@@ -149,6 +149,44 @@ describe("parseDataArgs", () => {
     });
   });
 
+  describe("leaderboard display tokens", () => {
+    it("parses lb as leaderboard with default source/period", () => {
+      const result = parseDataArgs(["lb"]);
+      assert.deepEqual(result, { source: "all", period: "daily", display: "leaderboard" });
+    });
+
+    it("parses lbh as leaderboard-history with default source/period", () => {
+      const result = parseDataArgs(["lbh"]);
+      assert.deepEqual(result, { source: "all", period: "daily", display: "leaderboard-history" });
+    });
+
+    it("parses cc m lb (source + period + leaderboard)", () => {
+      const result = parseDataArgs(["cc", "m", "lb"]);
+      assert.deepEqual(result, { source: "cc", period: "monthly", display: "leaderboard" });
+    });
+
+    it("parses lb before a period token (display then period)", () => {
+      const result = parseDataArgs(["lb", "w"]);
+      assert.deepEqual(result, { source: "all", period: "weekly", display: "leaderboard" });
+    });
+
+    it("parses codex lbh", () => {
+      const result = parseDataArgs(["codex", "lbh"]);
+      assert.deepEqual(result, { source: "codex", period: "daily", display: "leaderboard-history" });
+    });
+
+    it("parses w lbh (weekly leaderboard history)", () => {
+      const result = parseDataArgs(["w", "lbh"]);
+      assert.deepEqual(result, { source: "all", period: "weekly", display: "leaderboard-history" });
+    });
+
+    it("rejects combined dlb/wlb/mlb shorthands", () => {
+      assert.throws(() => parseDataArgs(["dlb"]), /Unknown argument: dlb/);
+      assert.throws(() => parseDataArgs(["wlb"]), /Unknown argument: wlb/);
+      assert.throws(() => parseDataArgs(["mlb"]), /Unknown argument: mlb/);
+    });
+  });
+
   describe("combined modifiers", () => {
     it("parses dh as daily + history", () => {
       const result = parseDataArgs(["dh"]);
@@ -574,6 +612,17 @@ describe("capApplies", () => {
 
   it("is disabled by --full", () => {
     assert.equal(capApplies("history", "weekly", undefined, undefined, true), false);
+  });
+
+  it("engages for leaderboard-history like history", () => {
+    assert.equal(capApplies("leaderboard-history", "daily", undefined, undefined, false), true);
+    assert.equal(capApplies("leaderboard-history", "weekly", undefined, undefined, false), true);
+  });
+
+  it("does not engage for monthly leaderboard-history or the lb snapshot", () => {
+    assert.equal(capApplies("leaderboard-history", "monthly", undefined, undefined, false), false);
+    assert.equal(capApplies("leaderboard", "daily", undefined, undefined, false), false);
+    assert.equal(capApplies("leaderboard", "monthly", undefined, undefined, false), false);
   });
 });
 

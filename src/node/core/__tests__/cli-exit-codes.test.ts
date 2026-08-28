@@ -89,6 +89,24 @@ describe("exit codes: usage errors exit 2", () => {
     assert.equal(r.status, 0, `stderr: ${r.stderr}`);
     assert.ok(!r.stderr.includes("--metric"), `stderr: ${r.stderr}`);
   });
+
+  it("--top 0 exits 2 with the specified message", () => {
+    const r = runCli(["lb", "--top", "0"]);
+    assert.equal(r.status, 2);
+    assert.ok(r.stderr.includes("Error: --top requires a positive integer"), `stderr: ${r.stderr}`);
+  });
+
+  it("--top with a non-integer value exits 2", () => {
+    const r = runCli(["lb", "--top", "abc"]);
+    assert.equal(r.status, 2);
+    assert.ok(r.stderr.includes("Error: --top requires a positive integer"), `stderr: ${r.stderr}`);
+  });
+
+  it("bare --top (no value) exits 2", () => {
+    const r = runCli(["lb", "--top"]);
+    assert.equal(r.status, 2);
+    assert.ok(r.stderr.includes("Error: --top requires a positive integer"), `stderr: ${r.stderr}`);
+  });
 });
 
 describe("exit codes: success paths do not use the usage-error code", () => {
@@ -132,5 +150,54 @@ describe("exit codes: -u all and the reserved username guard", () => {
     const r = runCliWithConf("user = all\n", ["sync"]);
     assert.equal(r.status, 2);
     assert.ok(r.stderr.includes('config user "all" is reserved'), `stderr: ${r.stderr}`);
+  });
+});
+
+// Leaderboard guard paths: run with an isolated HOME (single mode — no
+// metrics repo configured), so `lb`/`lbh` must fail fast before any fetch.
+describe("exit codes: leaderboard guards", () => {
+  function runCliSingle(args: string[]): { status: number | null; stderr: string; stdout: string } {
+    const home = mkdtempSync(join(tmpdir(), "tu-exit-codes-lb-"));
+    try {
+      const env: NodeJS.ProcessEnv = { ...process.env, HOME: home };
+      delete env.TU_METRICS_REPO;
+      const r = spawnSync("npx", ["tsx", CLI, ...args], { encoding: "utf-8", env });
+      return { status: r.status, stderr: r.stderr, stdout: r.stdout };
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  }
+
+  const SINGLE_MODE_MSG = "Error: lb requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo";
+
+  it("lb in single mode exits 1 with the multi-mode hint before any fetch", () => {
+    const r = runCliSingle(["lb"]);
+    assert.equal(r.status, 1, `stderr: ${r.stderr}`);
+    assert.ok(r.stderr.includes(SINGLE_MODE_MSG), `stderr: ${r.stderr}`);
+  });
+
+  it("lbh in single mode exits 1 with the same hint", () => {
+    const r = runCliSingle(["m", "lbh"]);
+    assert.equal(r.status, 1, `stderr: ${r.stderr}`);
+    assert.ok(r.stderr.includes(SINGLE_MODE_MSG), `stderr: ${r.stderr}`);
+  });
+
+  it("the single-mode lb failure fires before the -u single-mode warning", () => {
+    const r = runCliSingle(["lb", "-u", "alice"]);
+    assert.equal(r.status, 1, `stderr: ${r.stderr}`);
+    assert.ok(r.stderr.includes(SINGLE_MODE_MSG), `stderr: ${r.stderr}`);
+    assert.ok(!r.stderr.includes("-u flag requires multi mode"), `stderr: ${r.stderr}`);
+  });
+
+  it("--top on a non-leaderboard display warns once and is ignored", () => {
+    const r = runCliSingle(["cc", "h", "--top", "3", "--no-color"]);
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+    assert.ok(r.stderr.includes("Warning: --top applies to leaderboard display — ignoring."), `stderr: ${r.stderr}`);
+  });
+
+  it("--top on the plain snapshot warns and is ignored", () => {
+    const r = runCliSingle(["cc", "--top", "2", "--no-color"]);
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+    assert.ok(r.stderr.includes("Warning: --top applies to leaderboard display — ignoring."), `stderr: ${r.stderr}`);
   });
 });

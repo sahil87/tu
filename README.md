@@ -56,9 +56,13 @@ tu cc                # Today's cost, Claude Code
 tu h                 # Daily cost history, all tools
 tu cc mh             # Monthly cost history, Claude Code
 tu m                 # This month's cost, all tools
+tu m lb              # This month's leaderboard — users ranked by cost (multi mode)
+tu lbh               # Daily leaderboard history — rows x user columns (multi mode)
 ```
 
 Sources: `cc` (Claude Code), `codex`/`co` (Codex), `oc` (OpenCode), `gemini`/`gem` (Gemini), `copilot`/`cop` (Copilot), `kimi`/`ki` (Kimi), `all` (default)
+
+Displays: bare (snapshot), `h`/`history`, combined `dh`/`wh`/`mh`, and the multi-mode leaderboard `lb` (one row per user, ranked by cost or tokens, with share and Δ vs the previous period) / `lbh` (leaderboard history pivot — period rows × user columns). The leaderboard reads the metrics repo, so today lags until `tu sync`.
 
 ### Flags
 
@@ -71,6 +75,7 @@ Sources: `cc` (Claude Code), `codex`/`co` (Codex), `oc` (OpenCode), `gemini`/`ge
   --full               Show full history (default: last 3 months for daily/weekly history)
   --metric <m>         Show 'cost' (default) or 'tokens' in table cells, bars and footer stats (snapshot keeps its Cost column in dollars)
   -t                   Shorthand for --metric tokens
+  --top <n>            Show only the top N rows/columns on the lb/lbh leaderboard
   --sync               Sync metrics before fetching (multi mode)
   --dry-run            Preview sync without writing (tu sync only)
   --fresh / -f         Bypass cache, fetch fresh data (data commands only)

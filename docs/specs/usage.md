@@ -39,6 +39,8 @@ tu [source] [period] [display] [flags]
 | `dh` | Combined: daily + history |
 | `wh` | Combined: weekly + history |
 | `mh` | Combined: monthly + history |
+| `lb` | Leaderboard — one row per user for the current period, ranked by cost (or tokens under `--metric tokens`), with share and Δ vs the previous same-length period (multi mode only) |
+| `lbh` | Leaderboard history — period rows × user columns, columns ranked by window total, per-row leader highlighted (multi mode only; daily/weekly carry the same 3-month cap / `--full` semantics as `h`) |
 
 ### Examples
 
@@ -50,6 +52,9 @@ tu [source] [period] [display] [flags]
 | `tu cc mh` | Monthly cost history, Claude Code |
 | `tu wh` | Weekly cost history, all tools |
 | `tu m` | This month's cost, all tools |
+| `tu m lb` | This month's leaderboard — users ranked by cost |
+| `tu cc m lb` | This month's leaderboard, Claude Code spend only |
+| `tu lbh` | Daily leaderboard history (users as columns) |
 
 ## Global Flags
 
@@ -61,7 +66,8 @@ tu [source] [period] [display] [flags]
 | `--fresh` | `-f` | Bypass cache, fetch fresh data |
 | `--full` | — | Show full history (default is the last 3 months for daily/weekly history; no effect on monthly or snapshot) |
 | `--metric` | `-t` | Show cost (default) or total tokens in table cells, bars and footer stats — all displays; the snapshot table keeps its Cost column in dollars (only the delta indicator follows the metric; compact snapshot cells use the metric) (`-t` is a boolean shorthand ≡ `--metric tokens`); no effect on `--json`/`--csv`/`--md` |
-| `--user` | `-u <user>` | Show usage for a specific user, or `all` to sum every user directory in the metrics repo (multi mode only; `all` reads synced repo data only, so today lags until `--sync`; `all` is a reserved profile name — a config `user = all` is rejected with exit 2). With `--by-machine`, `-u all` breaks the total down per user instead of per machine (legend `Users:`; the JSON `machines` key carries user names) |
+| `--top` | — | Show only the top N leaderboard rows (`lb`, the rest collapse into a `… +k others` line) or user columns (`lbh`, the rest fold into one `others` column); positive integer, exit 2 on a bad value; warns and is ignored on other displays |
+| `--user` | `-u <user>` | Show usage for a specific user, or `all` to sum every user directory in the metrics repo (multi mode only; `all` reads synced repo data only, so today lags until `--sync`; `all` is a reserved profile name — a config `user = all` is rejected with exit 2). With `--by-machine`, `-u all` breaks the total down per user instead of per machine (legend `Users:`; the JSON `machines` key carries user names). On `lb`/`lbh`, `-u <name>` pins/highlights that user's row instead of filtering and `-u all` is a no-op (the leaderboard is inherently all-users) |
 | `--watch` | `-w` | Persistent polling mode with live TUI display |
 | `--interval` | `-i <s>` | Poll interval in seconds (default: 10, range: 5-3600, requires `--watch`) |
 | `--no-color` | — | Disable ANSI color output (also respects `NO_COLOR` env var) |
@@ -94,7 +100,7 @@ Per-subcommand exit codes:
 
 | Command | `0` | `1` | `2` |
 |---------|-----|-----|-----|
-| `tu [source] [period] [display]` (data commands, incl. `--watch`) | success | unexpected runtime error | unknown argument/tool, bad flag value, incompatible format flags (`--json`/`--csv`/`--md`/`--watch`), `-t` with `--metric cost`, bad/inverted `--since`/`--until`, bad `--interval`, missing `-u` value, bad/missing `--metric` value, config `user = all` (reserved), `--dry-run` without `tu sync` |
+| `tu [source] [period] [display]` (data commands, incl. `--watch`) | success | unexpected runtime error; `lb`/`lbh` in single mode | unknown argument/tool, bad flag value (incl. bad `--top`), incompatible format flags (`--json`/`--csv`/`--md`/`--watch`), `-t` with `--metric cost`, bad/inverted `--since`/`--until`, bad `--interval`, missing `-u` value, bad/missing `--metric` value, config `user = all` (reserved), `--dry-run` without `tu sync` |
 | `tu sync` | success | `metrics_repo` unset, clone/sync failure | — |
 | `tu init-metrics [repo-url]` | success | `metrics_repo` unset, metrics dir exists but is not a git repo, `$HOME` unset | more than one positional argument |
 | `tu update` | success (incl. non-Homebrew install message, "already up to date") | `brew update`/`brew info`/`brew upgrade` failure | — |
@@ -144,6 +150,8 @@ Tool configs define the six supported tools (`cc`, `codex`, `oc`, `gemini`, `cop
 
 - **Snapshot**: fetches all entries, then filters to the one matching `currentLabel(period)` (today's date, the current week's Sunday, or the current month). `currentLabel` uses local-time date methods (the weekly case backs up to Sunday via `setDate(getDate() - getDay())`, normalizing month/year underflow). Shows a cross-tool table with one row per tool.
 - **History**: fetches all entries, shows a table with one row per date/month. Daily and weekly history default to the last 3 calendar months (an implicit `--since` floor at the first of the month two months back, disabled by `--full` or any explicit `--since`/`--until`); monthly history is never capped. When the cap is active the table heading carries a `last 3 months` hint. Single-tool history shows token breakdown; all-tools history shows a cost pivot table (date rows x tool columns).
+- **Leaderboard** (`lb`, multi mode only): reads every user's entries from the metrics repo (repo-only, so today lags until `--sync`), windows them to the current period — or to an explicit `--since`/`--until` range, which replaces the period window — sums across the source's tools, and ranks users descending by the display metric. The Δ column compares against the immediately preceding same-length window (previous day/week/month, or the equal-length range before an explicit window), derived by a second client-side filter pass over the same fetched entries — no second fetch. Rows with zero cost and zero tokens in the window are omitted.
+- **Leaderboard history** (`lbh`, multi mode only): the same repo read shaped as a pivot — period rows × user columns through the same renderer as the all-tools pivot, with columns ordered by descending window total, each row's leading cell highlighted, and the negligible-column omission disabled (no user is silently hidden from a ranking). `--by-machine` warns and is ignored, exactly as on the all-tools pivot.
 
 ## Output Formats
 
@@ -158,6 +166,22 @@ Columns: Date, Input, Output, Cache Write, Cache Read, Total, Cost. Includes inl
 ### All-Tools History Pivot Table
 
 Columns: Date, {Tool1}, {Tool2}, ..., Cost. Each cell is a cost value. Includes inline bar charts for row totals. Total row with per-tool sums. Heading: "Combined Cost History (daily|weekly|monthly)". Under `--metric tokens`/`-t` every cell and the Total row render as total tokens, the last header reads `Tokens`, and the heading is "Combined Token History".
+
+### Leaderboard Table (`lb`)
+
+Columns: `#`, User, Cost, bar, Tokens, Share, Δ vs {previous window label}. One row per user (or `user/machine` pair under `--by-machine`), ranked descending by the display metric; the pinned user (`-u <name>`, else the config user) carries a `◂` marker. Both the Cost and Tokens columns render in every metric mode — `--metric` selects only the sort key, bar scale, share denominator and the heading's `by …` suffix. A bolded Total row follows when ≥2 rows; a dim staleness footer (`synced Xm ago · tu sync to refresh`, or `never synced · tu sync to refresh`) closes the table. Heading: "Leaderboard (daily|weekly|monthly) · {window} · by {cost|tokens}". Under `--top <n>` the rows past N collapse into one dim `… +k others` line (still counted in the Total and every share denominator).
+
+### Leaderboard History Table (`lbh`)
+
+Same shape as the all-tools pivot with users in place of tools: period rows × user columns, ordered by descending window total in the display metric, each row's leading user cell highlighted. Heading: "Leaderboard History (daily|weekly|monthly)" ("Leaderboard Token History" under tokens). `--top <n>` keeps the N highest-total user columns and folds the rest into one `others` column so row totals are preserved.
+
+### Leaderboard JSON / CSV / Markdown
+
+- **JSON** (`tu m lb --json`): an array of row objects `{rank, user, cost, totalTokens, share, delta}` — plus `machine` under `--by-machine`; `delta` is `null` for a `new` row and `share` is a fraction (`0.381`, not a percent string). `tu lbh --json` keeps the pivot's map-of-column-to-entries shape.
+- **CSV** (`tu m lb --csv`): header `rank,user,cost,total_tokens,share,delta` (plus `machine` after `user` under `--by-machine`); raw numbers, no `$`/separators/bars; `delta` empty for a `new` row; a final `Total,...` row when more than one row.
+- **Markdown** (`tu m lb --md`): `## Leaderboard ({period})` heading, GFM table with right-aligned numerics, `$`-prefixed costs with thousands separators, `**Total**` row bolded. No bars, no arrows, no staleness footer.
+
+`--top` applies to all three machine formats as well as the table.
 
 ### JSON Output (`--json`)
 

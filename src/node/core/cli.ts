@@ -1,6 +1,6 @@
 import { TOOLS, EMPTY, fetchHistory, fetchAllTotals, fetchAllHistory, aggregateForPeriod, mergeEntries, maxMergeEntries, currentLabel, filterEntriesByRange } from "./fetcher.js";
-import { printHistory, printTotal, printTotalHistory, renderHistory, renderTotal, renderTotalHistory, emitCsv, emitMarkdown, metricValue } from "../tui/formatter.js";
-import type { FormatOptions, BarMetric } from "../tui/formatter.js";
+import { printHistory, printTotal, printTotalHistory, renderHistory, renderTotal, renderTotalHistory, emitCsv, emitMarkdown, metricValue, renderLeaderboard, printLeaderboard, leaderboardRowsToJson, periodLabel } from "../tui/formatter.js";
+import type { FormatOptions, BarMetric, LeaderboardRenderOptions } from "../tui/formatter.js";
 import { readConfig, resolveConfigPaths, selectUserConfPath, TU_HOME, THREE_HOURS_MS, resolveHome, DEFAULT_CONFIG_PATH } from "./config.js";
 import { writeMetrics, readRemoteEntries, readRemoteEntriesByMachine, listUsers, fullSync } from "../sync/sync.js";
 import type { DrySyncReport } from "../sync/sync.js";
@@ -9,6 +9,8 @@ import { setNoColor } from "../tui/colors.js";
 import { BASH_COMPLETION, ZSH_COMPLETION, FISH_COMPLETION } from "./completions.js";
 import { buildHelpDoc } from "./help-dump.js";
 import { SKILL_MD } from "./skill.js";
+import { buildLeaderboard, currentWindow, previousWindow } from "./leaderboard.js";
+import type { LeaderboardRow } from "./leaderboard.js";
 import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { execSync, execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -102,7 +104,7 @@ export const FULL_HELP = `Usage: tu [source] [period] [display]
 
 Sources: cc (Claude Code), codex/co (Codex), oc (OpenCode), gemini/gem (Gemini), copilot/cop (Copilot), kimi/ki (Kimi), all (default)
 Periods: d/daily (default), w/weekly, m/monthly
-Display: (bare) = snapshot, h/history = history
+Display: (bare) = snapshot, h/history = history, lb = leaderboard, lbh = leaderboard history
 Combined: dh (daily history), wh (weekly history), mh (monthly history)
 
 Examples:
@@ -112,6 +114,8 @@ Examples:
   tu cc mh             Monthly cost history, Claude Code
   tu wh                Weekly cost history, all tools
   tu m                 This month's cost, all tools
+  tu m lb              This month's leaderboard — users ranked by cost (multi mode)
+  tu lbh               Daily leaderboard history — rows x user columns (multi mode)
 
 Setup:
   tu init-conf         Scaffold ~/.config/tu/tu.conf
@@ -133,6 +137,7 @@ Flags:
   --full               Show full history (default: last 3 months for daily/weekly history)
   --metric <m>         Show 'cost' (default) or 'tokens' in table cells, bars and footer stats (snapshot keeps its Cost column in dollars)
   -t                   Shorthand for --metric tokens
+  --top <n>            Show only the top N rows/columns on the lb/lbh leaderboard
   --sync               Sync metrics before fetching (multi mode)
   --dry-run            Preview sync without writing (tu sync only)
   --fresh / -f         Bypass cache, fetch fresh data (data commands only)
@@ -739,6 +744,32 @@ function readAllUsersByUser(metricsDir: string, toolKey: string): Map<string, Us
   return byUser;
 }
 
+// Every user profile's repo entries keyed by "user/machine" — the leaderboard's
+// --by-machine breakdown (mirrors readAllUsersByUser's shape, one directory
+// deeper). Read-only; never writes.
+function readAllUsersByUserMachine(metricsDir: string, toolKey: string): Map<string, UsageEntry[]> {
+  const byUserMachine = new Map<string, UsageEntry[]>();
+  for (const user of listUsers(metricsDir)) {
+    for (const [machine, entries] of readRemoteEntriesByMachine(metricsDir, user, null, toolKey)) {
+      byUserMachine.set(`${user}/${machine}`, entries);
+    }
+  }
+  return byUserMachine;
+}
+
+// Sum per-tool per-key maps (key = user, or user/machine under --by-machine)
+// into a single Map<key, UsageEntry[]> for the leaderboard, merging same-label
+// entries across the source's tools.
+function sumLeaderboardToolMaps(perTool: Map<string, UsageEntry[]>[]): Map<string, UsageEntry[]> {
+  const out = new Map<string, UsageEntry[]>();
+  for (const map of perTool) {
+    for (const [key, entries] of map) {
+      out.set(key, mergeEntries(out.get(key) ?? [], entries));
+    }
+  }
+  return out;
+}
+
 // Window a per-key map (machine or user → daily entries), flatten it into one
 // summed series, and aggregate both to the requested period.
 function aggregateMachineMap(machineMap: Map<string, UsageEntry[]>, period: string, since?: string, until?: string): MergedResult {
@@ -804,6 +835,197 @@ function emitJson(data: unknown): void {
   console.log(JSON.stringify(obj, null, 2));
 }
 
+// --- Leaderboard dispatch (tu lb / tu lbh) ---
+
+interface LeaderboardOptions {
+  byMachine: boolean;
+  top: number | undefined;
+  pinnedUser: string;    // -u <name> pins that user; otherwise config.user
+  sinceFlag: string | undefined;
+  untilFlag: string | undefined;
+  metric: BarMetric;
+  capActive: boolean;
+}
+
+// The tool keys the leaderboard's source token scopes to.
+function leaderboardToolKeys(source: string): string[] {
+  return source === "all" ? Object.keys(TOOLS) : [source];
+}
+
+// Fetch + shape the leaderboard data in one pass: per-tool all-users repo
+// reads (user-keyed through the existing pipeline; user/machine-keyed by the
+// direct reader under --by-machine), summed across the source's tools, then
+// windowed for the current and previous windows by slicing the same daily
+// entries — no second fetch. Returns the ranked rows plus the render context
+// (window labels, watch bookkeeping maps).
+async function fetchLeaderboardRows(
+  config: TuConfig,
+  source: string,
+  period: string,
+  lb: LeaderboardOptions,
+  skipCache: boolean,
+): Promise<{ rows: LeaderboardRow[]; windowLabel: string; deltaLabel: string }> {
+  const toolKeys = leaderboardToolKeys(source);
+  let summed: Map<string, UsageEntry[]>;
+  if (lb.byMachine) {
+    summed = sumLeaderboardToolMaps(toolKeys.map((k) => readAllUsersByUserMachine(config.metricsDir, k)));
+  } else {
+    const results = await Promise.all(toolKeys.map((k) => fetchToolMergedWithMachines(config, k, "daily", [], skipCache, ALL_USERS)));
+    summed = sumLeaderboardToolMaps(results.map((r) => r.machineMap));
+  }
+
+  const cur = currentWindow(period, lb.sinceFlag, lb.untilFlag);
+  const prev = previousWindow(period, lb.sinceFlag, lb.untilFlag);
+  const curMap = new Map<string, UsageEntry[]>();
+  for (const [key, entries] of summed) curMap.set(key, filterEntriesByRange(entries, cur.start, cur.end));
+  const prevMap = prev === undefined ? undefined : new Map<string, UsageEntry[]>(
+    [...summed].map(([key, entries]) => [key, filterEntriesByRange(entries, prev.start, prev.end)]),
+  );
+  return { rows: buildLeaderboard(curMap, prevMap, lb.metric), windowLabel: cur.label, deltaLabel: prev?.label ?? "prev" };
+}
+
+// The watch-mode prev map keys on the plain user name (user/machine under
+// --by-machine), valued in the displayed metric — mirroring the snapshot's
+// plain {toolName} keying.
+function leaderboardPrevMap(rows: LeaderboardRow[], metric: BarMetric): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const r of rows) m.set(r.machine !== undefined ? `${r.user}/${r.machine}` : r.user, metricValue(r.totals, metric));
+  return m;
+}
+
+function leaderboardFormatOptions(lb: LeaderboardOptions): FormatOptions {
+  return {
+    ...(lb.metric !== "cost" ? { metric: lb.metric } : {}),
+    ...(lb.capActive ? { capActive: true } : {}),
+  };
+}
+
+// The lbh title in each surface: ANSI keeps the 📊 chart emoji (like every
+// other table title), Markdown strips it (like every other ## heading).
+export function lbhTitle(metric: BarMetric, periodLabelText: string, markdown = false): string {
+  const base = metric === "tokens" ? "Leaderboard Token History" : "Leaderboard History";
+  return `${markdown ? "" : "\u{1F4CA} "}${base} (${periodLabelText})`;
+}
+
+// The lbh pivot options: user columns ranked by window total, per-row leader
+// highlighted, negligible-column omission off, and the Leaderboard title —
+// built through the shared periodLabel helper so the implicit 3-month cap
+// appends its "last 3 months" hint exactly as it does for `tu h`.
+function lbhFormatOptions(lb: LeaderboardOptions, period: string, prevCosts?: Map<string, number>): FormatOptions {
+  return {
+    ...leaderboardFormatOptions(lb),
+    ...(prevCosts !== undefined ? { prevCosts } : {}),
+    historyTitle: lbhTitle(lb.metric, periodLabel(period, lb.capActive)),
+    columnOrder: "total-desc",
+    highlightRowLeader: true,
+    omitNegligibleColumns: false,
+  };
+}
+
+// The lbh column fold for --top: keep the N user columns with the highest
+// window total (display metric), fold the rest into a single "others" column
+// so row totals are preserved.
+function foldLeaderboardColumns(data: Map<string, UsageEntry[]>, top: number, metric: BarMetric): Map<string, UsageEntry[]> {
+  const totals = [...data.entries()].map(([name, entries]) => ({
+    name,
+    total: entries.reduce((sum, e) => sum + metricValue(e, metric), 0),
+  }));
+  totals.sort((a, b) => b.total - a.total);
+  const keep = new Set(totals.slice(0, top).map((t) => t.name));
+  const out = new Map<string, UsageEntry[]>();
+  const others: UsageEntry[] = [];
+  for (const [name, entries] of data) {
+    if (keep.has(name)) out.set(name, entries);
+    else others.push(...entries);
+  }
+  if (others.length > 0) out.set("others", mergeEntries(others, []));
+  return out;
+}
+
+// lbh data shape: period rows × user columns — exactly what renderTotalHistory
+// consumes, with users in place of tools. Repo-only, aggregated to the period.
+async function fetchLeaderboardHistory(
+  config: TuConfig,
+  source: string,
+  period: string,
+  lb: LeaderboardOptions,
+  skipCache: boolean,
+): Promise<Map<string, UsageEntry[]>> {
+  const toolKeys = leaderboardToolKeys(source);
+  const results = await Promise.all(
+    toolKeys.map((k) => fetchToolMergedWithMachines(config, k, period, [], skipCache, ALL_USERS, lb.sinceFlag, lb.untilFlag)),
+  );
+  const summed = sumLeaderboardToolMaps(results.map((r) => r.machineMap));
+  return lb.top !== undefined ? foldLeaderboardColumns(summed, lb.top, lb.metric) : summed;
+}
+
+function renderLeaderboardByFormat(outputFormat: OutputFormat, period: string, rows: LeaderboardRow[], windowLabel: string, deltaLabel: string, lb: LeaderboardOptions, prevCosts?: Map<string, number>, termWidth?: number): string[] | void {
+  const renderOpts: LeaderboardRenderOptions = {
+    period,
+    windowLabel,
+    deltaLabel,
+    metric: lb.metric,
+    pinnedUser: lb.pinnedUser,
+    top: lb.top,
+    lastSync: formatLastSync(TU_HOME, new Date()),
+    prevCosts,
+    termWidth,
+  };
+  // --top slices the emitted rows for every format; the CSV/MD Total row sums
+  // the full set (totalRows) so collapsed users still count.
+  const sliced = lb.top !== undefined ? rows.slice(0, lb.top) : rows;
+  switch (outputFormat) {
+    case "json": emitJson(leaderboardRowsToJson(sliced)); return;
+    case "csv": emitCsv(sliced, "leaderboard", { period, totalRows: rows }); return;
+    case "md": emitMarkdown(sliced, "leaderboard", { period, deltaLabel, totalRows: rows }); return;
+    default:
+      if (prevCosts === undefined) {
+        printLeaderboard(rows, renderOpts);
+        return;
+      }
+      return renderLeaderboard(rows, renderOpts);
+  }
+}
+
+async function dispatchLeaderboard(config: TuConfig, source: string, period: string, outputFormat: OutputFormat, skipCache: boolean, lb: LeaderboardOptions): Promise<void> {
+  const { rows, windowLabel, deltaLabel } = await fetchLeaderboardRows(config, source, period, lb, skipCache);
+  renderLeaderboardByFormat(outputFormat, period, rows, windowLabel, deltaLabel, lb);
+  _lastRenderCost = rows.reduce((sum, r) => sum + r.totals.totalCost, 0);
+  _lastRenderTotalTokens = rows.reduce((sum, r) => sum + r.totals.totalTokens, 0);
+  _lastRenderCostMap = leaderboardPrevMap(rows, lb.metric);
+}
+
+async function dispatchLeaderboardHistory(config: TuConfig, source: string, period: string, outputFormat: OutputFormat, skipCache: boolean, lb: LeaderboardOptions): Promise<void> {
+  const data = await fetchLeaderboardHistory(config, source, period, lb, skipCache);
+  const fmtOpts = lbhFormatOptions(lb, period);
+  switch (outputFormat) {
+    case "json": emitJson(data); break;
+    case "csv": emitCsv(data, "total-history", { period }); break;
+    case "md": emitMarkdown(data, "total-history", { period, capActive: fmtOpts.capActive, mdTitle: lbhTitle(lb.metric, periodLabel(period, lb.capActive), true) }); break;
+    default: printTotalHistory(period, data, undefined, fmtOpts);
+  }
+  _lastRenderCost = sumAllToolCosts(data);
+  _lastRenderTotalTokens = sumAllToolTokens(data);
+  _lastRenderCostMap = buildCostMap(data, lb.metric);
+}
+
+async function dispatchLeaderboardLines(config: TuConfig, source: string, period: string, skipCache: boolean, lb: LeaderboardOptions, prevCosts?: Map<string, number>): Promise<string[]> {
+  const { rows, windowLabel, deltaLabel } = await fetchLeaderboardRows(config, source, period, lb, skipCache);
+  _lastRenderCost = rows.reduce((sum, r) => sum + r.totals.totalCost, 0);
+  _lastRenderTotalTokens = rows.reduce((sum, r) => sum + r.totals.totalTokens, 0);
+  _lastRenderCostMap = leaderboardPrevMap(rows, lb.metric);
+  const lines = renderLeaderboardByFormat("table", period, rows, windowLabel, deltaLabel, lb, prevCosts);
+  return lines as string[];
+}
+
+async function dispatchLeaderboardHistoryLines(config: TuConfig, source: string, period: string, skipCache: boolean, lb: LeaderboardOptions, prevCosts?: Map<string, number>): Promise<string[]> {
+  const data = await fetchLeaderboardHistory(config, source, period, lb, skipCache);
+  _lastRenderCost = sumAllToolCosts(data);
+  _lastRenderTotalTokens = sumAllToolTokens(data);
+  _lastRenderCostMap = buildCostMap(data, lb.metric);
+  return renderTotalHistory(period, data, undefined, lbhFormatOptions(lb, period, prevCosts));
+}
+
 // Cost tracking for watch mode — set by dispatch functions, read by getCost/getPrevCosts callbacks
 let _lastRenderCost = 0;
 let _lastRenderCostMap = new Map<string, number>();
@@ -828,6 +1050,7 @@ export interface GlobalFlags {
   untilFlag: string | undefined; // normalized ISO YYYY-MM-DD
   fullFlag: boolean; // --full: disable the implicit 3-month cap on daily/weekly history
   metricFlag: BarMetric; // --metric: history bar scale — "cost" (default) or "tokens"
+  topFlag: number | undefined; // --top <n>: cap the leaderboard at N rows/columns (lb/lbh only)
   filteredArgs: string[];
 }
 
@@ -847,8 +1070,9 @@ export function threeMonthFloor(now: Date = new Date()): string {
 // Whether the implicit 3-month cap applies for the given display context.
 // The cap engages only on daily/weekly history (never snapshot, never monthly
 // history) and is disabled by an explicit --since/--until window or --full.
-// Pure predicate mirroring the guard in main(); extracted so the injection
-// decision is unit-testable without invoking the full main() pipeline.
+// The leaderboard history is history-shaped here; the leaderboard snapshot is
+// never capped. Pure predicate mirroring the guard in main(); extracted so the
+// injection decision is unit-testable without invoking the full main() pipeline.
 export function capApplies(
   display: string,
   period: string,
@@ -856,7 +1080,7 @@ export function capApplies(
   untilFlag: string | undefined,
   fullFlag: boolean,
 ): boolean {
-  return display === "history" && period !== "monthly" && sinceFlag === undefined && untilFlag === undefined && !fullFlag;
+  return (display === "history" || display === "leaderboard-history") && period !== "monthly" && sinceFlag === undefined && untilFlag === undefined && !fullFlag;
 }
 
 // Accepts YYYY-MM-DD or YYYYMMDD (consistent-dash shapes only); returns the
@@ -897,6 +1121,9 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   let metricFlag: BarMetric = "cost";
   let hasMetricFlag = false;
   let rawMetricVal: string | undefined;
+  let topFlag: number | undefined;
+  let hasTopFlag = false;
+  let rawTopVal: string | undefined;
   const filteredArgs: string[] = [];
   for (let i = 0; i < rawArgs.length; i++) {
     const a = rawArgs[i];
@@ -942,6 +1169,15 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
       const next = rawArgs[i + 1];
       if (next !== undefined && !next.startsWith("-")) {
         rawMetricVal = next;
+        i++;
+      }
+      continue;
+    }
+    if (a === "--top") {
+      hasTopFlag = true;
+      const next = rawArgs[i + 1];
+      if (next !== undefined && !next.startsWith("-")) {
+        rawTopVal = next;
         i++;
       }
       continue;
@@ -1034,12 +1270,23 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
     metricFlag = "tokens";
   }
 
+  // --top <n>: long-only, value-taking, positive integer. A missing value, a
+  // non-integer, or < 1 is a usage error like every other bad flag value.
+  if (hasTopFlag) {
+    const num = rawTopVal !== undefined && /^\d+$/.test(rawTopVal) ? Number(rawTopVal) : NaN;
+    if (!Number.isInteger(num) || num < 1) {
+      console.error("Error: --top requires a positive integer");
+      process.exit(EXIT_USAGE);
+    }
+    topFlag = num;
+  }
+
   let outputFormat: OutputFormat = "table";
   if (jsonFlag) outputFormat = "json";
   else if (csvFlag) outputFormat = "csv";
   else if (mdFlag) outputFormat = "md";
 
-  return { outputFormat, jsonFlag, syncFlag, dryRunFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, fullFlag, metricFlag, filteredArgs };
+  return { outputFormat, jsonFlag, syncFlag, dryRunFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, fullFlag, metricFlag, topFlag, filteredArgs };
 }
 
 const KNOWN_SOURCES = new Set(["cc", "codex", "co", "oc", "gemini", "gem", "copilot", "cop", "kimi", "ki", "all"]);
@@ -1071,6 +1318,10 @@ export function parseDataArgs(args: string[]): DataArgs {
       period = "monthly";
     } else if (arg === "h" || arg === "history") {
       display = "history";
+    } else if (arg === "lb") {
+      display = "leaderboard";
+    } else if (arg === "lbh") {
+      display = "leaderboard-history";
     } else if (arg === "dh") {
       period = "daily";
       display = "history";
@@ -1584,7 +1835,7 @@ function sumToolTotalsTokens(m: Map<string, UsageTotals>): number {
 async function main() {
   _mark("main() entered");
   const rawArgs = process.argv.slice(2);
-  let { outputFormat, syncFlag, dryRunFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, fullFlag, metricFlag, filteredArgs } = parseGlobalFlags(rawArgs);
+  let { outputFormat, syncFlag, dryRunFlag, freshFlag, watchFlag, watchInterval, noColorFlag, noRainFlag, userFlag, byMachineFlag, sinceFlag, untilFlag, fullFlag, metricFlag, topFlag, filteredArgs } = parseGlobalFlags(rawArgs);
 
   if (noColorFlag) setNoColor(true);
 
@@ -1660,8 +1911,20 @@ async function main() {
   assertUserNotReserved(config);
   _mark(`config loaded (mode=${config.mode})`);
 
-  if (userFlag && config.mode !== "multi") {
+  if (userFlag && config.mode !== "multi" && display !== "leaderboard" && display !== "leaderboard-history") {
     process.stderr.write("Warning: -u flag requires multi mode — ignoring.\n");
+    userFlag = undefined;
+  }
+
+  // The leaderboard is inherently an all-users view of the metrics repo — in
+  // single mode there is no repo to rank. Operational failure (the environment
+  // must be fixed), before any fetch. -u all is an explicit no-op; -u <name>
+  // pins that user's row instead of filtering to it.
+  if ((display === "leaderboard" || display === "leaderboard-history") && config.mode !== "multi") {
+    console.error("Error: lb requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo");
+    process.exit(1);
+  }
+  if (userFlag === ALL_USERS && (display === "leaderboard" || display === "leaderboard-history")) {
     userFlag = undefined;
   }
 
@@ -1675,17 +1938,23 @@ async function main() {
     }
   }
 
-  // --by-machine is incompatible with all-tools history pivot
+  // --by-machine is incompatible with all-tools history pivot and with the
+  // leaderboard history (per-machine pivot columns would explode the width)
   if (byMachineFlag && source === "all" && display === "history") {
     process.stderr.write("Warning: --by-machine is not supported with all-tools history — ignoring.\n");
     byMachineFlag = false;
   }
+  if (byMachineFlag && display === "leaderboard-history") {
+    process.stderr.write("Warning: --by-machine is not supported with leaderboard history — ignoring.\n");
+    byMachineFlag = false;
+  }
 
-  // --since/--until apply to history display only. Warn once and clear them for
+  // --since/--until apply to history display and the leaderboard (an explicit
+  // window replaces the period window there). Warn once and clear them for
   // snapshot display (mirrors the -u / --by-machine warn-and-clear guards
   // above). Printing here — not inside dispatch — means watch snapshot warns
   // once at startup, not per poll.
-  if ((sinceFlag !== undefined || untilFlag !== undefined) && display !== "history") {
+  if ((sinceFlag !== undefined || untilFlag !== undefined) && display !== "history" && display !== "leaderboard" && display !== "leaderboard-history") {
     process.stderr.write("Warning: --since/--until apply to history display — ignoring.\n");
     sinceFlag = undefined;
     untilFlag = undefined;
@@ -1696,9 +1965,17 @@ async function main() {
   // warns once at startup). On monthly history it is a silent vacuous no-op
   // (monthly is never capped — full history is already shown), and combined with
   // an explicit --since/--until it is silently accepted (both mean "no implicit
-  // cap"; the explicit window still applies).
-  if (fullFlag && display !== "history") {
+  // cap"; the explicit window still applies). The leaderboard history counts as
+  // history here; the leaderboard snapshot warns like any snapshot.
+  if (fullFlag && display !== "history" && display !== "leaderboard-history") {
     process.stderr.write("Warning: --full applies to daily/weekly history — ignoring.\n");
+  }
+
+  // --top applies to the leaderboard displays only. Warn once and clear on any
+  // other display, mirroring the warn-and-clear guards above.
+  if (topFlag !== undefined && display !== "leaderboard" && display !== "leaderboard-history") {
+    process.stderr.write("Warning: --top applies to leaderboard display — ignoring.\n");
+    topFlag = undefined;
   }
 
   // --metric selects the unit table cells, bars and footer stats render in.
@@ -1736,9 +2013,24 @@ async function main() {
     };
   };
 
+  // The leaderboard options bundle the flag-derived knobs the leaderboard
+  // dispatchers need (the withCap FormatOptions seam does not cover --top,
+  // --by-machine, or the pinned user).
+  const lbOpts: LeaderboardOptions = {
+    byMachine: byMachineFlag,
+    top: topFlag,
+    pinnedUser: userFlag ?? config.user,
+    sinceFlag,
+    untilFlag,
+    metric: metricFlag,
+    capActive,
+  };
+
   if (watchFlag) {
     const action = async (skipCache: boolean, fmtOpts?: FormatOptions): Promise<string[]> => {
       const opts = withCap(fmtOpts);
+      if (display === "leaderboard") { return dispatchLeaderboardLines(config, source, period, skipCache, lbOpts, _lastRenderCostMap); }
+      if (display === "leaderboard-history") { return dispatchLeaderboardHistoryLines(config, source, period, skipCache, lbOpts, _lastRenderCostMap); }
       if (source === "all") {
         if (display === "history") { return dispatchAllHistoryLines(config, period, skipCache, opts, userFlag, sinceFlag, untilFlag); }
         else { return dispatchAllSnapshotLines(config, period, skipCache, opts, userFlag, byMachineFlag, sinceFlag, untilFlag); }
@@ -1755,6 +2047,8 @@ async function main() {
       noRain: noRainFlag,
     });
   } else {
+    if (display === "leaderboard") { await dispatchLeaderboard(config, source, period, outputFormat, freshFlag, lbOpts); return; }
+    if (display === "leaderboard-history") { await dispatchLeaderboardHistory(config, source, period, outputFormat, freshFlag, lbOpts); return; }
     if (source === "all") {
       if (display === "history") { await dispatchAllHistory(config, period, outputFormat, freshFlag, withCap(undefined), userFlag, sinceFlag, untilFlag); }
       else { await dispatchAllSnapshot(config, period, outputFormat, freshFlag, withCap(undefined), userFlag, byMachineFlag); }

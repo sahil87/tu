@@ -30,12 +30,15 @@ Do NOT reach for `tu` for:
   `gemini`/`gem` (Gemini), `copilot`/`cop` (Copilot), `kimi`/`ki` (Kimi);
   omit for `all` (default).
 - **period** — `d`/`daily` (default), `w`/`weekly`, `m`/`monthly`.
-- **display** — bare = snapshot (current period); `h`/`history` = time series.
+- **display** — bare = snapshot (current period); `h`/`history` = time series;
+  `lb` = leaderboard (users ranked by cost/tokens, multi mode); `lbh` =
+  leaderboard history (period rows x user columns, multi mode).
 - **combined shorthands** — `dh` (daily history), `wh` (weekly history),
   `mh` (monthly history).
 
 Examples: `tu` (today, all), `tu cc` (today, Claude Code), `tu h` (daily history
-pivot), `tu cc mh` (Claude Code monthly history), `tu wh` (weekly history).
+pivot), `tu cc mh` (Claude Code monthly history), `tu wh` (weekly history),
+`tu m lb` (this month's leaderboard), `tu lbh` (daily leaderboard history).
 
 ### Non-data commands
 
@@ -100,6 +103,15 @@ pivot), `tu cc mh` (Claude Code monthly history), `tu wh` (weekly history).
   (`mh`) is never capped.
 - **History-only flags.** `--since` / `-s` and `--until` bound a history window
   (`YYYY-MM-DD` or `YYYYMMDD`); on a snapshot display they warn and are ignored.
+  On `lb` they replace the period window silently (the Δ column then compares
+  against the equal-length preceding window).
 - **Token mode.** `--metric tokens` / `-t` renders history and pivot tables in
   tokens instead of cost (all displays); the snapshot table keeps its Cost
   column in dollars — only the watch delta indicator follows the metric.
+- **Leaderboard (`lb` / `lbh`).** Multi mode only (exits 1 in single mode) —
+  reads the metrics repo, so today lags until `tu sync` (the table footer says
+  so). `--top <n>` keeps the top N rows (`lb`, rest collapse into `… +k
+  others`) or the top N user columns (`lbh`, rest fold into one `others`
+  column); `-u <name>` pins/highlights a user rather than filtering; `-u all`
+  is a no-op; `--by-machine` ranks `user/machine` pairs (`lb` only — on `lbh`
+  it warns and is ignored).
