@@ -603,4 +603,16 @@ describe("--metric flag", () => {
     assert.equal(result.fullFlag, true);
     assert.deepEqual(result.filteredArgs, ["h"]);
   });
+
+  it("-t is a boolean shorthand for --metric tokens", () => {
+    const result = parseGlobalFlags(["-t", "mh"]);
+    assert.equal(result.metricFlag, "tokens");
+    assert.deepEqual(result.filteredArgs, ["mh"]);
+  });
+
+  it("-t with --metric tokens is accepted silently", () => {
+    const result = parseGlobalFlags(["mh", "-t", "--metric", "tokens"]);
+    assert.equal(result.metricFlag, "tokens");
+    assert.deepEqual(result.filteredArgs, ["mh"]);
+  });
 });

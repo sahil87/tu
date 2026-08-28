@@ -65,7 +65,7 @@ const LONG_FLAGS = [
 ];
 
 // Short flags that must appear literally in every completion script.
-const SHORT_FLAGS = ["-f", "-w", "-i", "-u", "-s", "-j", "-v", "-V", "-h"];
+const SHORT_FLAGS = ["-f", "-w", "-i", "-u", "-s", "-j", "-t", "-v", "-V", "-h"];
 
 const NON_DATA_SUBCOMMANDS = [
   "help",

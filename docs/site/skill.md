@@ -99,5 +99,6 @@ pivot), `tu cc mh` (Claude Code monthly history), `tu wh` (weekly history).
   calendar months. Pass `--full` for the complete history. Monthly history
   (`mh`) is never capped.
 - **History-only flags.** `--since` / `-s` and `--until` bound a history window
-  (`YYYY-MM-DD` or `YYYYMMDD`); `--metric tokens` scales the history bars by
-  token volume instead of cost. On a snapshot display they warn and are ignored.
+  (`YYYY-MM-DD` or `YYYYMMDD`); on a snapshot display they warn and are ignored.
+- **Token mode.** `--metric tokens` / `-t` renders every table in tokens instead
+  of cost (all displays).

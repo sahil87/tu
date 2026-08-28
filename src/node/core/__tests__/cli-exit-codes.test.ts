@@ -64,6 +64,31 @@ describe("exit codes: usage errors exit 2", () => {
     assert.equal(r.status, 2);
     assert.ok(r.stderr.includes("--json and --csv are incompatible"), `stderr: ${r.stderr}`);
   });
+
+  it("-t with --metric cost exits 2 with the exact conflict message", () => {
+    const r = runCli(["mh", "-t", "--metric", "cost"]);
+    assert.equal(r.status, 2);
+    assert.ok(r.stderr.includes("Error: -t and --metric cost are incompatible"), `stderr: ${r.stderr}`);
+  });
+
+  it("--metric cost before -t is the same conflict (order-independent)", () => {
+    const r = runCli(["mh", "--metric", "cost", "-t"]);
+    assert.equal(r.status, 2);
+    assert.ok(r.stderr.includes("Error: -t and --metric cost are incompatible"), `stderr: ${r.stderr}`);
+  });
+
+  it("an invalid --metric value fails first when combined with -t", () => {
+    const r = runCli(["mh", "-t", "--metric", "bogus"]);
+    assert.equal(r.status, 2);
+    assert.ok(r.stderr.includes("--metric requires 'tokens' or 'cost'"), `stderr: ${r.stderr}`);
+    assert.ok(!r.stderr.includes("are incompatible"), `stderr: ${r.stderr}`);
+  });
+
+  it("snapshot with -t renders without any --metric warning", () => {
+    const r = runCli(["cc", "-t", "--no-color"]);
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+    assert.ok(!r.stderr.includes("--metric"), `stderr: ${r.stderr}`);
+  });
 });
 
 describe("exit codes: success paths do not use the usage-error code", () => {

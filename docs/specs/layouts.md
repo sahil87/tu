@@ -27,6 +27,7 @@ Total        |  490,485,514 |    1,225,955 |    2,701,575 |  486,557,984 |      
 - **Colors:** header row `boldCyan`, dividers `dim`, Total row `boldWhite`
 - Cost cells carry `en-US` thousands separators (`$1,012.34`), matching the token columns
 - Tools with zero tokens are omitted; Total row shown only when >1 tool has data
+- **Token mode (`--metric tokens` / `-t`):** the table is unchanged — its columns are already token-denominated and the Cost column is kept as context. Only the watch delta indicator follows the metric: under tokens it rides the Tokens cell (`9,000 ↑`) and the Cost cell stays plain; under cost it rides Cost
 
 ## 2. Snapshot — Single Tool
 
@@ -77,7 +78,8 @@ avg $1,535.41/day · this month $6,141.62 · peak $4,031.61 (2026-06-12) · ┊ 
 ```
 
 - **Columns:** Date (12 left-aligned), Input/Output/Cache Write/Cache Read/Total (14 right-aligned), Cost (right-aligned, sized to the longest value in the column including the Total row, floor 9 — fits `$9,999.99` with thousands separators at the floor)
-- **Bar chart:** green Unicode block elements (full + fractional eighths), max width 30, scaled to max cost — or to max total tokens under `--metric tokens` (bars, stacked segments, and the footer `avg`/`this month`/`peak`/`p95` follow the metric and format as plain counts; the token/cost cells are unchanged)
+- **Bar chart:** green Unicode block elements (full + fractional eighths), max width 30, scaled to max cost — or to max total tokens under `--metric tokens`/`-t` (bars, stacked segments, and the footer `avg`/`this month`/`peak`/`p95` follow the metric and format as plain counts)
+- **Token mode (`--metric tokens` / `-t`):** the table shape is unchanged; the last column's unit swaps to `Tokens` = total tokens (duplicating the Total column's numbers), the delta indicator compares token values, and the same data-sizing/dim-zero rules apply in the displayed unit
 - **p95 two-zone scale:** when `max > 1.5 × p95` (95th percentile of the nonzero row costs, linear interpolation), the bar area splits into a green main zone (linear 0→p95), a dim `┊` (U+250A) scale-break rule rendered in every row (short bars space-pad up to the rule so it aligns vertically), and a yellow overflow zone (linear p95→max, `max(4, round(barWidth/4))` chars). Rows at exactly p95 end at the rule with no overflow segment. Below the trigger the single linear scale renders unchanged — no rule, no legend, no width change
 - **Month separators:** daily views emit a dim divider (same construction as the header divider) before each row whose `YYYY-MM` prefix differs from the previous row's — daily period only, computed on the post-`maxRows` window, never before the first visible row
 - **Current-period marker:** the row matching the current period's label (today / this week / this month) renders its date cell in **boldWhite** — color-only, no glyph, width unchanged, stripped by `--no-color`/`NO_COLOR`
@@ -122,6 +124,7 @@ avg $405.36/day · this month $9,323.28 · peak $4,031.61 (2026-06-23) · ┊ = 
 
 - **Columns:** Date (10 left-aligned — ISO daily labels are 10 chars, monthly 7), one per tool sized to `max(toolName.length, 9, longest cost cell in the column including its Total-row sum)` right-aligned (variable per-tool width — e.g. `Claude Code` → 11, short names with small costs floor to 9), row Cost (right-aligned, sized to the longest value including the Total row, floor 9)
 - **Negligible-column omission:** tool columns whose visible-window (post-`maxRows`) total is under $1.00 or under 0.1% of the window grand total are omitted entirely — above, Gemini/Copilot/Kimi/OpenCode have no cost in the window, so only Claude Code and Codex render. If every tool is negligible the renderer falls back to the exact-zero filter, then to the full list. The Markdown pivot keeps the exact-zero rule (only all-`$0.00` columns drop); the CSV emitter is the exception: it keeps every registry column with raw `0.00` cells (positional machine contract). Omitted tools still count in the row Cost, the Total row, the bars, and the footer
+- **Token mode (`--metric tokens` / `-t`):** every per-tool cell, the row column and the Total row render as total tokens (`fmtNum`, no `$`), the last header reads `Tokens`, and the title is `📊 Combined Token History (…)`. The omission rule keys on the displayed unit (under 1,000 tokens or under 0.1% of the window grand total in tokens — a `$0.00`-cost tool with real tokens is kept in token mode); bars, segments, legend, data-sizing and dim-zero rules are unchanged
 - Variable-width columns keep the **full 6-tool data row — Date + tool columns + the 3-char gutter + the Cost cell — at a 96-char minimum**: `10 + (11+9+9+9+9+9) + 6×3 + 3 + 9 = 96` whenever every cell fits `$9,999.99`, so the all-tools-active pivot needs a ≥96-col terminal; larger cells widen their own column from there. With negligible-column omission the typically rendered width is far below 80, restoring the inline bar chart on standard terminals (at 96–106 cols with all six tools active the bar is suppressed below the `MIN_BAR_AREA` threshold, so no line exceeds 96)
 - **Dim zero cells:** a data cell whose cost is exactly `$0.00` renders dim (cell text padded first, then colored — width unchanged, stripped under `--no-color`/`NO_COLOR`); the Total row, headers, and dividers are never dimmed, and a sub-cent value that rounds to `$0.00` stays full-intensity. The same rule dims Layout 3's Cost and machine cells and the snapshot's machine columns
 - **Watch mode** appends a delta indicator (`↑`/`↓`) after the Cost cell when `prevCosts` is set. In this pivot only, the indicator is rendered **without its leading space** (`$1,013.30↑` — 1 visible char), so the minimum watch-mode row is 96 + 1 = **97 chars** and fits a ≥97-col terminal without wrapping (the spaced ` ↑` form would add one more char and wrap, corrupting the watch compositor's line-counting). Other renderers keep the spaced form (they have width headroom). A tool crossing the omission threshold mid-watch gains a column on the next render — the compositor re-measures every frame
@@ -181,6 +184,7 @@ Refreshing... · ↵ refresh · q quit
 
 - Two columns only: name (14 left-padded) + cost (12 right-padded)
 - No token breakdown, no stats grid, no rain, no bars
+- **Token mode (`--metric tokens` / `-t`):** compact cells show total tokens (`fmtNum`) instead of cost; the 12-char width is unchanged
 
 ## 6. Watch Mode — Stats Grid Detail
 
@@ -358,6 +362,9 @@ Help: tu help | tu -h | tu --help
 
 Flags:
   --json               Output data as JSON (data commands only)
+  --full               Show full history (default: last 3 months for daily/weekly history)
+  --metric <m>         Show 'cost' (default) or 'tokens' in every table cell, bar and footer stat
+  -t                   Shorthand for --metric tokens
   --sync               Sync metrics before fetching (multi mode)
   --fresh / -f         Bypass cache, fetch fresh data (data commands only)
   --watch / -w         Persistent polling mode with live display (data commands only)

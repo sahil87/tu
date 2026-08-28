@@ -111,4 +111,12 @@ describe("FULL_HELP: -u all and --metric", () => {
     const metricLine = FULL_HELP.split("\n").find((l) => l.includes("--metric"));
     assert.ok(metricLine !== undefined && metricLine.includes("'cost'") && metricLine.includes("'tokens'"), metricLine ?? "no --metric line");
   });
+
+  it("documents -t as the --metric tokens shorthand directly under --metric", () => {
+    const lines = FULL_HELP.split("\n");
+    const metricIdx = lines.findIndex((l) => l.trimStart().startsWith("--metric"));
+    assert.ok(metricIdx >= 0, "no --metric line");
+    const tLine = lines[metricIdx + 1];
+    assert.ok(tLine !== undefined && tLine.trimStart().startsWith("-t") && tLine.includes("--metric tokens"), tLine ?? "no -t line");
+  });
 });
