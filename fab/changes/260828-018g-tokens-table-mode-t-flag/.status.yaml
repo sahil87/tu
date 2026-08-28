@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 10
@@ -33,23 +33,25 @@ stage_metrics:
     apply: {started_at: "2026-08-28T03:15:57Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-28T03:48:57Z"}
     review: {started_at: "2026-08-28T03:48:57Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-28T04:06:05Z"}
     hydrate: {started_at: "2026-08-28T04:06:05Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-28T04:44:14Z"}
-    ship: {started_at: "2026-08-28T04:44:14Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-08-28T04:44:14Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-28T04:54:13Z"}
+    review-pr: {started_at: "2026-08-28T04:54:13Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/tu/pull/74
 change_type_source: explicit
 true_impact:
-    added: 1028
-    deleted: 110
-    net: 918
+    added: 1998
+    deleted: 269
+    net: 1729
     excluding:
-        added: 559
-        deleted: 91
-        net: 468
+        added: 961
+        deleted: 231
+        net: 730
     tests:
-        added: 388
-        deleted: 22
-        net: 366
-    computed_at: "2026-08-28T04:44:14Z"
-    computed_at_stage: hydrate
+        added: 606
+        deleted: 30
+        net: 576
+    computed_at: "2026-08-28T04:54:13Z"
+    computed_at_stage: ship
 summary: -t short flag; --metric tokens renders every table cell (pivot, history, compact, machine columns) in tokens; snapshot no longer warns
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-08-28T04:44:14Z
+last_updated: 2026-08-28T04:54:13Z
