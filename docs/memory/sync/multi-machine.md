@@ -1,6 +1,6 @@
 ---
 type: memory
-description: Git-based metrics sync, JSONL high-water-mark storage (never-shrink writes, self-view max-merge), remote merging, user-directory enumeration for the all-users aggregate, auto-clone, init-metrics [repo-url] bootstrap (writes metrics_repo then clones), repair script, dry-run preview (shared decision path, no-mutation, local git preview)
+description: Git-based metrics sync, JSONL high-water-mark storage (never-shrink writes, self-view max-merge), remote merging, user-directory enumeration for the all-users aggregate (incl. the user/machine-keyed leaderboard reader and its .last-sync staleness footer), auto-clone, init-metrics [repo-url] bootstrap (writes metrics_repo then clones), repair script, dry-run preview (shared decision path, no-mutation, local git preview)
 ---
 
 # Multi-Machine Sync
@@ -19,6 +19,7 @@ Multi-machine sync (`src/node/sync/sync.ts`) enables aggregating AI usage costs 
 - `readRemoteEntriesByMachine(metricsDir, targetUser, excludeMachine, toolKey)` MUST return `Map<string, UsageEntry[]>` grouped by machine directory name; when `excludeMachine` is non-null, that machine is excluded from the map
 - `readRemoteEntries(metricsDir, targetUser, excludeMachine, toolKey)` MUST delegate to `readRemoteEntriesByMachine` and flatten the result into a single `UsageEntry[]`; signature and behavior unchanged from callers' perspective
 - `listUsers(metricsDir)` MUST return the metrics repo's user profile directories: top-level entries that are directories, excluding the `NON_USER_DIRS` set (`docs`) and any dot-prefixed name (`.git`), sorted ascending. A missing or unreadable `metricsDir` returns `[]` with no throw and no stderr (the repo's absence is already reported by `checkMetricsDirGuard`). It backs the `-u all` aggregate in `src/node/core/cli.ts`, which sums `readRemoteEntries(metricsDir, u, null, toolKey)` over every listed user (svlv)
+- `readAllUsersByUserMachine(metricsDir, toolKey)` (`src/node/core/cli.ts`) MUST return every user profile's repo entries keyed by `user/machine` — `listUsers` × `readRemoteEntriesByMachine(metricsDir, user, null, toolKey)` — mirroring the user-keyed all-users read's shape one directory deeper. Read-only, never writes. It backs the leaderboard snapshot's `--by-machine` breakdown (rows become `user/machine` pairs) (4xwg)
 - `all` MUST be a reserved profile name: `config.user === "all"` is rejected (`Error: config user "all" is reserved (used by -u all)`, stderr, exit 2) on every path that reads or writes the repo — `main()` data commands and `runSync` — so no `{metricsDir}/all/` directory can ever be written and then double-counted by `listUsers` (svlv)
 - `mergeEntries()` MUST sum token counts and costs for entries with matching labels [INFERRED]
 - In multi mode, the own-user display path MUST merge the machine's own repo snapshots back into its live view: `fetchToolMerged`/`fetchToolMergedWithMachines` (`src/node/core/cli.ts`) read ALL machines via one `readRemoteEntriesByMachine(metricsDir, config.user, null, toolKey)` walk, split the own machine's entries out of the map, and use `effectiveLocal = maxMergeEntries(local, ownSnapshots)` (per-day whole-entry max on `totalCost`, defined in `src/node/core/fetcher.ts`) as the own-machine share before sum-merging the other machines; `-u <other-user>` (repo-only) and single mode are unchanged
@@ -35,6 +36,7 @@ Both `writeMetrics` and `fullSync` support a dry-run mode that computes an ACCUR
 - `wouldCommit` MAY over-predict in steady state: an equal-cost incoming entry writes a byte-identical day-file, so a would-write can still leave the live tree clean, whereby live `syncMetrics`' `git status` finds nothing and skips the commit while the preview said "Would commit". The preview MUST err toward showing the commit and MUST NOT under-report a commit that would happen (see Design Decisions)
 
 - `isStale()` MUST return true if `.last-sync` is older than 3 hours or missing
+- The repo-only all-users read's lag MUST be surfaced by its display consumers: the leaderboard table footer reads `synced {relative} ago · tu sync to refresh` from the `.last-sync` timestamp (via `formatLastSync(TU_HOME, now)` in `src/node/core/cli.ts`, shared with `tu status`), or `never synced · tu sync to refresh` when `.last-sync` is absent — the same `-u all` lag, made visible on the leaderboard (4xwg)
 - `--sync` flag MUST trigger sync before data fetch (inline, not auto-triggered)
 - Auto-clone MUST be attempted when metricsDir doesn't exist but metricsRepo is configured
 - Clone failures MUST write a marker file (`.clone-failed`) with ISO timestamp; retry suppressed for 3 hours

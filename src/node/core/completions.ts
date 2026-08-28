@@ -19,14 +19,14 @@ _tu_complete() {
   local non_data_subcommands="help init-conf init-metrics sync status update shell-init skill"
   local sources="cc codex co oc gemini gem copilot cop kimi ki all"
   local periods="d w m daily weekly monthly"
-  local display="h history dh wh mh"
-  local long_flags="--json --csv --md --since --until --full --metric --sync --dry-run --fresh --watch --interval --user --by-machine --skip-brew-update --no-color --no-rain --version --help"
+  local display="h history dh wh mh lb lbh"
+  local long_flags="--json --csv --md --since --until --full --metric --top --sync --dry-run --fresh --watch --interval --user --by-machine --skip-brew-update --no-color --no-rain --version --help"
   local short_flags="-f -w -i -u -s -j -t -v -V -h"
   local shells="bash zsh fish"
 
-  # Argument to --interval/--user/--since/--until takes a value; no completion
+  # Argument to --interval/--user/--since/--until/--top takes a value; no completion
   case "\${prev}" in
-    --interval|-i|--user|-u|--since|-s|--until)
+    --interval|-i|--user|-u|--since|-s|--until|--top)
       return 0
       ;;
     --metric)
@@ -77,8 +77,8 @@ _tu() {
   non_data_subcommands=(help init-conf init-metrics sync status update shell-init skill)
   sources=(cc codex co oc gemini gem copilot cop kimi ki all)
   periods=(d w m daily weekly monthly)
-  display=(h history dh wh mh)
-  long_flags=(--json --csv --md --since --until --full --metric --sync --dry-run --fresh --watch --interval --user --by-machine --skip-brew-update --no-color --no-rain --version --help)
+  display=(h history dh wh mh lb lbh)
+  long_flags=(--json --csv --md --since --until --full --metric --top --sync --dry-run --fresh --watch --interval --user --by-machine --skip-brew-update --no-color --no-rain --version --help)
   short_flags=(-f -w -i -u -s -j -t -v -V -h)
   shells=(bash zsh fish)
 
@@ -98,6 +98,7 @@ _tu() {
     '--full[show full history (no 3-month cap)]' \\
     '--metric[show cost or tokens]:metric:(cost tokens)' \\
     '-t[show tokens instead of cost]' \\
+    '--top[show only the top N leaderboard rows/columns]:n:' \\
     '--sync[sync metrics before fetch]' \\
     '--dry-run[preview sync without writing]' \\
     '--fresh[bypass cache]' \\
@@ -184,8 +185,10 @@ complete -c tu -n '__fish_use_subcommand' -a 'history' -d 'history'
 complete -c tu -n '__fish_use_subcommand' -a 'dh' -d 'daily history'
 complete -c tu -n '__fish_use_subcommand' -a 'wh' -d 'weekly history'
 complete -c tu -n '__fish_use_subcommand' -a 'mh' -d 'monthly history'
+complete -c tu -n '__fish_use_subcommand' -a 'lb' -d 'leaderboard'
+complete -c tu -n '__fish_use_subcommand' -a 'lbh' -d 'leaderboard history'
 
-complete -c tu -n 'not __fish_use_subcommand' -a 'd w m daily weekly monthly h history dh wh mh'
+complete -c tu -n 'not __fish_use_subcommand' -a 'd w m daily weekly monthly h history dh wh mh lb lbh'
 
 # Shells (only after 'shell-init')
 complete -c tu -n '__fish_seen_subcommand_from shell-init' -a 'bash' -d 'emit bash completion'
@@ -200,6 +203,7 @@ complete -c tu -l since -r -d 'only include entries on/after date'
 complete -c tu -l until -r -d 'only include entries on/before date'
 complete -c tu -l full -d 'show full history (no 3-month cap)'
 complete -c tu -l metric -r -a 'cost tokens' -d 'show cost or tokens'
+complete -c tu -l top -r -d 'show only the top N leaderboard rows/columns'
 complete -c tu -l sync -d 'sync metrics before fetch'
 complete -c tu -l dry-run -d 'preview sync without writing'
 complete -c tu -l fresh -d 'bypass cache'

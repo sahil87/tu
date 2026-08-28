@@ -1,6 +1,6 @@
 import type { UsageTotals, UsageEntry } from "../core/types.js";
 import { currentLabel } from "../core/fetcher.js";
-import { bold, dim, green, red, cyan, yellow, magenta, blue, boldWhite, boldCyan, colorDisabled } from "./colors.js";
+import { bold, dim, green, red, cyan, yellow, magenta, blue, boldWhite, boldCyan, colorDisabled, stripAnsi } from "./colors.js";
 
 // The unit table cells, bars and footer stats render in. The snapshot table
 // keeps its Cost column in dollars — only the delta indicator follows the
@@ -15,13 +15,17 @@ export interface FormatOptions {
   capActive?: boolean;  // implicit 3-month history cap active → append "last 3 months" heading hint
   metric?: BarMetric;  // cell/bar/footer unit; absent ≡ "cost"
   machineLegend?: string;  // legend noun for the machineCosts columns; absent ≡ "Machines" ("Users" under -u all)
+  historyTitle?: string;  // pivot title override (leaderboard history); absent ≡ the Combined {Cost,Token} History default
+  columnOrder?: "registry" | "total-desc";  // pivot column order; absent ≡ "registry"
+  highlightRowLeader?: boolean;  // pivot: boldWhite each row's max cell (color-only); absent ≡ false
+  omitNegligibleColumns?: boolean;  // pivot negligible/zero column omission; absent ≡ true
 }
 
 // Build the parenthetical that follows a history title, e.g. "(daily)" or
 // "(daily, last 3 months)" when the implicit 3-month cap is active. Shared by
-// the ANSI renderers and the Markdown title helpers so the hint stays identical
-// across output formats.
-function periodLabel(period: string, capActive?: boolean): string {
+// the ANSI renderers, the Markdown title helpers, and cli.ts's leaderboard
+// history titles so the hint stays identical across output formats.
+export function periodLabel(period: string, capActive?: boolean): string {
   return capActive ? `${period}, last 3 months` : period;
 }
 
@@ -692,7 +696,7 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
   const lines: string[] = [];
   const metric = opts?.metric ?? "cost";
   lines.push("");
-  lines.push(boldWhite(`\u{1F4CA} Combined ${metric === "tokens" ? "Token" : "Cost"} History (${periodLabel(period, opts?.capActive)})`));
+  lines.push(boldWhite(opts?.historyTitle ?? `\u{1F4CA} Combined ${metric === "tokens" ? "Token" : "Cost"} History (${periodLabel(period, opts?.capActive)})`));
   lines.push("");
 
   const allToolNames = [...allToolEntries.keys()];
@@ -743,8 +747,12 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
   // in the displayed unit (< $1.00 / < 1,000 tokens, or < 0.1% of the window
   // grand total) — noise columns that widen the row and crowd out the bar
   // chart. Falls back to the exact-zero filter, then to the full registry list
-  // (defensive; cannot normally occur with nonempty labels).
-  const toolNames = significantTools(allToolNames, valueMap, labels, metric);
+  // (defensive; cannot normally occur with nonempty labels). The leaderboard
+  // history passes omitNegligibleColumns: false — silently hiding a low-spend
+  // user from a ranking is wrong; --top gives explicit control instead.
+  const toolNames = opts?.omitNegligibleColumns === false
+    ? allToolNames
+    : significantTools(allToolNames, valueMap, labels, metric);
   // Segment colors for the stacked bar, assigned in visible column order
   // (5th+ tool falls back to uncolored segments).
   const barPalette = stackedBarPalette(toolNames.length);
@@ -772,6 +780,21 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
     }
     grandTotal += rowValue;
     rowData.push({ label, values, rowValue });
+  }
+
+  // Leaderboard history ranks its columns: descending by window total in the
+  // display metric (ties keep first-seen order). The tool pivot keeps registry
+  // order so a tool's color/position never shifts across windows — user sets
+  // are not a fixed registry, so that rationale does not transfer.
+  if (opts?.columnOrder === "total-desc") {
+    const order = toolNames
+      .map((name, i) => ({ name, i }))
+      .sort((a, b) => (toolSums.get(b.name) ?? 0) - (toolSums.get(a.name) ?? 0) || a.i - b.i);
+    toolNames.length = 0;
+    for (const o of order) toolNames.push(o.name);
+    for (const r of rowData) {
+      r.values = order.map((o) => r.values[o.i]);
+    }
   }
 
   const D = PIVOT_DATE_WIDTH;
@@ -837,7 +860,24 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
       : period === "daily" && isWeekendLabel(r.label)
         ? dim(r.label.padEnd(D))
         : r.label;
-    const rowStr = row(labelCell, ...r.values.map((v, i) => metricCell(v, toolWidths[i], metric)));
+    // Leaderboard history highlights each row's winning cell (boldWhite,
+    // color-only — padded width unchanged, stripped by --no-color). The
+    // already-padded dim/plain cell is re-wrapped, matching the metricCell
+    // pad-first-then-color contract.
+    // Loop-based max index: spreading a large values array into Math.max can
+    // hit the argument-count limit (RangeError). Strict `>` keeps the first
+    // max, matching indexOf(Math.max(...)) semantics.
+    let leaderIdx = -1;
+    if (opts?.highlightRowLeader && r.values.length > 0) {
+      leaderIdx = 0;
+      for (let i = 1; i < r.values.length; i++) {
+        if (r.values[i] > r.values[leaderIdx]) leaderIdx = i;
+      }
+    }
+    const rowStr = row(labelCell, ...r.values.map((v, i) => {
+      const cell = metricCell(v, toolWidths[i], metric);
+      return i === leaderIdx ? boldWhite(cell) : cell;
+    }));
     const costBase = " | " + metricCell(r.rowValue, costWidth, metric);
     const indicator = deltaIndicator(r.rowValue, `total:${r.label}`, prevCosts, true);
     const bar = showBars ? renderStackedScaledBar(r.rowValue, r.values, barPalette, scale, barWidth) : "";
@@ -863,6 +903,192 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
 
 export function printTotalHistory(period: string, allToolEntries: Map<string, UsageEntry[]>, termWidth?: number, opts?: FormatOptions): void {
   renderTotalHistory(period, allToolEntries, termWidth, opts).forEach((l) => console.log(l));
+}
+
+// --- Leaderboard snapshot (tu m lb) ---
+//
+// One row per user (or user/machine pair under --by-machine), ranked
+// descending by the display metric. Columns: rank, user (pinned user marked
+// with ◂), cost, bar (solid green, existing bar primitives/budget), tokens,
+// share, and Δ vs the previous window. Both Cost and Tokens render in every
+// metric mode — the metric selects only the sort key, bar scale, share
+// denominator and the heading's "by …" suffix.
+
+export interface LeaderboardRenderRow {
+  rank: number;
+  user: string;
+  machine?: string;
+  totals: UsageTotals;
+  share: number;
+  delta?: number;
+}
+
+export interface LeaderboardRenderOptions {
+  period: string;
+  windowLabel: string;   // current window label in the heading (period label, or "since → until")
+  deltaLabel: string;    // previous-window label in the Δ header ("Jul", ISO date, week start, "prev")
+  metric?: BarMetric;
+  pinnedUser?: string;   // row whose user name carries the ◂ marker
+  top?: number;          // keep the top N rows; the rest collapse into "… +k others"
+  lastSync?: string;     // staleness footer text ("42m ago (…)"); "never"/absent ⇒ never synced
+  prevCosts?: Map<string, number>;  // watch deltas, keyed by user (or user/machine), valued in the display metric
+  termWidth?: number;
+}
+
+// Fractional delta → signed percent cell ("+12%", "-4%", "new").
+function fmtDeltaCell(delta: number | undefined): string {
+  if (delta === undefined) return "new";
+  const pct = Math.round(delta * 100);
+  return `${pct >= 0 ? "+" : ""}${pct}%`;
+}
+
+// The leaderboard row key: the user name, or "user/machine" under --by-machine.
+function leaderboardKey(row: LeaderboardRenderRow): string {
+  return row.machine !== undefined ? `${row.user}/${row.machine}` : row.user;
+}
+
+export function renderLeaderboard(rows: LeaderboardRenderRow[], opts: LeaderboardRenderOptions): string[] {
+  const lines: string[] = [];
+  const metric = opts.metric ?? "cost";
+  lines.push("");
+  lines.push(boldWhite(`Leaderboard (${opts.period}) · ${opts.windowLabel} · by ${metric}`));
+  lines.push("");
+
+  if (rows.length === 0) {
+    lines.push("  No data");
+    lines.push("");
+    lines.push(dim(opts.lastSync !== undefined && opts.lastSync !== "never"
+      ? `synced ${opts.lastSync} · tu sync to refresh`
+      : "never synced · tu sync to refresh"));
+    lines.push("");
+    return lines;
+  }
+
+  // --top keeps the first N ranked rows; the rest collapse into one dim line.
+  // Collapsed rows still count toward the Total row and every share
+  // denominator (shares were computed over the full set by buildLeaderboard).
+  const visible = opts.top !== undefined ? rows.slice(0, opts.top) : rows;
+  const collapsed = rows.length - visible.length;
+  const collapsedLabel = collapsed > 0 ? `… +${collapsed} others` : "";
+
+  const nameCell = (row: LeaderboardRenderRow): string =>
+    leaderboardKey(row) + (row.user === opts.pinnedUser ? " ◂" : "");
+  const deltaHeader = `Δ vs ${opts.deltaLabel}`;
+  const shareCell = (share: number): string => `${(share * 100).toFixed(1)}%`;
+
+  let grandCost = 0;
+  let grandTokens = 0;
+  for (const row of rows) {
+    grandCost += row.totals.totalCost;
+    grandTokens += row.totals.totalTokens;
+  }
+
+  const rankWidth = Math.max(1, ...visible.map((r) => String(r.rank).length));
+  const nameWidth = Math.max("User".length, collapsedLabel.length, ...visible.map((r) => nameCell(r).length));
+  const costWidth = metricColumnWidth([...visible.map((r) => r.totals.totalCost), grandCost], "cost");
+  const tokenWidth = metricColumnWidth([...visible.map((r) => r.totals.totalTokens), grandTokens], "tokens");
+  const shareWidth = Math.max("Share".length, ...visible.map((r) => shareCell(r.share).length));
+  const deltaWidth = Math.max(deltaHeader.length, ...visible.map((r) => fmtDeltaCell(r.delta).length));
+
+  const width = opts.termWidth ?? process.stdout.columns ?? 80;
+  const tableWidth = rankWidth + 3 + nameWidth + 3 + costWidth + 3 + tokenWidth + 3 + shareWidth + 3 + deltaWidth;
+  // The watch delta indicator appends one visible char to the metric cell; the
+  // bar budget reserves it (mirroring the pivot's indicatorReserve) so a watch
+  // row never exceeds the terminal width.
+  const indicatorReserve = opts.prevCosts ? 1 : 0;
+  const barWidth = Math.min(width - tableWidth - 1 - indicatorReserve, MAX_BAR_WIDTH);
+  const showBars = barWidth >= MIN_BAR_AREA;
+
+  const barDiv = showBars ? "─" + "─".repeat(barWidth) : "";
+  const divStr = [rankWidth, nameWidth, costWidth].map((w) => "─".repeat(w)).join("─|─")
+    + barDiv
+    + [tokenWidth, shareWidth, deltaWidth].map((w) => "─|─" + "─".repeat(w)).join("");
+
+  const header = boldCyan("#".padStart(rankWidth))
+    + " | " + boldCyan("User".padEnd(nameWidth))
+    + " | " + boldCyan("Cost".padStart(costWidth))
+    + (showBars ? " " + " ".repeat(barWidth) : "")
+    + " | " + boldCyan("Tokens".padStart(tokenWidth))
+    + " | " + boldCyan("Share".padStart(shareWidth))
+    + " | " + boldCyan(deltaHeader.padStart(deltaWidth));
+  lines.push(header);
+  lines.push(dim(divStr));
+
+  const values = visible.map((r) => metricValue(r.totals, metric));
+  // Loop-based max: spreading a large values array into Math.max can hit the
+  // argument-count limit (RangeError).
+  let maxValue = values.length > 0 ? values[0] : 0;
+  for (let i = 1; i < values.length; i++) {
+    if (values[i] > maxValue) maxValue = values[i];
+  }
+  const scale = showBars
+    ? computeBarScale(values, barWidth)
+    : { mode: "single" as const, max: maxValue };
+
+  for (const row of visible) {
+    const value = metricValue(row.totals, metric);
+    // The watch delta arrow rides the cell in the displayed metric (Cost under
+    // cost, Tokens under tokens), mirroring the snapshot renderer. The arrow
+    // is appended to the plain padded text and the exact-zero dim wrap goes
+    // around the composite (pad first, then color — width unchanged).
+    const costText = fmtCost(row.totals.totalCost).padStart(costWidth)
+      + (metric === "cost" ? deltaIndicator(value, leaderboardKey(row), opts.prevCosts) : "");
+    const costCell = row.totals.totalCost === 0 ? dim(costText) : costText;
+    const tokenText = fmtMetric(row.totals.totalTokens, "tokens").padStart(tokenWidth)
+      + (metric === "tokens" ? deltaIndicator(value, leaderboardKey(row), opts.prevCosts) : "");
+    const tokenCell = row.totals.totalTokens === 0 ? dim(tokenText) : tokenText;
+    const bar = showBars ? renderScaledBar(value, scale, barWidth) : "";
+    // The bar sits mid-row (between Cost and Tokens), and renderScaledBar's
+    // single-zone path does not pad — pad the bar area to barWidth on every
+    // row so Tokens/Share/Δ start at the same offset regardless of bar length.
+    const barCell = showBars ? bar + " ".repeat(Math.max(0, barWidth + 1 - stripAnsi(bar).length)) : "";
+    lines.push(
+      String(row.rank).padStart(rankWidth)
+      + " | " + nameCell(row).padEnd(nameWidth)
+      + " | " + costCell
+      + barCell
+      + " | " + tokenCell
+      + " | " + shareCell(row.share).padStart(shareWidth)
+      + " | " + fmtDeltaCell(row.delta).padStart(deltaWidth),
+    );
+  }
+
+  if (collapsed > 0) {
+    lines.push(
+      " ".repeat(rankWidth)
+      + " | " + dim(collapsedLabel.padEnd(nameWidth))
+      + " | " + " ".repeat(costWidth)
+      + (showBars ? " " + " ".repeat(barWidth) : "")
+      + " | " + " ".repeat(tokenWidth)
+      + " | " + " ".repeat(shareWidth)
+      + " | " + " ".repeat(deltaWidth),
+    );
+  }
+
+  if (rows.length >= 2) {
+    lines.push(dim(divStr));
+    lines.push(
+      boldWhite(" ".repeat(rankWidth))
+      + " | " + boldWhite("Total".padEnd(nameWidth))
+      + " | " + boldWhite(fmtCost(grandCost).padStart(costWidth))
+      + (showBars ? " " + " ".repeat(barWidth) : "")
+      + " | " + boldWhite(fmtMetric(grandTokens, "tokens").padStart(tokenWidth))
+      + " | " + boldWhite(" ".repeat(shareWidth))
+      + " | " + boldWhite(" ".repeat(deltaWidth)),
+    );
+  }
+
+  // The repo-only read lags until the next sync — surface it (ANSI only;
+  // CSV/JSON/MD carry no footer, consistent with the other emitters).
+  lines.push(dim(opts.lastSync !== undefined && opts.lastSync !== "never"
+    ? `synced ${opts.lastSync} · tu sync to refresh`
+    : "never synced · tu sync to refresh"));
+  lines.push("");
+  return lines;
+}
+
+export function printLeaderboard(rows: LeaderboardRenderRow[], opts: LeaderboardRenderOptions): void {
+  renderLeaderboard(rows, opts).forEach((l) => console.log(l));
 }
 
 // --- Compact mode renderers (watch mode only, narrow terminals) ---
@@ -937,17 +1163,37 @@ function renderCompactTotalHistory(labels: string[], valueMap: Map<string, numbe
 //             GFM tables, leading `## {title}` heading, trailing blank line.
 // ---------------------------------------------------------------------------
 
-export type EmitKind = "snapshot" | "history" | "total-history";
+export type EmitKind = "snapshot" | "history" | "total-history" | "leaderboard";
 
 export type EmitData =
   | Map<string, UsageTotals>
   | Map<string, UsageEntry[]>
-  | { toolName: string; entries: UsageEntry[] };
+  | { toolName: string; entries: UsageEntry[] }
+  | LeaderboardRenderRow[];
 
 export interface EmitOptions {
   period: string;
   machineCosts?: Map<string, Map<string, number>>;
   capActive?: boolean;  // implicit 3-month history cap active → append "last 3 months" heading hint
+  deltaLabel?: string;  // leaderboard: previous-window label for the Δ column header
+  totalRows?: LeaderboardRenderRow[];  // leaderboard: full row set the Total row sums (when --top slices the emitted rows)
+  byMachine?: boolean;  // leaderboard: explicit --by-machine flag — keeps the machine column in the header even for an empty row set; falls back to row inference when absent
+  mdTitle?: string;  // total-history: Markdown heading override (leaderboard history); absent ≡ Combined Cost History
+}
+
+// JSON rows for the leaderboard: an array of plain row objects, delta null for
+// a "new" row, share a fraction (0.381, not a percent string), machine present
+// only under --by-machine.
+export function leaderboardRowsToJson(rows: LeaderboardRenderRow[]): Array<Record<string, unknown>> {
+  return rows.map((row) => ({
+    rank: row.rank,
+    user: row.user,
+    ...(row.machine !== undefined ? { machine: row.machine } : {}),
+    cost: row.totals.totalCost,
+    totalTokens: row.totals.totalTokens,
+    share: row.share,
+    delta: row.delta ?? null,
+  }));
 }
 
 // --- CSV primitives ---
@@ -1083,6 +1329,49 @@ function emitCsvTotalHistory(allToolEntries: Map<string, UsageEntry[]>, opts: Em
   return rows.join("\n") + "\n";
 }
 
+// Leaderboard CSV: raw numbers (machine contract) — no `$`, no thousands
+// separators, no ANSI/bars/arrows; delta empty for a "new" row; a machine
+// column follows user under --by-machine; a Total row when >1 row. The Total
+// sums opts.totalRows (the full row set) when given — collapsed --top rows
+// still count toward it. The machine column comes from the explicit
+// opts.byMachine flag (falling back to row inference) so an empty leaderboard
+// still emits the same header schema.
+function emitCsvLeaderboard(rows: LeaderboardRenderRow[], opts: EmitOptions): string {
+  const byMachine = opts.byMachine ?? rows.some((r) => r.machine !== undefined);
+  const header = byMachine
+    ? ["rank", "user", "machine", "cost", "total_tokens", "share", "delta"]
+    : ["rank", "user", "cost", "total_tokens", "share", "delta"];
+  const out: string[] = [csvRow(header)];
+
+  for (const row of rows) {
+    const cells = [String(row.rank), row.user];
+    if (byMachine) cells.push(row.machine ?? "");
+    cells.push(csvCost(row.totals.totalCost), csvNum(row.totals.totalTokens), csvShare(row.share), row.delta !== undefined ? csvShare(row.delta) : "");
+    out.push(csvRow(cells));
+  }
+
+  const totalRows = opts.totalRows ?? rows;
+  if (totalRows.length > 1) {
+    let grandCost = 0;
+    let grandTokens = 0;
+    for (const row of totalRows) {
+      grandCost += row.totals.totalCost;
+      grandTokens += row.totals.totalTokens;
+    }
+    const cells = ["Total", ""];
+    if (byMachine) cells.push("");
+    cells.push(csvCost(grandCost), csvNum(grandTokens), "", "");
+    out.push(csvRow(cells));
+  }
+
+  return out.join("\n") + "\n";
+}
+
+// Raw fraction for CSV (share/delta) — a plain number, no percent sign.
+function csvShare(n: number): string {
+  return String(Math.round(n * 1000) / 1000);
+}
+
 export function emitCsv(data: EmitData, kind: EmitKind, opts: EmitOptions): void {
   let output: string;
   switch (kind) {
@@ -1096,6 +1385,9 @@ export function emitCsv(data: EmitData, kind: EmitKind, opts: EmitOptions): void
     }
     case "total-history":
       output = emitCsvTotalHistory(data as Map<string, UsageEntry[]>, opts);
+      break;
+    case "leaderboard":
+      output = emitCsvLeaderboard(data as LeaderboardRenderRow[], opts);
       break;
   }
   process.stdout.write(output);
@@ -1132,6 +1424,68 @@ function titleForHistory(toolName: string, period: string, capActive?: boolean):
 
 function titleForTotalHistory(period: string, capActive?: boolean): string {
   return `Combined Cost History (${periodLabel(period, capActive)})`;
+}
+
+function titleForLeaderboard(period: string): string {
+  return `Leaderboard (${period})`;
+}
+
+// Leaderboard Markdown: GFM table, left-aligned strings / right-aligned
+// numerics, `$`-prefixed costs with thousands separators, **Total** bolded,
+// delta rendered "new" when undefined. No bars, no arrows, no staleness footer.
+// The Machine column comes from the explicit opts.byMachine flag (falling back
+// to row inference) so an empty leaderboard keeps the same header schema.
+function emitMarkdownLeaderboard(rows: LeaderboardRenderRow[], opts: EmitOptions): string {
+  const byMachine = opts.byMachine ?? rows.some((r) => r.machine !== undefined);
+  const deltaHeader = `Δ vs ${opts.deltaLabel ?? "prev"}`;
+  const aligns: Array<"left" | "right"> = byMachine
+    ? ["right", "left", "left", "right", "right", "right", "right"]
+    : ["right", "left", "right", "right", "right", "right"];
+  const header = byMachine
+    ? ["#", "User", "Machine", "Cost", "Tokens", "Share", deltaHeader]
+    : ["#", "User", "Cost", "Tokens", "Share", deltaHeader];
+
+  const lines: string[] = [];
+  lines.push(`## ${titleForLeaderboard(opts.period)}`);
+  lines.push("");
+  lines.push(mdRow(header));
+  lines.push(mdAlignRow(aligns));
+
+  for (const row of rows) {
+    const cells = [String(row.rank), row.user];
+    if (byMachine) cells.push(row.machine ?? "");
+    cells.push(mdCost(row.totals.totalCost), mdNum(row.totals.totalTokens), mdShare(row.share), row.delta !== undefined ? mdDelta(row.delta) : "new");
+    lines.push(mdRow(cells));
+  }
+
+  // The Total sums the full row set when given (collapsed --top rows count).
+  const totalRows = opts.totalRows ?? rows;
+  if (totalRows.length > 1) {
+    let grandCost = 0;
+    let grandTokens = 0;
+    for (const row of totalRows) {
+      grandCost += row.totals.totalCost;
+      grandTokens += row.totals.totalTokens;
+    }
+    const cells = ["**Total**", ""];
+    if (byMachine) cells.push("");
+    cells.push(`**${mdCost(grandCost)}**`, `**${mdNum(grandTokens)}**`, "", "");
+    lines.push(mdRow(cells));
+  }
+
+  lines.push("");
+  return lines.join("\n");
+}
+
+// Human-readable percent cell (Markdown) — "38.1%", "+12%", "-4%". Shares are
+// unsigned fractions of the total; deltas are signed.
+function mdShare(n: number): string {
+  return `${(n * 100).toFixed(1)}%`;
+}
+
+function mdDelta(n: number): string {
+  const pct = Math.round(n * 100);
+  return `${pct >= 0 ? "+" : ""}${pct}%`;
 }
 
 function emitMarkdownSnapshot(toolTotals: Map<string, UsageTotals>, opts: EmitOptions): string {
@@ -1271,7 +1625,7 @@ function emitMarkdownTotalHistory(allToolEntries: Map<string, UsageEntry[]>, opt
   const header = ["Date", ...toolNames, "Cost", ...machines];
 
   const lines: string[] = [];
-  lines.push(`## ${titleForTotalHistory(opts.period, opts.capActive)}`);
+  lines.push(`## ${opts.mdTitle ?? titleForTotalHistory(opts.period, opts.capActive)}`);
   lines.push("");
   lines.push(mdRow(header));
   lines.push(mdAlignRow(aligns));
@@ -1325,6 +1679,9 @@ export function emitMarkdown(data: EmitData, kind: EmitKind, opts: EmitOptions):
     }
     case "total-history":
       output = emitMarkdownTotalHistory(data as Map<string, UsageEntry[]>, opts);
+      break;
+    case "leaderboard":
+      output = emitMarkdownLeaderboard(data as LeaderboardRenderRow[], opts);
       break;
   }
   process.stdout.write(output + "\n");

@@ -132,7 +132,58 @@ avg $405.36/day · this month $9,323.28 · peak $4,031.61 (2026-06-23) · ┊ = 
 - **Legend:** when stacked bars render (bars visible ∧ ≥2 visible tools ∧ color enabled), the summary footer appends one colored `█` swatch per visible tool in column order, each followed by the tool name — `· █ Claude Code █ Codex`. Omitted under `--no-color`/`NO_COLOR` (uncolored swatches carry no information), when bars are suppressed (narrow terminal), and with a single visible tool
 - **Month separators, current-period marker, weekend dimming, summary footer, and p95 two-zone scale:** same rules as Layout 3 — separators daily-only, the current-period row's date cell renders boldWhite, Saturday/Sunday date cells render dim (daily only, today marker wins), the dim footer follows the Total row (≥2 labels), and the `┊` scale-break rule with yellow overflow zone engages when `max > 1.5 × p95` of the nonzero row totals
 
-## 5. Watch Mode — Full Screen
+## 5. Leaderboard — Snapshot (`lb`)
+
+**Command:** `tu lb`, `tu m lb`, `tu cc m lb`, `tu w lb --top 3`
+
+```
+Leaderboard (monthly) · 2026-08 · by cost
+
+ # | User    |      Cost                    |    Tokens | Share | Δ vs Jul
+───|─────────|────────────|----------------|───────────|───────|─────────
+ 1 | alice   |   $412.30 ████████████████▌  | 9,000,000 | 38.1% |    +12%
+ 2 | sahil ◂ |   $301.10 ███████████▎       | 6,500,000 | 27.8% |     -4%
+ 3 | bob     |   $220.05 ████████▌          | 4,800,000 | 20.3% |    +31%
+ 4 | chen    |   $149.20 ████▌              | 3,200,000 | 13.8% |     new
+───|─────────|────────────|----------------|───────────|───────|─────────
+   | Total   |  $1,082.65                   | 23,500,000 |       |
+synced 42m ago · tu sync to refresh
+```
+
+- **Columns:** `#` rank (right-aligned), User (left, data-sized; the pinned user — `-u <name>`, else the config user — carries a ` ◂` marker that counts toward the column width), Cost (right, data-sized with the 9-char floor, thousands separators), inline bar (solid green, existing p95/two-zone bar budget, scaled to the max row in the display metric), Tokens (right, data-sized), Share (percent of the grand total in the display metric), `Δ vs {prev label}` (fractional change vs the previous same-length window — previous day / Sunday-anchored week / calendar month; `new` when the user had no prior-window data). Both Cost and Tokens render under every metric — `--metric tokens`/`-t` changes only the sort key, bar scale, share denominator, and the heading's `by …` suffix
+- **Ranking:** descending by raw total in the display metric (cost default); ties break by user name ascending; users with zero cost and zero tokens in the window are omitted
+- **Total row:** bolded (`boldWhite`), only when ≥2 rows; sums every row including any collapsed by `--top`
+- **`--top <n>`:** rows past N collapse into one dim `… +k others` line (omitted when `k = 0`); collapsed users still count toward the Total and every share denominator
+- **Staleness footer:** one dim line — `synced {relative} ago · tu sync to refresh`, or `never synced · tu sync to refresh` — because the leaderboard reads the synced metrics repo only. ANSI table output only; CSV/JSON/MD carry no footer
+- **Explicit window:** `--since`/`--until` replaces the period window; the heading shows the range (`2026-08-01 → 2026-08-27`) and the Δ header reads `Δ vs prev` (the equal-length window ending the day before `--since`)
+- **Dim zero cells** and `--no-color` byte-equality follow the same rules as Layout 4. Empty repos render the heading, `No data`, and the footer — never a crash
+- **Multi mode only:** single mode exits 1 with `Error: lb requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo`
+
+## 6. Leaderboard — History Pivot (`lbh`)
+
+**Command:** `tu lbh`, `tu m lbh`, `tu w lbh --top 2`
+
+```
+📊 Leaderboard History (monthly)
+
+Date       |     alice |      sahil |       bob |      Cost
+───────────|───────────|────────────|───────────|──────────────────────
+2026-07    |   $355.20 |    $314.60 |   $169.00 |   $838.80 ██████████████▎
+2026-08    |   $412.30 |    $301.10 |   $220.05 |   $933.45 ██████████████████████████████
+───────────|───────────|────────────|───────────|──────────────────────
+Total      |   $767.50 |    $615.70 |   $389.05 | $1,772.25
+avg $886.13/month · peak $933.45 (2026-08) · █ alice █ sahil █ bob
+```
+
+- **Same renderer as Layout 4** with users in place of tools — month separators, current-period row marker, weekend dimming, stacked per-column bars + legend, p95 two-zone scale, dim summary footer, dim exact-zero cells, and data-sized columns are all inherited unchanged
+- **Title:** `📊 Leaderboard History ({period})` (`Leaderboard Token History` under `--metric tokens`/`-t`) in place of `Combined Cost History`
+- **Column order:** descending by window total in the display metric (a leaderboard is ranked), not registry order — ties keep first-seen order
+- **Per-row leader:** each row's winning user cell renders `boldWhite` (color-only, width unchanged, stripped by `--no-color`/`NO_COLOR`) — above, alice leads both months
+- **No negligible-column omission:** every user column renders — a low-spend user is never silently hidden from a ranking (unlike the tool pivot's omission rule); `--top <n>` is the explicit control, keeping the N highest-total user columns and folding the rest into a single `others` column so row totals are preserved
+- **Cap:** daily/weekly `lbh` carries the same implicit 3-month cap / `--full` semantics as `h` (heading hint `last 3 months`); monthly is never capped
+- **`--by-machine` warns and is ignored**, exactly as on the all-tools pivot; multi mode only (same exit-1 guard as `lb`)
+
+## 7. Watch Mode — Full Screen
 
 **Command:** `tu -w`, `tu cc h -w`, `tu mh -w`
 
@@ -186,7 +237,7 @@ Refreshing... · ↵ refresh · q quit
 - No token breakdown, no stats grid, no rain, no bars
 - **Token mode (`--metric tokens` / `-t`):** compact cells show total tokens (`fmtNum`) instead of cost; the 12-char width is unchanged
 
-## 6. Watch Mode — Stats Grid Detail
+## 8. Watch Mode — Stats Grid Detail
 
 ### Full stats (2+ polls)
 
@@ -217,7 +268,7 @@ Tool         |       Tokens |        Input |       Output |        Cache |      
                                       Loading...
 ```
 
-## 7. Watch Mode — Delta Indicators
+## 9. Watch Mode — Delta Indicators
 
 In watch mode, cost cells gain directional arrows after each poll:
 
@@ -229,7 +280,7 @@ $4.56        no indicator: first poll or no change
 
 Tracked per item via `{toolName}:{label}` or `total:{label}` key.
 
-## 8. Watch Mode — Matrix Rain
+## 10. Watch Mode — Matrix Rain
 
 Fills available terminal space with falling characters:
 
@@ -248,7 +299,7 @@ Fills available terminal space with falling characters:
 - **Shimmer:** ~5% of trail chars randomly replaced each tick
 - **Positioning:** below content (preferred) or right margin (fallback, >= 10 cols); disabled with `--no-rain`
 
-## 9. Watch Mode — Footer States
+## 11. Watch Mode — Footer States
 
 ```
 Next refresh: 45s · ↵ refresh · q quit     ← countdown (dim)
@@ -257,7 +308,7 @@ Refreshing... · ↵ refresh · q quit         ← fetching (dim)
 
 Truncates progressively in narrow terminals: controls dropped first, then status text.
 
-## 10. JSON Output
+## 12. JSON Output
 
 **Command:** `tu --json`, `tu cc h --json`
 
@@ -276,7 +327,7 @@ Truncates progressively in narrow terminals: controls dropped first, then status
 
 Incompatible with `--watch` (exits with error).
 
-## 11. Status
+## 13. Status
 
 **Command:** `tu status`
 
@@ -333,7 +384,7 @@ When metrics dir is missing:
 Metrics:     ~/.tu/metrics_repo (NOT FOUND — run 'tu init-metrics')
 ```
 
-## 12. Help
+## 14. Help
 
 **Command:** `tu help`, `tu -h`, `tu --help`
 

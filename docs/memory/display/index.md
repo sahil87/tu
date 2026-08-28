@@ -4,4 +4,4 @@
 
 | File | Description |
 |------|-------------|
-| [formatting](formatting.md) | Table rendering, the cell/bar/footer unit (cost or tokens via FormatOptions.metric and the -t shorthand), delta indicators, color system, snapshot cache column/width budget, history month separators/footer/p95 bar scale, weekend date dimming, stacked pivot tool bars and footer legend, machine/user breakdown columns, data-sized metric/machine columns, dimmed exact-zero cells, negligible tool-column omission |
+| [formatting](formatting.md) | Table rendering, the cell/bar/footer unit (cost or tokens via FormatOptions.metric and the -t shorthand), delta indicators, color system, snapshot cache column/width budget, history month separators/footer/p95 bar scale, weekend date dimming, stacked pivot tool bars and footer legend, the lb/lbh leaderboard layouts and emit kinds, machine/user breakdown columns, data-sized metric/machine columns, dimmed exact-zero cells, negligible tool-column omission |

@@ -1,0 +1,57 @@
+id: 4xwg
+name: 260828-4xwg-leaderboard-lb-lbh-display
+created: 2026-08-28T06:54:25Z
+created_by: Sahil Ahuja
+change_type: feat
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
+plan:
+    generated: true
+    task_count: 11
+    acceptance_count: 27
+    acceptance_completed: 27
+confidence:
+    certain: 22
+    confident: 0
+    tentative: 0
+    unresolved: 0
+    score: 5.0
+    fuzzy: true
+    dimensions:
+        signal: 88.9
+        reversibility: 83.9
+        competence: 90.7
+        disambiguation: 90.7
+stage_metrics:
+    intake: {started_at: "2026-08-28T06:54:25Z", driver: fab-new, iterations: 1, completed_at: "2026-08-28T07:04:39Z"}
+    apply: {started_at: "2026-08-28T07:48:28Z", driver: fab-fff, iterations: 3, completed_at: "2026-08-28T07:50:54Z"}
+    review: {started_at: "2026-08-28T07:50:54Z", driver: fab-fff, iterations: 3, completed_at: "2026-08-28T07:55:58Z"}
+    hydrate: {started_at: "2026-08-28T07:55:58Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-28T08:00:15Z"}
+    ship: {started_at: "2026-08-28T08:00:15Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-28T08:05:38Z"}
+    review-pr: {started_at: "2026-08-28T08:05:38Z", driver: git-pr, iterations: 1, completed_at: "2026-08-28T08:17:38Z"}
+prs:
+    - https://github.com/sahil87/tu/pull/75
+change_type_source: explicit
+true_impact:
+    added: 2709
+    deleted: 63
+    net: 2646
+    excluding:
+        added: 1835
+        deleted: 32
+        net: 1803
+    tests:
+        added: 1007
+        deleted: 0
+        net: 1007
+    computed_at: "2026-08-28T08:05:38Z"
+    computed_at_stage: ship
+summary: 'Add lb/lbh leaderboard displays (user ranking snapshot + history pivot) with --top flag, pure buildLeaderboard module, leaderboard CSV/MD/JSON emit kinds, and pivot FormatOptions hooks; memory: cli/data-pipeline, display/formatting, sync/multi-machine'
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-08-28T08:17:38Z
