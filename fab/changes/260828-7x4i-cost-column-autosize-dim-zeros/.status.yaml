@@ -1,0 +1,56 @@
+id: 7x4i
+name: 260828-7x4i-cost-column-autosize-dim-zeros
+created: 2026-08-28T02:15:55Z
+created_by: sahil-noon
+change_type: fix
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
+plan:
+    generated: true
+    task_count: 7
+    acceptance_count: 23
+    acceptance_completed: 23
+confidence:
+    certain: 9
+    confident: 6
+    tentative: 0
+    unresolved: 0
+    score: 4.3
+    fuzzy: true
+    dimensions:
+        signal: 74.0
+        reversibility: 90.7
+        competence: 87.3
+        disambiguation: 83.0
+stage_metrics:
+    intake: {started_at: "2026-08-28T02:15:55Z", driver: fab-new, iterations: 1, completed_at: "2026-08-28T02:21:09Z"}
+    apply: {started_at: "2026-08-28T02:21:09Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-28T02:46:50Z"}
+    review: {started_at: "2026-08-28T02:46:50Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-28T02:50:18Z"}
+    hydrate: {started_at: "2026-08-28T02:50:18Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-28T02:55:17Z"}
+    ship: {started_at: "2026-08-28T02:55:17Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-28T02:57:55Z"}
+    review-pr: {started_at: "2026-08-28T02:57:55Z", driver: git-pr, iterations: 1, completed_at: "2026-08-28T03:04:05Z"}
+prs:
+    - https://github.com/sahil87/tu/pull/73
+true_impact:
+    added: 1024
+    deleted: 110
+    net: 914
+    excluding:
+        added: 559
+        deleted: 91
+        net: 468
+    tests:
+        added: 388
+        deleted: 22
+        net: 366
+    computed_at: "2026-08-28T02:57:55Z"
+    computed_at_stage: ship
+summary: Data-sized cost/machine columns (floor 9), dimmed exact-zero cells, ANSI pivot omits negligible (<$1 or <0.1%) tool columns
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-08-28T03:04:05Z
