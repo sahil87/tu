@@ -81,6 +81,13 @@ describe("emitCsv leaderboard kind", () => {
     assert.equal(lines[1], "1,alice,laptop,50.00,500,1,");
   });
 
+  it("keeps the machine column in the header for an empty leaderboard under --by-machine", (t) => {
+    captureStdout();
+    t.after(restoreStdout);
+    emitCsv([], "leaderboard", { period: "monthly", byMachine: true });
+    assert.equal(stdoutText(), "rank,user,machine,cost,total_tokens,share,delta\n");
+  });
+
   it("quotes fields containing commas (RFC 4180)", (t) => {
     captureStdout();
     t.after(restoreStdout);
@@ -123,6 +130,14 @@ describe("emitMarkdown leaderboard kind", () => {
     assert.ok(out.includes("| # | User | Machine | Cost | Tokens | Share | Δ vs prev |"), out);
     assert.ok(out.includes("| 1 | alice | laptop | $50.00 | 500 | 100.0% | new |"), out);
     assert.ok(!out.includes("**Total**"), out);
+  });
+
+  it("keeps the Machine column for an empty leaderboard under --by-machine", (t) => {
+    captureStdout();
+    t.after(restoreStdout);
+    emitMarkdown([], "leaderboard", { period: "monthly", byMachine: true });
+    const out = stdoutText();
+    assert.ok(out.includes("| # | User | Machine | Cost | Tokens | Share | Δ vs prev |"), out);
   });
 
   it("under --top the Total row still sums the full row set (totalRows)", (t) => {

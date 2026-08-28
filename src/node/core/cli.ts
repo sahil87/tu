@@ -976,8 +976,8 @@ function renderLeaderboardByFormat(outputFormat: OutputFormat, period: string, r
   const sliced = lb.top !== undefined ? rows.slice(0, lb.top) : rows;
   switch (outputFormat) {
     case "json": emitJson(leaderboardRowsToJson(sliced)); return;
-    case "csv": emitCsv(sliced, "leaderboard", { period, totalRows: rows }); return;
-    case "md": emitMarkdown(sliced, "leaderboard", { period, deltaLabel, totalRows: rows }); return;
+    case "csv": emitCsv(sliced, "leaderboard", { period, totalRows: rows, byMachine: lb.byMachine }); return;
+    case "md": emitMarkdown(sliced, "leaderboard", { period, deltaLabel, totalRows: rows, byMachine: lb.byMachine }); return;
     default:
       if (prevCosts === undefined) {
         printLeaderboard(rows, renderOpts);

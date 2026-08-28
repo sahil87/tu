@@ -864,9 +864,16 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
     // color-only — padded width unchanged, stripped by --no-color). The
     // already-padded dim/plain cell is re-wrapped, matching the metricCell
     // pad-first-then-color contract.
-    const leaderIdx = opts?.highlightRowLeader && r.values.length > 0
-      ? r.values.indexOf(Math.max(...r.values))
-      : -1;
+    // Loop-based max index: spreading a large values array into Math.max can
+    // hit the argument-count limit (RangeError). Strict `>` keeps the first
+    // max, matching indexOf(Math.max(...)) semantics.
+    let leaderIdx = -1;
+    if (opts?.highlightRowLeader && r.values.length > 0) {
+      leaderIdx = 0;
+      for (let i = 1; i < r.values.length; i++) {
+        if (r.values[i] > r.values[leaderIdx]) leaderIdx = i;
+      }
+    }
     const rowStr = row(labelCell, ...r.values.map((v, i) => {
       const cell = metricCell(v, toolWidths[i], metric);
       return i === leaderIdx ? boldWhite(cell) : cell;
@@ -1008,9 +1015,15 @@ export function renderLeaderboard(rows: LeaderboardRenderRow[], opts: Leaderboar
   lines.push(dim(divStr));
 
   const values = visible.map((r) => metricValue(r.totals, metric));
+  // Loop-based max: spreading a large values array into Math.max can hit the
+  // argument-count limit (RangeError).
+  let maxValue = values.length > 0 ? values[0] : 0;
+  for (let i = 1; i < values.length; i++) {
+    if (values[i] > maxValue) maxValue = values[i];
+  }
   const scale = showBars
     ? computeBarScale(values, barWidth)
-    : { mode: "single" as const, max: Math.max(...values) };
+    : { mode: "single" as const, max: maxValue };
 
   for (const row of visible) {
     const value = metricValue(row.totals, metric);
@@ -1164,6 +1177,7 @@ export interface EmitOptions {
   capActive?: boolean;  // implicit 3-month history cap active → append "last 3 months" heading hint
   deltaLabel?: string;  // leaderboard: previous-window label for the Δ column header
   totalRows?: LeaderboardRenderRow[];  // leaderboard: full row set the Total row sums (when --top slices the emitted rows)
+  byMachine?: boolean;  // leaderboard: explicit --by-machine flag — keeps the machine column in the header even for an empty row set; falls back to row inference when absent
   mdTitle?: string;  // total-history: Markdown heading override (leaderboard history); absent ≡ Combined Cost History
 }
 
@@ -1319,9 +1333,11 @@ function emitCsvTotalHistory(allToolEntries: Map<string, UsageEntry[]>, opts: Em
 // separators, no ANSI/bars/arrows; delta empty for a "new" row; a machine
 // column follows user under --by-machine; a Total row when >1 row. The Total
 // sums opts.totalRows (the full row set) when given — collapsed --top rows
-// still count toward it.
+// still count toward it. The machine column comes from the explicit
+// opts.byMachine flag (falling back to row inference) so an empty leaderboard
+// still emits the same header schema.
 function emitCsvLeaderboard(rows: LeaderboardRenderRow[], opts: EmitOptions): string {
-  const byMachine = rows.some((r) => r.machine !== undefined);
+  const byMachine = opts.byMachine ?? rows.some((r) => r.machine !== undefined);
   const header = byMachine
     ? ["rank", "user", "machine", "cost", "total_tokens", "share", "delta"]
     : ["rank", "user", "cost", "total_tokens", "share", "delta"];
@@ -1417,8 +1433,10 @@ function titleForLeaderboard(period: string): string {
 // Leaderboard Markdown: GFM table, left-aligned strings / right-aligned
 // numerics, `$`-prefixed costs with thousands separators, **Total** bolded,
 // delta rendered "new" when undefined. No bars, no arrows, no staleness footer.
+// The Machine column comes from the explicit opts.byMachine flag (falling back
+// to row inference) so an empty leaderboard keeps the same header schema.
 function emitMarkdownLeaderboard(rows: LeaderboardRenderRow[], opts: EmitOptions): string {
-  const byMachine = rows.some((r) => r.machine !== undefined);
+  const byMachine = opts.byMachine ?? rows.some((r) => r.machine !== undefined);
   const deltaHeader = `Δ vs ${opts.deltaLabel ?? "prev"}`;
   const aligns: Array<"left" | "right"> = byMachine
     ? ["right", "left", "left", "right", "right", "right", "right"]
