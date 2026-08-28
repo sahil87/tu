@@ -2,7 +2,9 @@ import type { UsageTotals, UsageEntry } from "../core/types.js";
 import { currentLabel } from "../core/fetcher.js";
 import { bold, dim, green, red, cyan, yellow, magenta, blue, boldWhite, boldCyan, colorDisabled } from "./colors.js";
 
-// Which UsageEntry field history bars (and the footer stats) scale on.
+// The unit table cells, bars and footer stats render in. The snapshot table
+// keeps its Cost column in dollars — only the delta indicator follows the
+// metric (compact snapshot cells use the metric).
 export type BarMetric = "cost" | "tokens";
 
 export interface FormatOptions {
@@ -11,7 +13,7 @@ export interface FormatOptions {
   maxRows?: number;  // truncate history to most recent N data rows (watch mode)
   machineCosts?: Map<string, Map<string, number>>;  // key: label/toolName → (machine → cost)
   capActive?: boolean;  // implicit 3-month history cap active → append "last 3 months" heading hint
-  metric?: BarMetric;  // history bar scale; absent ≡ "cost"
+  metric?: BarMetric;  // cell/bar/footer unit; absent ≡ "cost"
   machineLegend?: string;  // legend noun for the machineCosts columns; absent ≡ "Machines" ("Users" under -u all)
 }
 
@@ -39,31 +41,32 @@ export function fmtCost(n: number): string {
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-// Width of a right-aligned cost column sized to its data: never narrower than
-// COST_WIDTH (so small-cost renders are byte-identical to a fixed 9-wide
-// column), wide enough for the longest fmtCost() among the values it will
-// hold — including the Total-row value, which is usually the longest.
-function costColumnWidth(values: number[]): number {
-  return Math.max(COST_WIDTH, ...values.map((v) => fmtCost(v).length));
+// Width of a right-aligned metric column sized to its data: floor COST_WIDTH
+// (so small renders are byte-identical to a fixed 9-wide column), wide enough
+// for the longest fmtMetric() among the values it will hold — including the
+// Total-row value, which is usually the longest.
+function metricColumnWidth(values: number[], metric: BarMetric): number {
+  return Math.max(COST_WIDTH, ...values.map((v) => fmtMetric(v, metric).length));
 }
 
-// A cost data cell: pad first, then color — the row()/colorRow() builders pad
+// A metric data cell: pad first, then color — the row()/colorRow() builders pad
 // by raw string length, which would count ANSI bytes, so a pre-padded cell is
 // a no-op for padStart (the same trick labelCell relies on). Exact-zero cells
-// are dimmed ("zeros are noise"); a sub-cent nonzero that formats as $0.00 is
-// not. Total-row cells never go through here — they stay boldWhite.
-function costCell(cost: number, width: number): string {
-  const text = fmtCost(cost).padStart(width);
-  return cost === 0 ? dim(text) : text;
+// dim in either unit — 0 tokens is as much "no data" as $0.00. Total-row cells
+// never go through here — they stay boldWhite.
+function metricCell(value: number, width: number, metric: BarMetric): string {
+  const text = fmtMetric(value, metric).padStart(width);
+  return value === 0 ? dim(text) : text;
 }
 
-// Format a bar-scale value in the unit the bars use (see BarMetric).
+// Format a cell/bar/footer value in the unit the table renders in (see BarMetric).
 function fmtMetric(n: number, metric: BarMetric): string {
   return metric === "tokens" ? fmtNum(Math.round(n)) : fmtCost(n);
 }
 
-// The UsageEntry field a history bar scales on.
-function barValue(e: UsageEntry, metric: BarMetric): number {
+// The UsageTotals field a cell, bar or footer stat renders in the selected
+// metric (UsageEntry is the subtype that also carries a label).
+export function metricValue(e: UsageTotals, metric: BarMetric): number {
   return metric === "tokens" ? e.totalTokens : e.totalCost;
 }
 
@@ -85,8 +88,12 @@ export function deltaIndicator(current: number, key: string, prevCosts?: Map<str
   return "";
 }
 
+export function fmtMetricDelta(current: number, key: string, metric: BarMetric, prevCosts?: Map<string, number>): string {
+  return fmtMetric(current, metric) + deltaIndicator(current, key, prevCosts);
+}
+
 export function fmtCostDelta(current: number, key: string, prevCosts?: Map<string, number>): string {
-  return fmtCost(current) + deltaIndicator(current, key, prevCosts);
+  return fmtMetricDelta(current, key, "cost", prevCosts);
 }
 
 // --- Inline bar rendering (fractional Unicode blocks at eighths precision) ---
@@ -108,11 +115,12 @@ const BLOCK_EIGHTHS = [
 const MIN_BAR_AREA = 10;
 const MAX_BAR_WIDTH = 30;
 const GUTTER = 3; // " | " separator between main table and cost area
-// Floor for every right-aligned cost column — the rendered width is data-sized
-// via costColumnWidth() (max of this floor and the longest fmtCost() the column
-// will hold, including its Total-row value). 9 chars fits $9,999.99 with
-// thousands separators; five-figure monthly cells ($15,429.88) are routine
-// under `-u all`, so columns grow with their data instead of overflowing.
+// Floor for every right-aligned metric column — the rendered width is data-sized
+// via metricColumnWidth() (max of this floor and the longest fmtMetric() the
+// column will hold, including its Total-row value). 9 chars fits $9,999.99 with
+// thousands separators; five-figure monthly cells ($15,429.88) and eight-figure
+// token cells (9,999,999) are routine under `-u all`, so columns grow with
+// their data instead of overflowing.
 const COST_WIDTH = 9;
 // Floor for a variable-width cross-tool pivot column (renderTotalHistory): each
 // column is sized to max(tool name, this floor, the longest cost cell it holds
@@ -376,9 +384,10 @@ export function renderHistory(toolName: string, period: string, entries: UsageEn
     entries = entries.slice(-opts.maxRows);
   }
 
-  // Compact mode: date + cost only
+  // Compact mode: date + value only (in the displayed metric)
+  const metric = opts?.metric ?? "cost";
   if (opts?.compact) {
-    lines.push(...renderCompactHistory(entries, opts.prevCosts, toolName));
+    lines.push(...renderCompactHistory(entries, opts.prevCosts, toolName, metric));
     return lines;
   }
 
@@ -388,34 +397,35 @@ export function renderHistory(toolName: string, period: string, entries: UsageEn
   const tableWidth = D + (numCols - 1) * N + (numCols - 1) * 3;
   const width = termWidth ?? process.stdout.columns ?? 80;
 
-  // Machine columns setup (computed before bar width so we can subtract their width)
+  // Machine columns setup (computed before bar width so we can subtract their width).
+  // machineCosts values are in the displayed metric (the cli.ts builders take it).
   const machineCosts = opts?.machineCosts;
   const machineNames = machineCosts ? [...new Set([...machineCosts.values()].flatMap((m) => [...m.keys()]))] : [];
   const mcols = buildMachineColumns(machineNames);
   const hasMachines = mcols.length > 0;
 
-  // Pre-pass: the Cost column and the machine columns are sized from the data
-  // before the bar budget is derived. sumCost and the per-machine sums also
-  // feed the Total row below.
-  let sumCost = 0;
+  // Pre-pass: the last (metric) column and the machine columns are sized from
+  // the data before the bar budget is derived. sumValue and the per-machine
+  // sums also feed the Total row below.
+  let sumValue = 0;
   const machineSums = new Map<string, number>();
   const machineCellValues: number[] = [];
   for (const e of entries) {
-    sumCost += e.totalCost;
+    sumValue += metricValue(e, metric);
     const rowMachines = machineCosts?.get(e.label);
     for (const mc of mcols) {
-      const cost = rowMachines?.get(mc.name) ?? 0;
-      machineCellValues.push(cost);
-      machineSums.set(mc.name, (machineSums.get(mc.name) ?? 0) + cost);
+      const value = rowMachines?.get(mc.name) ?? 0;
+      machineCellValues.push(value);
+      machineSums.set(mc.name, (machineSums.get(mc.name) ?? 0) + value);
     }
   }
 
-  // Cost column sized to its data (floor COST_WIDTH), including the Total row.
-  const costWidth = costColumnWidth([...entries.map((e) => e.totalCost), sumCost]);
+  // Last column sized to its data (floor COST_WIDTH), including the Total row.
+  const costWidth = metricColumnWidth([...entries.map((e) => metricValue(e, metric)), sumValue], metric);
   // All machine columns share one data-sized width (floored at
   // MACHINE_COL_WIDTH) so the letter-coded columns read as a uniform block.
   const machineColWidth = hasMachines
-    ? costColumnWidth([...machineCellValues, ...mcols.map((mc) => machineSums.get(mc.name) ?? 0)])
+    ? metricColumnWidth([...machineCellValues, ...mcols.map((mc) => machineSums.get(mc.name) ?? 0)], metric)
     : MACHINE_COL_WIDTH;
   const machineColsWidth = hasMachines ? mcols.length * (machineColWidth + 3) : 0; // " | " + padded cost
 
@@ -431,12 +441,11 @@ export function renderHistory(toolName: string, period: string, entries: UsageEn
   const machineDiv = hasMachines ? mcols.map(() => "─|─" + "─".repeat(machineColWidth)).join("") : "";
   const machineHeader = hasMachines ? mcols.map((c) => " | " + boldCyan(c.letter.padStart(machineColWidth))).join("") : "";
 
-  const costHeader = " | " + boldCyan("Cost".padStart(costWidth));
+  const costHeader = " | " + boldCyan((metric === "tokens" ? "Tokens" : "Cost").padStart(costWidth));
   lines.push(colorRow(["Date", "Input", "Output", "Cache Write", "Cache Read", "Total"], boldCyan) + costHeader + machineHeader);
   lines.push(dim(divStr + costDiv + machineDiv + barDiv));
 
-  const metric = opts?.metric ?? "cost";
-  const barValues = entries.map((e) => barValue(e, metric));
+  const barValues = entries.map((e) => metricValue(e, metric));
   const scale = showBars
     ? computeBarScale(barValues, barWidth)
     : { mode: "single" as const, max: Math.max(...barValues) };
@@ -467,19 +476,20 @@ export function renderHistory(toolName: string, period: string, entries: UsageEn
         ? dim(e.label.padEnd(D))
         : e.label;
     const rowStr = row(labelCell, fmtNum(e.inputTokens), fmtNum(e.outputTokens), fmtNum(e.cacheCreationTokens), fmtNum(e.cacheReadTokens), fmtNum(e.totalTokens));
-    const costBase = " | " + costCell(e.totalCost, costWidth);
-    const indicator = deltaIndicator(e.totalCost, `${toolName}:${e.label}`, prevCosts);
+    const value = metricValue(e, metric);
+    const costBase = " | " + metricCell(value, costWidth, metric);
+    const indicator = deltaIndicator(value, `${toolName}:${e.label}`, prevCosts);
 
     let machineCells = "";
     if (hasMachines) {
       const rowMachines = machineCosts?.get(e.label);
       for (const mc of mcols) {
-        const cost = rowMachines?.get(mc.name) ?? 0;
-        machineCells += " | " + costCell(cost, machineColWidth);
+        const mcValue = rowMachines?.get(mc.name) ?? 0;
+        machineCells += " | " + metricCell(mcValue, machineColWidth, metric);
       }
     }
 
-    const bar = showBars ? renderScaledBar(barValue(e, metric), scale, barWidth) : "";
+    const bar = showBars ? renderScaledBar(metricValue(e, metric), scale, barWidth) : "";
     lines.push(rowStr + costBase + machineCells + indicator + bar);
     sumInput += e.inputTokens;
     sumOutput += e.outputTokens;
@@ -491,11 +501,11 @@ export function renderHistory(toolName: string, period: string, entries: UsageEn
   if (entries.length > 1) {
     lines.push(dim(divStr + costDiv + machineDiv + barDiv));
     const totalRow = colorRow(["Total", fmtNum(sumInput), fmtNum(sumOutput), fmtNum(sumCacheW), fmtNum(sumCacheR), fmtNum(sumTotal)], boldWhite);
-    const totalCost = " | " + boldWhite(fmtCost(sumCost).padStart(costWidth));
+    const totalCost = " | " + boldWhite(fmtMetric(sumValue, metric).padStart(costWidth));
     let totalMachineCells = "";
     if (hasMachines) {
       for (const mc of mcols) {
-        totalMachineCells += " | " + boldWhite(fmtCost(machineSums.get(mc.name) ?? 0).padStart(machineColWidth));
+        totalMachineCells += " | " + boldWhite(fmtMetric(machineSums.get(mc.name) ?? 0, metric).padStart(machineColWidth));
       }
     }
     lines.push(totalRow + totalCost + totalMachineCells);
@@ -528,9 +538,10 @@ export function renderTotal(period: string, toolTotals: Map<string, UsageTotals>
     return lines;
   }
 
-  // Compact mode: name + cost only
+  // Compact mode: name + value only (in the displayed metric)
+  const metric = opts?.metric ?? "cost";
   if (opts?.compact) {
-    lines.push(...renderCompactSnapshot(toolTotals, opts.prevCosts));
+    lines.push(...renderCompactSnapshot(toolTotals, opts.prevCosts, metric));
     return lines;
   }
 
@@ -543,7 +554,8 @@ export function renderTotal(period: string, toolTotals: Map<string, UsageTotals>
     cols.map((c, i) => colorFn(i === 0 ? c.padEnd(W) : c.padStart(N))).join(" | ");
   const divider = [W, N, N, N, N, N].map(w => "─".repeat(w)).join("─|─");
 
-  // Machine columns setup
+  // Machine columns setup. machineCosts values are in the displayed metric
+  // (the cli.ts builders take it); under cost they are dollars, byte-identical.
   const machineCosts = opts?.machineCosts;
   const machineNames = machineCosts ? [...new Set([...machineCosts.values()].flatMap((m) => [...m.keys()]))] : [];
   const mcols = buildMachineColumns(machineNames);
@@ -558,13 +570,13 @@ export function renderTotal(period: string, toolTotals: Map<string, UsageTotals>
     if (t.totalTokens === 0) continue;
     const toolMachines = machineCosts?.get(name);
     for (const mc of mcols) {
-      const cost = toolMachines?.get(mc.name) ?? 0;
-      machineCellValues.push(cost);
-      machineSums.set(mc.name, (machineSums.get(mc.name) ?? 0) + cost);
+      const value = toolMachines?.get(mc.name) ?? 0;
+      machineCellValues.push(value);
+      machineSums.set(mc.name, (machineSums.get(mc.name) ?? 0) + value);
     }
   }
   const machineColWidth = hasMachines
-    ? costColumnWidth([...machineCellValues, ...mcols.map((mc) => machineSums.get(mc.name) ?? 0)])
+    ? metricColumnWidth([...machineCellValues, ...mcols.map((mc) => machineSums.get(mc.name) ?? 0)], metric)
     : MACHINE_COL_WIDTH;
   const machineDiv = hasMachines ? mcols.map(() => "─|─" + "─".repeat(machineColWidth)).join("") : "";
   const machineHeader = hasMachines ? mcols.map((c) => " | " + boldCyan(c.letter.padStart(machineColWidth))).join("") : "";
@@ -580,16 +592,24 @@ export function renderTotal(period: string, toolTotals: Map<string, UsageTotals>
 
   for (const [name, t] of toolTotals) {
     if (t.totalTokens > 0) {
-      const costStr = fmtCostDelta(t.totalCost, name, prevCosts);
+      // The table is metric-neutral — its columns are already token-denominated
+      // and Cost is kept as context in token mode. Only the watch delta
+      // indicator follows the metric: it compares the value in the prev map
+      // (built in the displayed metric), so under tokens it rides the Tokens
+      // cell and the Cost cell stays plain; under cost it rides Cost.
+      const tokensStr = metric === "tokens"
+        ? fmtNum(t.totalTokens) + deltaIndicator(t.totalTokens, name, prevCosts)
+        : fmtNum(t.totalTokens);
+      const costStr = metric === "tokens" ? fmtCost(t.totalCost) : fmtCostDelta(t.totalCost, name, prevCosts);
       let machineCells = "";
       if (hasMachines) {
         const toolMachines = machineCosts?.get(name);
         for (const mc of mcols) {
-          const cost = toolMachines?.get(mc.name) ?? 0;
-          machineCells += " | " + costCell(cost, machineColWidth);
+          const value = toolMachines?.get(mc.name) ?? 0;
+          machineCells += " | " + metricCell(value, machineColWidth, metric);
         }
       }
-      lines.push(row(name, fmtNum(t.totalTokens), fmtNum(t.inputTokens), fmtNum(t.outputTokens), fmtNum(t.cacheCreationTokens + t.cacheReadTokens), costStr) + machineCells);
+      lines.push(row(name, tokensStr, fmtNum(t.inputTokens), fmtNum(t.outputTokens), fmtNum(t.cacheCreationTokens + t.cacheReadTokens), costStr) + machineCells);
     }
     grandCost += t.totalCost;
     grandInput += t.inputTokens;
@@ -604,7 +624,7 @@ export function renderTotal(period: string, toolTotals: Map<string, UsageTotals>
     let totalMachineCells = "";
     if (hasMachines) {
       for (const mc of mcols) {
-        totalMachineCells += " | " + boldWhite(fmtCost(machineSums.get(mc.name) ?? 0).padStart(machineColWidth));
+        totalMachineCells += " | " + boldWhite(fmtMetric(machineSums.get(mc.name) ?? 0, metric).padStart(machineColWidth));
       }
     }
     lines.push(colorRow(["Total", fmtNum(grandTotal), fmtNum(grandInput), fmtNum(grandOutput), fmtNum(grandCache), fmtCost(grandCost)], boldWhite) + totalMachineCells);
@@ -622,47 +642,57 @@ export function printTotal(period: string, toolTotals: Map<string, UsageTotals>,
 }
 
 // --- Cross-tool history pivot (tu total-history daily, tu total-history monthly) ---
-// Y-axis = dates, X-axis = tool names, cell = cost
+// Y-axis = dates, X-axis = tool names, cell = the displayed metric (cost or tokens)
 
-// Filter pivot tool columns to those with nonzero total cost across the given
+// Filter pivot tool columns to those with a nonzero total across the given
 // labels (the visible window for the ANSI pivot, all labels for Markdown).
 // Falls back to the unfiltered list when the filter would empty it. Shared by
-// renderTotalHistory and emitMarkdownTotalHistory; CSV keeps all columns.
-function nonzeroCostTools(toolNames: string[], costMap: Map<string, Map<string, number>>, labels: string[]): string[] {
+// renderTotalHistory and emitMarkdownTotalHistory (over its cost map — emitters
+// ignore the metric); CSV keeps all columns.
+function nonzeroTools(toolNames: string[], valueMap: Map<string, Map<string, number>>, labels: string[]): string[] {
   const active = toolNames.filter((tool) =>
-    labels.some((label) => (costMap.get(tool)?.get(label) ?? 0) !== 0));
+    labels.some((label) => (valueMap.get(tool)?.get(label) ?? 0) !== 0));
   return active.length > 0 ? active : toolNames;
 }
 
 // Human-facing ANSI pivot: a tool column is worth its ~12 chars of bar area
-// only when its visible-window total is significant.
+// only when its visible-window total is significant in the displayed unit.
 const NEGLIGIBLE_COST_ABS = 1.0;     // dollars — omit below $1.00 …
-const NEGLIGIBLE_COST_SHARE = 0.001; // … or below 0.1% of the window grand total
+const NEGLIGIBLE_TOKENS_ABS = 1_000; // tokens  — omit below 1,000 tokens …
+const NEGLIGIBLE_SHARE = 0.001;      // … or below 0.1% of the window grand total (either unit)
 
-// Keep a pivot column iff its visible-window total is ≥ NEGLIGIBLE_COST_ABS
-// AND ≥ NEGLIGIBLE_COST_SHARE × the window grand total (boundary values are
-// kept). When nothing survives (e.g. a $0.40 window), fall back to the
-// exact-zero filter, which itself falls back to the full registry list.
-// Markdown keeps the exact-zero rule (nonzeroCostTools); CSV is unfiltered.
-function significantCostTools(toolNames: string[], costMap: Map<string, Map<string, number>>, labels: string[]): string[] {
+function negligibleAbs(metric: BarMetric): number {
+  return metric === "tokens" ? NEGLIGIBLE_TOKENS_ABS : NEGLIGIBLE_COST_ABS;
+}
+
+// Keep a pivot column iff its visible-window total is ≥ negligibleAbs(metric)
+// AND ≥ NEGLIGIBLE_SHARE × the window grand total, both in the displayed unit
+// (boundary values are kept) — a zero-priced tool with real tokens is a real
+// column in token mode and noise in cost mode. When nothing survives (e.g. a
+// $0.40 window), fall back to the exact-zero filter, which itself falls back to
+// the full registry list. Markdown keeps the exact-zero rule (nonzeroTools over
+// its cost map); CSV is unfiltered.
+function significantTools(toolNames: string[], valueMap: Map<string, Map<string, number>>, labels: string[], metric: BarMetric): string[] {
   const totals = new Map<string, number>();
   for (const tool of toolNames) {
     let total = 0;
-    for (const label of labels) total += costMap.get(tool)?.get(label) ?? 0;
+    for (const label of labels) total += valueMap.get(tool)?.get(label) ?? 0;
     totals.set(tool, total);
   }
   const grand = [...totals.values()].reduce((sum, t) => sum + t, 0);
+  const abs = negligibleAbs(metric);
   const kept = toolNames.filter((tool) => {
     const total = totals.get(tool)!;
-    return total >= NEGLIGIBLE_COST_ABS && total >= NEGLIGIBLE_COST_SHARE * grand;
+    return total >= abs && total >= NEGLIGIBLE_SHARE * grand;
   });
-  return kept.length > 0 ? kept : nonzeroCostTools(toolNames, costMap, labels);
+  return kept.length > 0 ? kept : nonzeroTools(toolNames, valueMap, labels);
 }
 
 export function renderTotalHistory(period: string, allToolEntries: Map<string, UsageEntry[]>, termWidth?: number, opts?: FormatOptions): string[] {
   const lines: string[] = [];
+  const metric = opts?.metric ?? "cost";
   lines.push("");
-  lines.push(boldWhite(`\u{1F4CA} Combined Cost History (${periodLabel(period, opts?.capActive)})`));
+  lines.push(boldWhite(`\u{1F4CA} Combined ${metric === "tokens" ? "Token" : "Cost"} History (${periodLabel(period, opts?.capActive)})`));
   lines.push("");
 
   const allToolNames = [...allToolEntries.keys()];
@@ -685,93 +715,83 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
     return lines;
   }
 
-  // Compact mode: date + total cost only
+  // Compact mode: date + total value only (in the displayed metric)
   if (opts?.compact) {
-    const costMap = new Map<string, number>();
+    const valueMap = new Map<string, number>();
     for (const entries of allToolEntries.values()) {
       for (const e of entries) {
-        costMap.set(e.label, (costMap.get(e.label) || 0) + e.totalCost);
+        valueMap.set(e.label, (valueMap.get(e.label) || 0) + metricValue(e, metric));
       }
     }
-    lines.push(...renderCompactTotalHistory(labels, costMap, opts.prevCosts));
+    lines.push(...renderCompactTotalHistory(labels, valueMap, opts.prevCosts, metric));
     return lines;
   }
 
-  // Build lookups: tool -> label -> cost (cells, Cost column, Total row) and
-  // tool -> label -> bar value (bars, stacked segments, footer). They coincide
-  // under the default cost metric.
-  const metric = opts?.metric ?? "cost";
-  const costMap = new Map<string, Map<string, number>>();
-  const barMap = new Map<string, Map<string, number>>();
+  // One lookup: tool -> label -> the displayed value. Cells, the row column,
+  // the Total row, bars, stacked segments and the footer all render in the
+  // selected metric, so the two maps coincide under both units.
+  const valueMap = new Map<string, Map<string, number>>();
   for (const [tool, entries] of allToolEntries) {
-    const costs = new Map<string, number>();
-    const bars = new Map<string, number>();
+    const values = new Map<string, number>();
     for (const e of entries) {
-      costs.set(e.label, e.totalCost);
-      bars.set(e.label, barValue(e, metric));
+      values.set(e.label, metricValue(e, metric));
     }
-    costMap.set(tool, costs);
-    barMap.set(tool, bars);
+    valueMap.set(tool, values);
   }
 
   // Omit tool columns whose visible-window (post-maxRows) total is negligible
-  // (< $1.00 or < 0.1% of the window grand total) — noise columns that widen
-  // the row and crowd out the bar chart. Falls back to the exact-zero filter,
-  // then to the full registry list (defensive; cannot normally occur with
-  // nonempty labels).
-  const toolNames = significantCostTools(allToolNames, costMap, labels);
+  // in the displayed unit (< $1.00 / < 1,000 tokens, or < 0.1% of the window
+  // grand total) — noise columns that widen the row and crowd out the bar
+  // chart. Falls back to the exact-zero filter, then to the full registry list
+  // (defensive; cannot normally occur with nonempty labels).
+  const toolNames = significantTools(allToolNames, valueMap, labels, metric);
   // Segment colors for the stacked bar, assigned in visible column order
   // (5th+ tool falls back to uncolored segments).
   const barPalette = stackedBarPalette(toolNames.length);
 
-  // Pre-compute per-row cost data BEFORE the width budget: the Cost column and
-  // the per-tool columns are sized from this data, and barWidth subtracts the
-  // computed costWidth. rowCost/barTotal/grandTotal sum over ALL registry
-  // tools — an omitted negligible column still counts in the row Cost, the
-  // Total, the bars and the footer — while costs/toolBars/toolSums cover only
-  // the visible (filtered) columns.
-  const rowData: { label: string; costs: number[]; rowCost: number; barTotal: number; toolBars: number[] }[] = [];
+  // Pre-compute per-row value data BEFORE the width budget: the value column
+  // and the per-tool columns are sized from this data, and barWidth subtracts
+  // the computed costWidth. rowValue/toolSums/grandTotal sum over ALL registry
+  // tools — an omitted negligible column still counts in the row value, the
+  // Total, the bars and the footer — while values cover only the visible
+  // (filtered) columns.
+  const rowData: { label: string; values: number[]; rowValue: number }[] = [];
   const toolSums = new Map<string, number>(toolNames.map((t) => [t, 0]));
   let grandTotal = 0;
 
   for (const label of labels) {
-    let rowCost = 0;
-    let barTotal = 0;
+    let rowValue = 0;
     for (const tool of allToolNames) {
-      rowCost += costMap.get(tool)?.get(label) || 0;
-      barTotal += barMap.get(tool)?.get(label) || 0;
+      rowValue += valueMap.get(tool)?.get(label) || 0;
     }
-    const costs: number[] = [];
-    const toolBars: number[] = [];
+    const values: number[] = [];
     for (const tool of toolNames) {
-      const cost = costMap.get(tool)?.get(label) || 0;
-      const bar = barMap.get(tool)?.get(label) || 0;
-      costs.push(cost);
-      toolBars.push(bar);
-      toolSums.set(tool, (toolSums.get(tool) || 0) + cost);
+      const value = valueMap.get(tool)?.get(label) || 0;
+      values.push(value);
+      toolSums.set(tool, (toolSums.get(tool) || 0) + value);
     }
-    grandTotal += rowCost;
-    rowData.push({ label, costs, rowCost, barTotal, toolBars });
+    grandTotal += rowValue;
+    rowData.push({ label, values, rowValue });
   }
 
   const D = PIVOT_DATE_WIDTH;
   // Variable per-tool column width: max(tool name, the MIN_TOOL_COL_WIDTH
-  // floor, the longest cost cell in the column including its Total-row sum) —
+  // floor, the longest cell in the column including its Total-row sum) —
   // a five-figure cell widens its own column instead of overflowing it and
   // shifting every column to its right (see the constant for the full-row
   // math). Fixed-width columns overflowed 80-col terminals once the pivot grew
   // to 5 tools; sizing per column keeps the full data row as narrow as the
-  // cost cells allow (96 cols at 6 tools, before negligible-column omission).
+  // cells allow (96 cols at 6 tools, before negligible-column omission).
   const toolWidths = toolNames.map((name, i) =>
     Math.max(
       name.length,
       MIN_TOOL_COL_WIDTH,
-      ...rowData.map((r) => fmtCost(r.costs[i]).length),
-      fmtCost(toolSums.get(name) || 0).length,
+      ...rowData.map((r) => fmtMetric(r.values[i], metric).length),
+      fmtMetric(toolSums.get(name) || 0, metric).length,
     ));
-  // Cost column sized to its data (floor COST_WIDTH) — includes the Total-row
-  // grand total, usually the longest value the column holds.
-  const costWidth = costColumnWidth([...rowData.map((r) => r.rowCost), grandTotal]);
+  // The row value column sized to its data (floor COST_WIDTH) — includes the
+  // Total-row grand total, usually the longest value the column holds.
+  const costWidth = metricColumnWidth([...rowData.map((r) => r.rowValue), grandTotal], metric);
   // Date + each tool column + the " | " (3-char) separator before each column.
   const tableWidth = D + toolWidths.reduce((sum, w) => sum + w + 3, 0);
   const width = termWidth ?? process.stdout.columns ?? 80;
@@ -790,12 +810,12 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
   const costDiv = "─|─" + "─".repeat(costWidth);
   const barDiv = showBars ? "─" + "─".repeat(barWidth) : "";
 
-  const costHeader = " | " + boldCyan("Cost".padStart(costWidth));
+  const costHeader = " | " + boldCyan((metric === "tokens" ? "Tokens" : "Cost").padStart(costWidth));
   lines.push(colorRow(["Date", ...toolNames], boldCyan) + costHeader);
   lines.push(dim(divStr + costDiv + barDiv));
 
-  const maxBar = Math.max(...rowData.map((r) => r.barTotal));
-  const scale = showBars ? computeBarScale(rowData.map((r) => r.barTotal), barWidth) : { mode: "single" as const, max: maxBar };
+  const maxBar = Math.max(...rowData.map((r) => r.rowValue));
+  const scale = showBars ? computeBarScale(rowData.map((r) => r.rowValue), barWidth) : { mode: "single" as const, max: maxBar };
   const current = currentLabel(period);
 
   const prevCosts = opts?.prevCosts;
@@ -817,25 +837,25 @@ export function renderTotalHistory(period: string, allToolEntries: Map<string, U
       : period === "daily" && isWeekendLabel(r.label)
         ? dim(r.label.padEnd(D))
         : r.label;
-    const rowStr = row(labelCell, ...r.costs.map((c, i) => costCell(c, toolWidths[i])));
-    const costBase = " | " + costCell(r.rowCost, costWidth);
-    const indicator = deltaIndicator(r.rowCost, `total:${r.label}`, prevCosts, true);
-    const bar = showBars ? renderStackedScaledBar(r.barTotal, r.toolBars, barPalette, scale, barWidth) : "";
+    const rowStr = row(labelCell, ...r.values.map((v, i) => metricCell(v, toolWidths[i], metric)));
+    const costBase = " | " + metricCell(r.rowValue, costWidth, metric);
+    const indicator = deltaIndicator(r.rowValue, `total:${r.label}`, prevCosts, true);
+    const bar = showBars ? renderStackedScaledBar(r.rowValue, r.values, barPalette, scale, barWidth) : "";
     lines.push(rowStr + costBase + indicator + bar);
   }
 
   if (labels.length > 1) {
     lines.push(dim(divStr + costDiv + barDiv));
-    const sumCells = toolNames.map((t) => fmtCost(toolSums.get(t) || 0));
+    const sumCells = toolNames.map((t) => fmtMetric(toolSums.get(t) || 0, metric));
     const totalRow = colorRow(["Total", ...sumCells], boldWhite);
-    const totalCost = " | " + boldWhite(fmtCost(grandTotal).padStart(costWidth));
+    const totalCost = " | " + boldWhite(fmtMetric(grandTotal, metric).padStart(costWidth));
     lines.push(totalRow + totalCost);
     // Legend: one colored swatch per visible tool, only when stacked bars are
     // actually distinguishable (bars shown, ≥2 tools, color enabled).
     const legend = showBars && toolNames.length >= 2 && !colorDisabled()
       ? toolNames.map((name, i) => ({ name, colorFn: barPalette[i] }))
       : undefined;
-    lines.push(renderHistoryFooter(rowData.map((r) => r.label), rowData.map((r) => r.barTotal), period, scale, legend, metric));
+    lines.push(renderHistoryFooter(rowData.map((r) => r.label), rowData.map((r) => r.rowValue), period, scale, legend, metric));
   }
   lines.push("");
   return lines;
@@ -851,54 +871,54 @@ const COMPACT_NAME_W = 14;
 const COMPACT_COST_W = 12;
 const COMPACT_DIV = "─".repeat(COMPACT_NAME_W + COMPACT_COST_W + 1);
 
-function renderCompactSnapshot(toolTotals: Map<string, UsageTotals>, prevCosts?: Map<string, number>): string[] {
+function renderCompactSnapshot(toolTotals: Map<string, UsageTotals>, prevCosts?: Map<string, number>, metric: BarMetric = "cost"): string[] {
   const lines: string[] = [];
   for (const [name, t] of toolTotals) {
     if (t.totalTokens > 0) {
-      const costStr = fmtCostDelta(t.totalCost, name, prevCosts);
+      const costStr = fmtMetricDelta(metricValue(t, metric), name, metric, prevCosts);
       lines.push(`${name.padEnd(COMPACT_NAME_W)} ${costStr.padStart(COMPACT_COST_W)}`);
     }
   }
   let grandCost = 0;
-  for (const t of toolTotals.values()) grandCost += t.totalCost;
+  for (const t of toolTotals.values()) grandCost += metricValue(t, metric);
   const visibleCount = [...toolTotals.values()].filter(t => t.totalTokens > 0).length;
   if (visibleCount > 1) {
     lines.push(dim(COMPACT_DIV));
-    lines.push(`${boldWhite("Total".padEnd(COMPACT_NAME_W))} ${boldWhite(fmtCost(grandCost).padStart(COMPACT_COST_W))}`);
+    lines.push(`${boldWhite("Total".padEnd(COMPACT_NAME_W))} ${boldWhite(fmtMetric(grandCost, metric).padStart(COMPACT_COST_W))}`);
   }
   lines.push("");
   return lines;
 }
 
-function renderCompactHistory(entries: UsageEntry[], prevCosts?: Map<string, number>, toolName?: string): string[] {
+function renderCompactHistory(entries: UsageEntry[], prevCosts?: Map<string, number>, toolName?: string, metric: BarMetric = "cost"): string[] {
   const lines: string[] = [];
   let sumCost = 0;
   for (const e of entries) {
     const key = toolName ? `${toolName}:${e.label}` : e.label;
-    const costStr = fmtCostDelta(e.totalCost, key, prevCosts);
+    const costStr = fmtMetricDelta(metricValue(e, metric), key, metric, prevCosts);
     lines.push(`${e.label.padEnd(COMPACT_NAME_W)} ${costStr.padStart(COMPACT_COST_W)}`);
-    sumCost += e.totalCost;
+    sumCost += metricValue(e, metric);
   }
   if (entries.length > 1) {
     lines.push(dim(COMPACT_DIV));
-    lines.push(`${boldWhite("Total".padEnd(COMPACT_NAME_W))} ${boldWhite(fmtCost(sumCost).padStart(COMPACT_COST_W))}`);
+    lines.push(`${boldWhite("Total".padEnd(COMPACT_NAME_W))} ${boldWhite(fmtMetric(sumCost, metric).padStart(COMPACT_COST_W))}`);
   }
   lines.push("");
   return lines;
 }
 
-function renderCompactTotalHistory(labels: string[], costMap: Map<string, number>, prevCosts?: Map<string, number>): string[] {
+function renderCompactTotalHistory(labels: string[], valueMap: Map<string, number>, prevCosts?: Map<string, number>, metric: BarMetric = "cost"): string[] {
   const lines: string[] = [];
   let grandTotal = 0;
   for (const label of labels) {
-    const cost = costMap.get(label) || 0;
-    const costStr = fmtCostDelta(cost, `total:${label}`, prevCosts);
+    const value = valueMap.get(label) || 0;
+    const costStr = fmtMetricDelta(value, `total:${label}`, metric, prevCosts);
     lines.push(`${label.padEnd(COMPACT_NAME_W)} ${costStr.padStart(COMPACT_COST_W)}`);
-    grandTotal += cost;
+    grandTotal += value;
   }
   if (labels.length > 1) {
     lines.push(dim(COMPACT_DIV));
-    lines.push(`${boldWhite("Total".padEnd(COMPACT_NAME_W))} ${boldWhite(fmtCost(grandTotal).padStart(COMPACT_COST_W))}`);
+    lines.push(`${boldWhite("Total".padEnd(COMPACT_NAME_W))} ${boldWhite(fmtMetric(grandTotal, metric).padStart(COMPACT_COST_W))}`);
   }
   lines.push("");
   return lines;
@@ -1239,7 +1259,7 @@ function emitMarkdownTotalHistory(allToolEntries: Map<string, UsageEntry[]>, opt
 
   // Same zero-column omission as the ANSI pivot (over all labels — the emit
   // path has no maxRows window); CSV stays unfiltered (positional contract).
-  const toolNames = nonzeroCostTools(allToolNames, costMap, labels);
+  const toolNames = nonzeroTools(allToolNames, costMap, labels);
 
   const machines = collectMachineNames(opts.machineCosts);
   const aligns: Array<"left" | "right"> = [

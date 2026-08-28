@@ -252,7 +252,7 @@ describe("dim zero data cells", () => {
 // ---------------------------------------------------------------------------
 // Negligible-column omission (ANSI pivot)
 // ---------------------------------------------------------------------------
-describe("significantCostTools omission", () => {
+describe("significantTools omission", () => {
   it("omits a tool below $1.00 and keeps one at exactly $1.00", () => {
     const data = new Map<string, UsageEntry[]>([
       ["Claude Code", [entry("2026-07-01", 100), entry("2026-07-02", 100)]],
@@ -359,5 +359,64 @@ describe("significantCostTools omission", () => {
     }
     assert.ok(output.includes("| Codex "), "Markdown keeps the negligible-but-nonzero column");
     assert.ok(!output.includes("Gemini"), "Markdown still omits the exact-zero column");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Token mode: column width, zero-dim, no-color byte-identity
+// ---------------------------------------------------------------------------
+describe("token-mode metric columns", () => {
+  const tok = (label: string, totalCost: number, totalTokens: number): UsageEntry => ({
+    label, totalCost, inputTokens: totalTokens, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens,
+  });
+
+  it("widens the pivot Tokens column past the 9 floor with aligned bar starts", () => {
+    const data = new Map<string, UsageEntry[]>([
+      ["Claude Code", [tok("2026-06", 0.27, 9_999_999), tok("2026-07", 1.5, 487_683_047)]],
+    ]);
+    const lines = renderTotalHistory("monthly", data, 200, { metric: "tokens" });
+    const plain = lines.map(stripAnsi);
+    const header = plain.find((l) => l.includes("Tokens"))!;
+    // Row total 497,683,046 (11 chars) sizes the column to 11.
+    assert.ok(header.endsWith("    Tokens"), header);
+    const total = plain.find((l) => l.startsWith("Total"))!;
+    assert.ok(total.includes("497,683,046"), total);
+    // The bar's first block starts at the same column on every row.
+    const barStart = dataLines(lines).map(barStartIdx);
+    assert.ok(barStart.every((i) => i > 0 && i === barStart[0]), `bar start misaligned: ${barStart}`);
+  });
+
+  it("dims exact-zero token cells; --no-color output is byte-identical to undimmed", () => {
+    const data = new Map<string, UsageEntry[]>([
+      ["Claude Code", [tok("2026-06-01", 5, 5000), tok("2026-06-02", 0, 0)]],
+    ]);
+    setNoColor(false);
+    const colored = renderTotalHistory("daily", data, 200, { metric: "tokens" });
+    setNoColor(true);
+    const plain = renderTotalHistory("daily", data, 200, { metric: "tokens" });
+    const zeroRow = colored.find((l) => stripAnsi(l).startsWith("2026-06-02"))!;
+    assert.ok(zeroRow.includes(`${DIM}          0\x1b[0m`), `zero token cell dimmed: ${JSON.stringify(zeroRow)}`);
+    // Strip-and-compare: dimming never shifts the visible layout.
+    assert.deepEqual(colored.map(stripAnsi), plain);
+    // The history table's last column dims the same way in token mode.
+    setNoColor(false);
+    const hist = renderHistory("Claude Code", "daily", [tok("2026-06-01", 0, 0), tok("2026-06-02", 5, 5000)], 200, { metric: "tokens" });
+    setNoColor(true);
+    const histZero = hist.find((l) => stripAnsi(l).startsWith("2026-06-01"))!;
+    assert.ok(histZero.includes(`${DIM}        0\x1b[0m`), `history zero cell dimmed: ${JSON.stringify(histZero)}`);
+    assert.deepEqual(hist.map(stripAnsi), renderHistory("Claude Code", "daily", [tok("2026-06-01", 0, 0), tok("2026-06-02", 5, 5000)], 200, { metric: "tokens" }));
+  });
+
+  it("renders the unstacked bar of the row token total under tokens", () => {
+    const data = new Map<string, UsageEntry[]>([
+      ["Claude Code", [tok("2026-06-01", 1, 3000)]],
+      ["Codex", [tok("2026-06-01", 1, 6000)]],
+    ]);
+    const lines = renderTotalHistory("daily", data, 200, { metric: "tokens" });
+    const row = stripAnsi(dataLines(lines)[0]);
+    const bar = row.match(/[█▏▎▍▌▋▊▉]+/)!;
+    assert.ok(bar, `stacked bar renders: "${row}"`);
+    // 9,000 of a 9,000 row total fills the whole 30-char bar area.
+    assert.equal(bar[0].length, 30);
   });
 });

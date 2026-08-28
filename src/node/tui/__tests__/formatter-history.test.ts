@@ -7,12 +7,13 @@ import {
   renderScaledBar,
   renderBar,
   renderHistory,
+  renderTotal,
   renderTotalHistory,
   fmtCost,
 } from "../formatter.js";
 import { setNoColor, stripAnsi } from "../colors.js";
 import { currentLabel } from "../../core/fetcher.js";
-import type { UsageEntry } from "../../core/types.js";
+import type { UsageEntry, UsageTotals } from "../../core/types.js";
 
 // Color assertions in this file need deterministic ANSI state regardless of the
 // invoking shell's environment (each test file runs in its own process).
@@ -515,11 +516,19 @@ describe("FormatOptions.metric", () => {
     assert.ok(footer.includes("avg 3,200/day"), footer);
     assert.ok(footer.includes("peak 9,000 (2026-06-02)"), footer);
     assert.ok(!footer.includes("$"), footer);
-    // Cost cells are still cost-denominated.
-    assert.ok(lines.some((l) => l.startsWith("2026-06-02") && l.includes("$10.00")));
+    // The last column swaps unit to tokens and duplicates the Total column's values.
+    const header = lines.find((l) => l.includes("Cache Read"))!;
+    assert.ok(header.includes("Tokens"), header);
+    assert.ok(!header.includes("Cost"), header);
+    const row0202 = lines.find((l) => l.startsWith("2026-06-02"))!;
+    assert.ok(row0202.includes("9,000"), row0202);
+    assert.ok(!row0202.includes("$"), row0202);
+    assert.ok(!lines.some((l) => l.includes("$")), "no cost cells in token mode");
+    const total = lines.find((l) => l.startsWith("Total"))!;
+    assert.ok(total.includes("9,600"), total);
   });
 
-  it("renderTotalHistory: bars and footer follow the metric; cells stay cost", () => {
+  it("renderTotalHistory: every cell, header, title and footer follows the metric", () => {
     const allToolEntries = new Map<string, UsageEntry[]>([
       ["Claude Code", entries],
       ["Codex", [{ label: "2026-06-03", totalCost: 1, inputTokens: 100, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 100 }]],
@@ -528,11 +537,108 @@ describe("FormatOptions.metric", () => {
     const tokenLines = renderTotalHistory("daily", allToolEntries, 200, { metric: "tokens" });
     assert.equal(longestRowLabel(tokenLines), "2026-06-02");
     const plain = tokenLines.map(stripAnsi);
+    assert.ok(plain.some((l) => l.includes("Combined Token History")), "title swaps to Token");
+    const header = plain.find((l) => l.includes("Claude Code"))!;
+    assert.ok(header.includes("Tokens"), header);
+    assert.ok(!header.includes("Cost"), header);
+    // Cells and the Total row are fmtNum token counts — no $ anywhere.
+    assert.ok(plain.some((l) => l.startsWith("2026-06-03") && l.includes("600")), "row cell is tokens");
+    assert.ok(!plain.some((l) => l.includes("$")), "no cost cells in token mode");
+    const total = plain.find((l) => l.startsWith("Total"))!;
+    assert.ok(total.includes("9,700"), total);
     const footer = plain.find((l) => l.includes("avg "))!;
     assert.ok(footer.includes("peak 9,000 (2026-06-02)"), footer);
     assert.ok(!footer.includes("$"), footer);
-    assert.ok(plain.some((l) => l.startsWith("2026-06-03") && l.includes("$51.00")), "row cost cell unchanged");
     assert.deepEqual(renderTotalHistory("daily", allToolEntries, 200, { metric: "cost" }), renderTotalHistory("daily", allToolEntries, 200));
+  });
+
+  it("compact variants render in the metric; cost mode stays byte-identical", () => {
+    const allToolEntries = new Map<string, UsageEntry[]>([
+      ["Claude Code", entries],
+      ["Codex", [{ label: "2026-06-03", totalCost: 1, inputTokens: 100, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 100 }]],
+    ]);
+    const compactPivot = renderTotalHistory("daily", allToolEntries, 200, { metric: "tokens", compact: true }).map(stripAnsi);
+    assert.ok(compactPivot.some((l) => l.startsWith("2026-06-03") && l.includes("600")), compactPivot.join("\n"));
+    assert.ok(!compactPivot.some((l) => l.includes("$")), compactPivot.join("\n"));
+    const compactHistory = renderHistory("Claude Code", "daily", entries, 200, { metric: "tokens", compact: true }).map(stripAnsi);
+    assert.ok(compactHistory.some((l) => l.startsWith("2026-06-02") && l.includes("9,000")), compactHistory.join("\n"));
+    assert.ok(!compactHistory.some((l) => l.includes("$")), compactHistory.join("\n"));
+    // Byte-identity: metric: "cost" (or absent) reproduces the pre-change output.
+    assert.deepEqual(renderTotalHistory("daily", allToolEntries, 200, { metric: "cost", compact: true }), renderTotalHistory("daily", allToolEntries, 200, { compact: true }));
+    assert.deepEqual(renderHistory("Claude Code", "daily", entries, 200, { metric: "cost", compact: true }), renderHistory("Claude Code", "daily", entries, 200, { compact: true }));
+  });
+
+  it("renderTotal: snapshot table is metric-neutral except the delta indicator placement", () => {
+    const totals = new Map<string, UsageTotals>([
+      ["Claude Code", { totalCost: 10, inputTokens: 9000, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 9000 }],
+      ["Codex", { totalCost: 5, inputTokens: 5000, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 5000 }],
+    ]);
+    const tokenPrev = new Map([["Claude Code", 8000], ["Codex", 6000]]);
+    const tokenLines = renderTotal("daily", totals, { metric: "tokens", prevCosts: tokenPrev }).map(stripAnsi);
+    // The arrow rides the Tokens cell; the Cost cell stays plain fmtCost.
+    const claude = tokenLines.find((l) => l.startsWith("Claude Code"))!;
+    assert.ok(claude.includes("9,000 ↑"), claude);
+    assert.ok(claude.includes("$10.00"), claude);
+    assert.ok(!claude.includes("$10.00 ↑"), claude);
+    const codex = tokenLines.find((l) => l.startsWith("Codex"))!;
+    assert.ok(codex.includes("5,000 ↓"), codex);
+    // Header and columns unchanged.
+    const header = tokenLines.find((l) => l.includes("Tokens"))!;
+    assert.ok(header.includes("Cost"), header);
+    // Cost mode: the arrow stays on the Cost cell, byte-identical to no metric.
+    const costPrev = new Map([["Claude Code", 9], ["Codex", 6]]);
+    const withMetric = renderTotal("daily", totals, { metric: "cost", prevCosts: costPrev });
+    const without = renderTotal("daily", totals, { prevCosts: costPrev });
+    assert.deepEqual(withMetric, without);
+    assert.ok(stripAnsi(withMetric.find((l) => l.startsWith("Claude Code"))!).includes("$10.00 ↑"));
+    // Compact snapshot renders the metric value.
+    const compact = renderTotal("daily", totals, { metric: "tokens", compact: true }).map(stripAnsi);
+    assert.ok(compact.some((l) => l.startsWith("Claude Code") && l.includes("9,000")), compact.join("\n"));
+    assert.ok(!compact.some((l) => l.includes("$")), compact.join("\n"));
+    assert.deepEqual(renderTotal("daily", totals, { metric: "cost", compact: true }), renderTotal("daily", totals, { compact: true }));
+  });
+
+  it("renderHistory: machine columns follow the displayed metric", () => {
+    const machineCosts = new Map<string, Map<string, number>>([
+      ["2026-06-01", new Map([["alice", 1000], ["bob", 2000]])],
+      ["2026-06-02", new Map([["alice", 7000], ["bob", 0]])],
+    ]);
+    const entries2: UsageEntry[] = [
+      { label: "2026-06-01", totalCost: 10, inputTokens: 3000, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 3000 },
+      { label: "2026-06-02", totalCost: 20, inputTokens: 7000, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 7000 },
+    ];
+    const lines = renderHistory("Claude Code", "daily", entries2, 200, { metric: "tokens", machineCosts }).map(stripAnsi);
+    const header = lines.find((l) => l.includes("Cache Read"))!;
+    assert.ok(header.includes(" A "), header);
+    const row01 = lines.find((l) => l.startsWith("2026-06-01"))!;
+    assert.ok(row01.includes("1,000") && row01.includes("2,000"), row01);
+    assert.ok(!row01.includes("$"), row01);
+    const total = lines.find((l) => l.startsWith("Total"))!;
+    assert.ok(total.includes("8,000"), total);
+    // Cost mode with machine columns byte-identical.
+    assert.deepEqual(
+      renderHistory("Claude Code", "daily", entries2, 200, { metric: "cost", machineCosts }),
+      renderHistory("Claude Code", "daily", entries2, 200, { machineCosts }),
+    );
+  });
+
+  it("renderTotalHistory: significance filter keys on the displayed metric", () => {
+    const data = (zeroTokens: number) => new Map<string, UsageEntry[]>([
+      ["Claude Code", [{ label: "2026-06", totalCost: 100, inputTokens: 10_000_000, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 10_000_000 }]],
+      ["ZeroPriced", [{ label: "2026-06", totalCost: 0, inputTokens: zeroTokens, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: zeroTokens }]],
+    ]);
+    // 999 tokens < NEGLIGIBLE_TOKENS_ABS (1,000) → column omitted in token mode.
+    const sub = renderTotalHistory("monthly", data(999), 200, { metric: "tokens" }).map(stripAnsi);
+    assert.ok(!sub.some((l) => l.includes("ZeroPriced")), sub.join("\n"));
+    // 5,000 tokens ≥ 1,000 but 0.05% < 0.1% of the grand → omitted.
+    const share = renderTotalHistory("monthly", data(5000), 200, { metric: "tokens" }).map(stripAnsi);
+    assert.ok(!share.some((l) => l.includes("ZeroPriced")), share.join("\n"));
+    // 500,000 tokens (4.8% of the grand) → kept in token mode even at $0.00 cost.
+    const kept = renderTotalHistory("monthly", data(500_000), 200, { metric: "tokens" }).map(stripAnsi);
+    assert.ok(kept.some((l) => l.includes("ZeroPriced")), kept.join("\n"));
+    // The same $0.00 tool is noise in cost mode (exact-zero → omitted).
+    const cost = renderTotalHistory("monthly", data(500_000), 200).map(stripAnsi);
+    assert.ok(!cost.some((l) => l.includes("ZeroPriced")), cost.join("\n"));
   });
 });
 

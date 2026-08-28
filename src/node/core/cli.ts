@@ -1,5 +1,5 @@
 import { TOOLS, EMPTY, fetchHistory, fetchAllTotals, fetchAllHistory, aggregateForPeriod, mergeEntries, maxMergeEntries, currentLabel, filterEntriesByRange } from "./fetcher.js";
-import { printHistory, printTotal, printTotalHistory, renderHistory, renderTotal, renderTotalHistory, emitCsv, emitMarkdown } from "../tui/formatter.js";
+import { printHistory, printTotal, printTotalHistory, renderHistory, renderTotal, renderTotalHistory, emitCsv, emitMarkdown, metricValue } from "../tui/formatter.js";
 import type { FormatOptions, BarMetric } from "../tui/formatter.js";
 import { readConfig, resolveConfigPaths, selectUserConfPath, TU_HOME, THREE_HOURS_MS, resolveHome, DEFAULT_CONFIG_PATH } from "./config.js";
 import { writeMetrics, readRemoteEntries, readRemoteEntriesByMachine, listUsers, fullSync } from "../sync/sync.js";
@@ -131,7 +131,8 @@ Flags:
   --since / -s <date>  Only include entries on/after date (YYYY-MM-DD or YYYYMMDD, history display)
   --until <date>       Only include entries on/before date (YYYY-MM-DD or YYYYMMDD, history display)
   --full               Show full history (default: last 3 months for daily/weekly history)
-  --metric <m>         Scale history bars by 'cost' (default) or 'tokens' (history display)
+  --metric <m>         Show 'cost' (default) or 'tokens' in table cells, bars and footer stats (snapshot keeps its Cost column in dollars)
+  -t                   Shorthand for --metric tokens
   --sync               Sync metrics before fetching (multi mode)
   --dry-run            Preview sync without writing (tu sync only)
   --fresh / -f         Bypass cache, fetch fresh data (data commands only)
@@ -880,6 +881,7 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   const noRainFlag = rawArgs.includes("--no-rain");
   const byMachineFlag = rawArgs.includes("--by-machine");
   const fullFlag = rawArgs.includes("--full");
+  const tokensShort = rawArgs.includes("-t");
 
   let watchInterval = 10;
   let hasIntervalFlag = false;
@@ -898,7 +900,7 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
   const filteredArgs: string[] = [];
   for (let i = 0; i < rawArgs.length; i++) {
     const a = rawArgs[i];
-    if (a === "--json" || a === "-j" || a === "--csv" || a === "--md" || a === "--sync" || a === "--dry-run" || a === "--fresh" || a === "-f" || a === "--watch" || a === "-w" || a === "--no-color" || a === "--no-rain" || a === "--by-machine" || a === "--full" || a === "--skip-brew-update") continue;
+    if (a === "--json" || a === "-j" || a === "--csv" || a === "--md" || a === "--sync" || a === "--dry-run" || a === "--fresh" || a === "-f" || a === "--watch" || a === "-w" || a === "--no-color" || a === "--no-rain" || a === "--by-machine" || a === "--full" || a === "--skip-brew-update" || a === "-t") continue;
     if (a === "--interval" || a === "-i") {
       hasIntervalFlag = true;
       const next = rawArgs[i + 1];
@@ -1021,6 +1023,16 @@ export function parseGlobalFlags(rawArgs: string[]): GlobalFlags {
     }
     metricFlag = rawMetricVal;
   }
+  // -t is boolean sugar for --metric tokens. Redundant with --metric tokens
+  // (accepted silently); contradictory with an explicit --metric cost —
+  // a usage error, same wording as the other incompatible-flag pairs.
+  if (tokensShort) {
+    if (hasMetricFlag && metricFlag === "cost") {
+      console.error("Error: -t and --metric cost are incompatible");
+      process.exit(EXIT_USAGE);
+    }
+    metricFlag = "tokens";
+  }
 
   let outputFormat: OutputFormat = "table";
   if (jsonFlag) outputFormat = "json";
@@ -1100,7 +1112,7 @@ async function dispatchAllHistory(config: TuConfig, period: string, outputFormat
     }
     renderTotalHistoryByFormat(outputFormat, period, mergedMap, fmtOpts);
     _lastRenderCost = sumAllToolCosts(mergedMap);
-    _lastRenderCostMap = buildCostMap(mergedMap);
+    _lastRenderCostMap = buildCostMap(mergedMap, fmtOpts?.metric ?? "cost");
   } else {
     const results = await fetchAllHistory("daily", [], skipCache);
     if (period !== "daily") {
@@ -1110,7 +1122,7 @@ async function dispatchAllHistory(config: TuConfig, period: string, outputFormat
       }
       renderTotalHistoryByFormat(outputFormat, period, aggregated, fmtOpts);
       _lastRenderCost = sumAllToolCosts(aggregated);
-      _lastRenderCostMap = buildCostMap(aggregated);
+      _lastRenderCostMap = buildCostMap(aggregated, fmtOpts?.metric ?? "cost");
     } else {
       const filtered = new Map<string, UsageEntry[]>();
       for (const [name, entries] of results) {
@@ -1118,7 +1130,7 @@ async function dispatchAllHistory(config: TuConfig, period: string, outputFormat
       }
       renderTotalHistoryByFormat(outputFormat, period, filtered, fmtOpts);
       _lastRenderCost = sumAllToolCosts(filtered);
-      _lastRenderCostMap = buildCostMap(filtered);
+      _lastRenderCostMap = buildCostMap(filtered, fmtOpts?.metric ?? "cost");
     }
   }
 }
@@ -1129,12 +1141,16 @@ function renderSnapshotByFormat(
   data: Map<string, UsageTotals>,
   fmtOpts?: FormatOptions,
   machineCosts?: Map<string, Map<string, number>>,
+  emitMachineCosts?: Map<string, Map<string, number>>,
 ): void {
   const opts: FormatOptions = machineCosts ? { ...fmtOpts, machineCosts } : (fmtOpts ?? {});
+  // The machine map handed to renderers is valued in the displayed metric;
+  // emitters are a machine contract and always receive the cost map.
+  const emitMc = emitMachineCosts ?? machineCosts;
   switch (outputFormat) {
-    case "json": emitJson(machineCosts ? attachMachinesJson(data, machineCosts) : data); break;
-    case "csv": emitCsv(data, "snapshot", { period, machineCosts }); break;
-    case "md": emitMarkdown(data, "snapshot", { period, machineCosts }); break;
+    case "json": emitJson(emitMc ? attachMachinesJson(data, emitMc) : data); break;
+    case "csv": emitCsv(data, "snapshot", { period, machineCosts: emitMc }); break;
+    case "md": emitMarkdown(data, "snapshot", { period, machineCosts: emitMc }); break;
     default: printTotal(period, data, opts);
   }
 }
@@ -1148,10 +1164,12 @@ async function dispatchAllSnapshot(config: TuConfig, period: string, outputForma
       const current = allResults[i].entries.find((e) => e.label === currentLabel(period));
       result.set(TOOLS[toolKeys[i]].name, current ?? { ...EMPTY });
     }
-    const machineCosts = buildSnapshotMachineCosts(toolKeys, allResults, period);
-    renderSnapshotByFormat(outputFormat, period, result, fmtOpts, machineCosts);
+    const displayMetric = fmtOpts?.metric ?? "cost";
+    const machineCosts = buildSnapshotMachineCosts(toolKeys, allResults, period, displayMetric);
+    const emitMachineCosts = displayMetric === "cost" ? machineCosts : buildSnapshotMachineCosts(toolKeys, allResults, period, "cost");
+    renderSnapshotByFormat(outputFormat, period, result, fmtOpts, machineCosts, emitMachineCosts);
     _lastRenderCost = sumToolTotalsCost(result);
-    _lastRenderCostMap = buildCostMap(result);
+    _lastRenderCostMap = buildCostMap(result, fmtOpts?.metric ?? "cost");
     return;
   }
 
@@ -1165,7 +1183,7 @@ async function dispatchAllSnapshot(config: TuConfig, period: string, outputForma
     }
     renderSnapshotByFormat(outputFormat, period, result, fmtOpts);
     _lastRenderCost = sumToolTotalsCost(result);
-    _lastRenderCostMap = buildCostMap(result);
+    _lastRenderCostMap = buildCostMap(result, fmtOpts?.metric ?? "cost");
   } else {
     if (period !== "daily") {
       const toolKeys = Object.keys(TOOLS);
@@ -1179,12 +1197,12 @@ async function dispatchAllSnapshot(config: TuConfig, period: string, outputForma
       }
       renderSnapshotByFormat(outputFormat, period, result, fmtOpts);
       _lastRenderCost = sumToolTotalsCost(result);
-      _lastRenderCostMap = buildCostMap(result);
+      _lastRenderCostMap = buildCostMap(result, fmtOpts?.metric ?? "cost");
     } else {
       const results = await fetchAllTotals([]);
       renderSnapshotByFormat(outputFormat, period, results, fmtOpts);
       _lastRenderCost = sumToolTotalsCost(results);
-      _lastRenderCostMap = buildCostMap(results);
+      _lastRenderCostMap = buildCostMap(results, fmtOpts?.metric ?? "cost");
     }
   }
 }
@@ -1196,12 +1214,16 @@ function renderHistoryByFormat(
   entries: UsageEntry[],
   fmtOpts?: FormatOptions,
   machineCosts?: Map<string, Map<string, number>>,
+  emitMachineCosts?: Map<string, Map<string, number>>,
 ): void {
   const opts: FormatOptions = machineCosts ? { ...fmtOpts, machineCosts } : (fmtOpts ?? {});
+  // The machine map handed to renderers is valued in the displayed metric;
+  // emitters are a machine contract and always receive the cost map.
+  const emitMc = emitMachineCosts ?? machineCosts;
   switch (outputFormat) {
-    case "json": emitJson(machineCosts ? attachMachinesJson(entries, machineCosts) : entries); break;
-    case "csv": emitCsv({ toolName, entries }, "history", { period, machineCosts }); break;
-    case "md": emitMarkdown({ toolName, entries }, "history", { period, machineCosts, capActive: fmtOpts?.capActive }); break;
+    case "json": emitJson(emitMc ? attachMachinesJson(entries, emitMc) : entries); break;
+    case "csv": emitCsv({ toolName, entries }, "history", { period, machineCosts: emitMc }); break;
+    case "md": emitMarkdown({ toolName, entries }, "history", { period, machineCosts: emitMc, capActive: fmtOpts?.capActive }); break;
     default: printHistory(toolName, period, entries, undefined, opts);
   }
 }
@@ -1225,25 +1247,32 @@ async function dispatchSingleTool(
     _mark("fetch done (by-machine)");
 
     if (display === "history") {
-      const machineCosts = buildHistoryMachineCosts(merged.machineMap);
-      renderHistoryByFormat(outputFormat, toolCfg.name, period, merged.entries, fmtOpts, machineCosts);
+      const displayMetric = fmtOpts?.metric ?? "cost";
+      const machineCosts = buildHistoryMachineCosts(merged.machineMap, displayMetric);
+      const emitMachineCosts = displayMetric === "cost" ? machineCosts : buildHistoryMachineCosts(merged.machineMap, "cost");
+      renderHistoryByFormat(outputFormat, toolCfg.name, period, merged.entries, fmtOpts, machineCosts, emitMachineCosts);
       _lastRenderCost = merged.entries.reduce((sum, e) => sum + e.totalCost, 0);
-      _lastRenderCostMap = buildCostMap(merged.entries, toolCfg.name);
+      _lastRenderCostMap = buildCostMap(merged.entries, fmtOpts?.metric ?? "cost", toolCfg.name);
     } else {
       const target = currentLabel(period);
       const current = merged.entries.find((e) => e.label === target);
       const result = new Map<string, UsageTotals>();
       result.set(toolCfg.name, current ?? { ...EMPTY });
+      const displayMetric = fmtOpts?.metric ?? "cost";
       const machineCosts = new Map<string, Map<string, number>>();
       const toolMachines = new Map<string, number>();
+      const emitMachineCosts = new Map<string, Map<string, number>>();
+      const emitToolMachines = new Map<string, number>();
       for (const [machine, entries] of merged.machineMap) {
         const match = entries.find((e) => e.label === target);
-        toolMachines.set(machine, match ? match.totalCost : 0);
+        toolMachines.set(machine, match ? metricValue(match, displayMetric) : 0);
+        emitToolMachines.set(machine, match ? match.totalCost : 0);
       }
       machineCosts.set(toolCfg.name, toolMachines);
-      renderSnapshotByFormat(outputFormat, period, result, fmtOpts, machineCosts);
+      emitMachineCosts.set(toolCfg.name, emitToolMachines);
+      renderSnapshotByFormat(outputFormat, period, result, fmtOpts, machineCosts, displayMetric === "cost" ? machineCosts : emitMachineCosts);
       _lastRenderCost = sumToolTotalsCost(result);
-      _lastRenderCostMap = buildCostMap(result);
+      _lastRenderCostMap = buildCostMap(result, fmtOpts?.metric ?? "cost");
     }
     _mark("done");
     return;
@@ -1261,7 +1290,7 @@ async function dispatchSingleTool(
   if (display === "history") {
     renderHistoryByFormat(outputFormat, toolCfg.name, period, entries, fmtOpts);
     _lastRenderCost = entries.reduce((sum, e) => sum + e.totalCost, 0);
-    _lastRenderCostMap = buildCostMap(entries, toolCfg.name);
+    _lastRenderCostMap = buildCostMap(entries, fmtOpts?.metric ?? "cost", toolCfg.name);
   } else {
     const target = currentLabel(period);
     const current = entries.find((e) => e.label === target);
@@ -1269,28 +1298,32 @@ async function dispatchSingleTool(
     result.set(toolCfg.name, current ?? { ...EMPTY });
     renderSnapshotByFormat(outputFormat, period, result, fmtOpts);
     _lastRenderCost = sumToolTotalsCost(result);
-    _lastRenderCostMap = buildCostMap(result);
+    _lastRenderCostMap = buildCostMap(result, fmtOpts?.metric ?? "cost");
   }
   _mark("done");
 }
 
-// Build machineCosts map for history: label → (machine → cost)
-function buildHistoryMachineCosts(machineMap: Map<string, UsageEntry[]>): Map<string, Map<string, number>> {
+// Build machineCosts map for history: label → (machine → value), valued in
+// the given metric (emitters pass "cost" — the JSON/CSV/MD machine contract
+// stays cost-denominated).
+function buildHistoryMachineCosts(machineMap: Map<string, UsageEntry[]>, metric: BarMetric): Map<string, Map<string, number>> {
   const result = new Map<string, Map<string, number>>();
   for (const [machine, entries] of machineMap) {
     for (const e of entries) {
       if (!result.has(e.label)) result.set(e.label, new Map());
-      result.get(e.label)!.set(machine, (result.get(e.label)!.get(machine) ?? 0) + e.totalCost);
+      result.get(e.label)!.set(machine, (result.get(e.label)!.get(machine) ?? 0) + metricValue(e, metric));
     }
   }
   return result;
 }
 
-// Build machineCosts map for snapshot: toolName → (machine → cost)
+// Build machineCosts map for snapshot: toolName → (machine → value), valued
+// in the given metric (emitters pass "cost").
 function buildSnapshotMachineCosts(
   toolKeys: string[],
   allResults: MergedResult[],
   period: string,
+  metric: BarMetric,
 ): Map<string, Map<string, number>> {
   const result = new Map<string, Map<string, number>>();
   const target = currentLabel(period);
@@ -1299,7 +1332,7 @@ function buildSnapshotMachineCosts(
     const machCosts = new Map<string, number>();
     for (const [machine, entries] of allResults[i].machineMap) {
       const match = entries.find((e) => e.label === target);
-      if (match) machCosts.set(machine, match.totalCost);
+      if (match) machCosts.set(machine, metricValue(match, metric));
     }
     result.set(toolName, machCosts);
   }
@@ -1350,16 +1383,19 @@ function sumAllToolCosts(m: Map<string, UsageEntry[]>): number {
   return sum;
 }
 
-function buildCostMap(data: Map<string, UsageTotals> | Map<string, UsageEntry[]> | UsageEntry[], toolName?: string): Map<string, number> {
+// The watch-mode prev map (FormatOptions.prevCosts) holds values in the
+// displayed metric — renderers compare the value they display against it.
+// Keys are unchanged ("{tool}:{label}", "total:{label}", "{tool}").
+function buildCostMap(data: Map<string, UsageTotals> | Map<string, UsageEntry[]> | UsageEntry[], metric: BarMetric, toolName?: string): Map<string, number> {
   const m = new Map<string, number>();
   if (Array.isArray(data)) {
     // Single-tool history entries
     for (const e of data) {
-      m.set(`${toolName}:${e.label}`, e.totalCost);
+      m.set(`${toolName}:${e.label}`, metricValue(e, metric));
     }
     // Also track total per label for total-history delta keys
     for (const e of data) {
-      m.set(`total:${e.label}`, (m.get(`total:${e.label}`) || 0) + e.totalCost);
+      m.set(`total:${e.label}`, (m.get(`total:${e.label}`) || 0) + metricValue(e, metric));
     }
   } else {
     // Check if values are arrays (history) or UsageTotals (snapshot)
@@ -1368,14 +1404,14 @@ function buildCostMap(data: Map<string, UsageTotals> | Map<string, UsageEntry[]>
       // Map<string, UsageEntry[]> — all-tools history
       for (const [name, entries] of data as Map<string, UsageEntry[]>) {
         for (const e of entries) {
-          m.set(`${name}:${e.label}`, e.totalCost);
-          m.set(`total:${e.label}`, (m.get(`total:${e.label}`) || 0) + e.totalCost);
+          m.set(`${name}:${e.label}`, metricValue(e, metric));
+          m.set(`total:${e.label}`, (m.get(`total:${e.label}`) || 0) + metricValue(e, metric));
         }
       }
     } else {
       // Map<string, UsageTotals> — all-tools snapshot
       for (const [name, t] of data as Map<string, UsageTotals>) {
-        m.set(name, t.totalCost);
+        m.set(name, metricValue(t, metric));
       }
     }
   }
@@ -1393,7 +1429,7 @@ async function dispatchAllHistoryLines(config: TuConfig, period: string, skipCac
       mergedMap.set(TOOLS[toolKeys[i]].name, allMerged[i]);
     }
     _lastRenderCost = sumAllToolCosts(mergedMap);
-    _lastRenderCostMap = buildCostMap(mergedMap);
+    _lastRenderCostMap = buildCostMap(mergedMap, fmtOpts?.metric ?? "cost");
     _lastRenderTotalTokens = sumAllToolTokens(mergedMap);
     return renderTotalHistory(period, mergedMap, undefined, fmtOpts);
   } else {
@@ -1404,7 +1440,7 @@ async function dispatchAllHistoryLines(config: TuConfig, period: string, skipCac
         aggregated.set(name, aggregateForPeriod(period, filterEntriesByRange(entries, since, until)));
       }
       _lastRenderCost = sumAllToolCosts(aggregated);
-      _lastRenderCostMap = buildCostMap(aggregated);
+      _lastRenderCostMap = buildCostMap(aggregated, fmtOpts?.metric ?? "cost");
       _lastRenderTotalTokens = sumAllToolTokens(aggregated);
       return renderTotalHistory(period, aggregated, undefined, fmtOpts);
     } else {
@@ -1413,7 +1449,7 @@ async function dispatchAllHistoryLines(config: TuConfig, period: string, skipCac
         filtered.set(name, filterEntriesByRange(entries, since, until));
       }
       _lastRenderCost = sumAllToolCosts(filtered);
-      _lastRenderCostMap = buildCostMap(filtered);
+      _lastRenderCostMap = buildCostMap(filtered, fmtOpts?.metric ?? "cost");
       _lastRenderTotalTokens = sumAllToolTokens(filtered);
       return renderTotalHistory(period, filtered, undefined, fmtOpts);
     }
@@ -1429,9 +1465,9 @@ async function dispatchAllSnapshotLines(config: TuConfig, period: string, skipCa
       const current = allResults[i].entries.find((e) => e.label === currentLabel(period));
       result.set(TOOLS[toolKeys[i]].name, current ?? { ...EMPTY });
     }
-    const machineCosts = buildSnapshotMachineCosts(toolKeys, allResults, period);
+    const machineCosts = buildSnapshotMachineCosts(toolKeys, allResults, period, fmtOpts?.metric ?? "cost");
     _lastRenderCost = sumToolTotalsCost(result);
-    _lastRenderCostMap = buildCostMap(result);
+    _lastRenderCostMap = buildCostMap(result, fmtOpts?.metric ?? "cost");
     _lastRenderTotalTokens = sumToolTotalsTokens(result);
     return renderTotal(period, result, { ...fmtOpts, machineCosts });
   }
@@ -1445,7 +1481,7 @@ async function dispatchAllSnapshotLines(config: TuConfig, period: string, skipCa
       result.set(TOOLS[toolKeys[i]].name, current ?? { ...EMPTY });
     }
     _lastRenderCost = sumToolTotalsCost(result);
-    _lastRenderCostMap = buildCostMap(result);
+    _lastRenderCostMap = buildCostMap(result, fmtOpts?.metric ?? "cost");
     _lastRenderTotalTokens = sumToolTotalsTokens(result);
     return renderTotal(period, result, fmtOpts);
   } else {
@@ -1460,13 +1496,13 @@ async function dispatchAllSnapshotLines(config: TuConfig, period: string, skipCa
         result.set(TOOLS[toolKeys[i]].name, match ?? { ...EMPTY });
       }
       _lastRenderCost = sumToolTotalsCost(result);
-      _lastRenderCostMap = buildCostMap(result);
+      _lastRenderCostMap = buildCostMap(result, fmtOpts?.metric ?? "cost");
       _lastRenderTotalTokens = sumToolTotalsTokens(result);
       return renderTotal(period, result, fmtOpts);
     } else {
       const results = await fetchAllTotals([]);
       _lastRenderCost = sumToolTotalsCost(results);
-      _lastRenderCostMap = buildCostMap(results);
+      _lastRenderCostMap = buildCostMap(results, fmtOpts?.metric ?? "cost");
       _lastRenderTotalTokens = sumToolTotalsTokens(results);
       return renderTotal(period, results, fmtOpts);
     }
@@ -1482,9 +1518,9 @@ async function dispatchSingleToolLines(
   if (byMachine) {
     const merged = await fetchToolMergedWithMachines(config, toolKey, period, [], skipCache, targetUser, since, until);
     if (display === "history") {
-      const machineCosts = buildHistoryMachineCosts(merged.machineMap);
+      const machineCosts = buildHistoryMachineCosts(merged.machineMap, fmtOpts?.metric ?? "cost");
       _lastRenderCost = merged.entries.reduce((sum, e) => sum + e.totalCost, 0);
-      _lastRenderCostMap = buildCostMap(merged.entries, toolCfg.name);
+      _lastRenderCostMap = buildCostMap(merged.entries, fmtOpts?.metric ?? "cost", toolCfg.name);
       _lastRenderTotalTokens = merged.entries.reduce((sum, e) => sum + e.totalTokens, 0);
       return renderHistory(toolCfg.name, period, merged.entries, undefined, { ...fmtOpts, machineCosts });
     } else {
@@ -1496,11 +1532,11 @@ async function dispatchSingleToolLines(
       const toolMachines = new Map<string, number>();
       for (const [machine, entries] of merged.machineMap) {
         const match = entries.find((e) => e.label === target);
-        toolMachines.set(machine, match ? match.totalCost : 0);
+        toolMachines.set(machine, match ? metricValue(match, fmtOpts?.metric ?? "cost") : 0);
       }
       machineCosts.set(toolCfg.name, toolMachines);
       _lastRenderCost = sumToolTotalsCost(result);
-      _lastRenderCostMap = buildCostMap(result);
+      _lastRenderCostMap = buildCostMap(result, fmtOpts?.metric ?? "cost");
       _lastRenderTotalTokens = sumToolTotalsTokens(result);
       return renderTotal(period, result, { ...fmtOpts, machineCosts });
     }
@@ -1516,7 +1552,7 @@ async function dispatchSingleToolLines(
 
   if (display === "history") {
     _lastRenderCost = entries.reduce((sum, e) => sum + e.totalCost, 0);
-    _lastRenderCostMap = buildCostMap(entries, toolCfg.name);
+    _lastRenderCostMap = buildCostMap(entries, fmtOpts?.metric ?? "cost", toolCfg.name);
     _lastRenderTotalTokens = entries.reduce((sum, e) => sum + e.totalTokens, 0);
     return renderHistory(toolCfg.name, period, entries, undefined, fmtOpts);
   } else {
@@ -1525,7 +1561,7 @@ async function dispatchSingleToolLines(
     const result = new Map<string, UsageTotals>();
     result.set(toolCfg.name, current ?? { ...EMPTY });
     _lastRenderCost = sumToolTotalsCost(result);
-    _lastRenderCostMap = buildCostMap(result);
+    _lastRenderCostMap = buildCostMap(result, fmtOpts?.metric ?? "cost");
     _lastRenderTotalTokens = sumToolTotalsTokens(result);
     return renderTotal(period, result, fmtOpts);
   }
@@ -1665,14 +1701,11 @@ async function main() {
     process.stderr.write("Warning: --full applies to daily/weekly history — ignoring.\n");
   }
 
-  // --metric scales history bars only. A non-default value on a snapshot
-  // display warns once and is cleared (same spot as the since/until guard, so
-  // watch snapshot warns once at startup). JSON/CSV/MD have no bars and
-  // ignore it silently.
-  if (metricFlag !== "cost" && display !== "history") {
-    process.stderr.write("Warning: --metric applies to history display — ignoring.\n");
-    metricFlag = "cost";
-  }
+  // --metric selects the unit table cells, bars and footer stats render in.
+  // The snapshot table keeps its Cost column in dollars — only the delta
+  // indicator follows the metric (compact snapshot cells use the metric). It
+  // reaches every display through the withCap merge below; JSON/CSV/MD
+  // emitters ignore it silently.
 
   // Implicit 3-month cap: daily/weekly history only, no explicit window, no
   // --full. Default sinceFlag to the floor so the cap reuses the existing
@@ -1686,12 +1719,12 @@ async function main() {
     capActive = true;
   }
 
-  // Merge the flag-derived FormatOptions (capActive heading hint, bar metric,
-  // and the "Users" legend when -u all --by-machine keys the breakdown columns
-  // by user) into whatever options a dispatch path uses, without overriding a
-  // caller's other options. Renderers that do not read a field pass it through
-  // harmlessly. Nothing is stamped when every field is at its default, so
-  // existing output stays byte-identical.
+  // Merge the flag-derived FormatOptions (capActive heading hint, the display
+  // metric, and the "Users" legend when -u all --by-machine keys the breakdown
+  // columns by user) into whatever options a dispatch path uses, without
+  // overriding a caller's other options. Renderers that do not read a field
+  // pass it through harmlessly. Nothing is stamped when every field is at its
+  // default, so existing output stays byte-identical.
   const usersLegend = userFlag === ALL_USERS && byMachineFlag;
   const withCap = (fmtOpts?: FormatOptions): FormatOptions | undefined => {
     if (!capActive && metricFlag === "cost" && !usersLegend) return fmtOpts;

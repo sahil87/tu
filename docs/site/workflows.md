@@ -82,7 +82,7 @@ tu sync --dry-run    # preview what a sync would write/commit, no changes
 tu -u alice          # show usage recorded under the 'alice' profile
 tu --by-machine      # break today's cost down per machine
 tu mh -u all         # team-wide monthly cost history, every user in the repo
-tu mh -u all --metric tokens   # same rows, bars scaled by token volume
+tu mh -u all -t   # same rows, every cell and bar in tokens
 tu --by-machine -u all         # today's cost broken down per user
 ```
 

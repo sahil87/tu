@@ -69,7 +69,8 @@ Sources: `cc` (Claude Code), `codex`/`co` (Codex), `oc` (OpenCode), `gemini`/`ge
   --since / -s <date>  Only include entries on/after date (YYYY-MM-DD or YYYYMMDD, history display)
   --until <date>       Only include entries on/before date (YYYY-MM-DD or YYYYMMDD, history display)
   --full               Show full history (default: last 3 months for daily/weekly history)
-  --metric <m>         Scale history bars by 'cost' (default) or 'tokens' (history display)
+  --metric <m>         Show 'cost' (default) or 'tokens' in table cells, bars and footer stats (snapshot keeps its Cost column in dollars)
+  -t                   Shorthand for --metric tokens
   --sync               Sync metrics before fetching (multi mode)
   --dry-run            Preview sync without writing (tu sync only)
   --fresh / -f         Bypass cache, fetch fresh data (data commands only)

@@ -60,7 +60,7 @@ tu [source] [period] [display] [flags]
 | `--dry-run` | — | Preview a sync without writing (honored only by `tu sync`; other invocations error) |
 | `--fresh` | `-f` | Bypass cache, fetch fresh data |
 | `--full` | — | Show full history (default is the last 3 months for daily/weekly history; no effect on monthly or snapshot) |
-| `--metric` | `<cost\|tokens>` | Scale history bars (and the footer stats) by cost (default) or total tokens; history display only — warns and is ignored on snapshots; no effect on `--json`/`--csv`/`--md` |
+| `--metric` | `-t` | Show cost (default) or total tokens in table cells, bars and footer stats — all displays; the snapshot table keeps its Cost column in dollars (only the delta indicator follows the metric; compact snapshot cells use the metric) (`-t` is a boolean shorthand ≡ `--metric tokens`); no effect on `--json`/`--csv`/`--md` |
 | `--user` | `-u <user>` | Show usage for a specific user, or `all` to sum every user directory in the metrics repo (multi mode only; `all` reads synced repo data only, so today lags until `--sync`; `all` is a reserved profile name — a config `user = all` is rejected with exit 2). With `--by-machine`, `-u all` breaks the total down per user instead of per machine (legend `Users:`; the JSON `machines` key carries user names) |
 | `--watch` | `-w` | Persistent polling mode with live TUI display |
 | `--interval` | `-i <s>` | Poll interval in seconds (default: 10, range: 5-3600, requires `--watch`) |
@@ -94,7 +94,7 @@ Per-subcommand exit codes:
 
 | Command | `0` | `1` | `2` |
 |---------|-----|-----|-----|
-| `tu [source] [period] [display]` (data commands, incl. `--watch`) | success | unexpected runtime error | unknown argument/tool, bad flag value, incompatible format flags (`--json`/`--csv`/`--md`/`--watch`), bad/inverted `--since`/`--until`, bad `--interval`, missing `-u` value, bad/missing `--metric` value, config `user = all` (reserved), `--dry-run` without `tu sync` |
+| `tu [source] [period] [display]` (data commands, incl. `--watch`) | success | unexpected runtime error | unknown argument/tool, bad flag value, incompatible format flags (`--json`/`--csv`/`--md`/`--watch`), `-t` with `--metric cost`, bad/inverted `--since`/`--until`, bad `--interval`, missing `-u` value, bad/missing `--metric` value, config `user = all` (reserved), `--dry-run` without `tu sync` |
 | `tu sync` | success | `metrics_repo` unset, clone/sync failure | — |
 | `tu init-metrics [repo-url]` | success | `metrics_repo` unset, metrics dir exists but is not a git repo, `$HOME` unset | more than one positional argument |
 | `tu update` | success (incl. non-Homebrew install message, "already up to date") | `brew update`/`brew info`/`brew upgrade` failure | — |
@@ -149,15 +149,15 @@ Tool configs define the six supported tools (`cc`, `codex`, `oc`, `gemini`, `cop
 
 ### Snapshot Table (all tools)
 
-Columns: Tool, Tokens, Input, Output, Cache, Cost (Cache = cache write + cache read combined, so Input + Output + Cache = Tokens). One row per tool with non-zero tokens, plus a Total row. Heading: "Combined Usage (daily|weekly|monthly)".
+Columns: Tool, Tokens, Input, Output, Cache, Cost (Cache = cache write + cache read combined, so Input + Output + Cache = Tokens). One row per tool with non-zero tokens, plus a Total row. Heading: "Combined Usage (daily|weekly|monthly)". The table is unchanged under `--metric tokens`/`-t` (its columns are already token-denominated; the Cost column stays) — only the watch delta indicator moves to the Tokens cell.
 
 ### Single-Tool History Table
 
-Columns: Date, Input, Output, Cache Write, Cache Read, Total, Cost. Includes inline bar charts (Unicode block elements at eighths precision, scaled to max cost in the table). Total row when >1 entry. Heading: "{Tool Name} (daily|weekly|monthly)".
+Columns: Date, Input, Output, Cache Write, Cache Read, Total, Cost. Includes inline bar charts (Unicode block elements at eighths precision, scaled to max cost in the table). Total row when >1 entry. Heading: "{Tool Name} (daily|weekly|monthly)". Under `--metric tokens`/`-t` the last column renders as `Tokens` = total tokens and the bars/footer scale on token volume.
 
 ### All-Tools History Pivot Table
 
-Columns: Date, {Tool1}, {Tool2}, ..., Cost. Each cell is a cost value. Includes inline bar charts for row totals. Total row with per-tool sums. Heading: "Combined Cost History (daily|weekly|monthly)".
+Columns: Date, {Tool1}, {Tool2}, ..., Cost. Each cell is a cost value. Includes inline bar charts for row totals. Total row with per-tool sums. Heading: "Combined Cost History (daily|weekly|monthly)". Under `--metric tokens`/`-t` every cell and the Total row render as total tokens, the last header reads `Tokens`, and the heading is "Combined Token History".
 
 ### JSON Output (`--json`)
 
