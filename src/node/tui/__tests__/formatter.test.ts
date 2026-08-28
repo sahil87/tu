@@ -186,7 +186,7 @@ describe("printHistory", () => {
 
   it("omits bar column on narrow terminals", (t) => {
     t.after(restoreLog);
-    // tableWidth = 97, GUTTER = 3, COST_WIDTH = 9, separator = 1
+    // tableWidth = 97, GUTTER = 3, costWidth = 9 (floor), separator = 1
     // termWidth = 110 → barWidth = 110 - 97 - 3 - 9 - 1 = 0 < MIN_BAR_AREA
     const entries: UsageEntry[] = [{
       label: "2026-02-14",
@@ -232,7 +232,7 @@ describe("printHistory", () => {
       cacheReadTokens: 0,
       totalTokens: 300,
     }];
-    // termWidth=188, tableWidth=97, GUTTER=3, COST_WIDTH=9, sep=1 → uncapped=78, capped at 30
+    // termWidth=188, tableWidth=97, GUTTER=3, costWidth=9 (floor), sep=1 → uncapped=78, capped at 30
     printHistory("Test", "daily", entries, 188);
     const dataLine = logged.find(l => l.includes("2026-02-14"));
     assert.ok(dataLine);
@@ -485,15 +485,17 @@ describe("printTotalHistory", () => {
     const mk = (cost: number): UsageEntry[] => [
       { label: "2026-07-01", totalCost: cost, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 },
     ];
-    // Full 6-tool registry order, all with nonzero cost (zero-cost columns are
-    // omitted — that case is covered by the omission tests below).
+    // Full 6-tool registry order, all with significant cost (negligible-cost
+    // columns are omitted — that case is covered by the omission tests below).
+    // Every cell is ≥ $1.00 and ≥ 0.1% of the row total, and ≤ $9,999.99, so
+    // all six columns render at the 9-char floor and the row stays 96 chars.
     const data = new Map<string, UsageEntry[]>([
       ["Claude Code", mk(123.45)],
-      ["Codex", mk(0.12)],
+      ["Codex", mk(12.34)],
       ["OpenCode", mk(4.56)],
-      ["Gemini", mk(0.01)],
-      ["Copilot", mk(0.02)],
-      ["Kimi", mk(0.03)],
+      ["Gemini", mk(1.23)],
+      ["Copilot", mk(2.34)],
+      ["Kimi", mk(3.45)],
     ]);
     printTotalHistory("daily", data, 97);
     const output = logged.join("\n");
@@ -513,8 +515,8 @@ describe("printTotalHistory", () => {
     const dataLine = logged.find((l) => stripAnsi(l).includes("2026-07-01"));
     assert.ok(dataLine, "expected the 2026-07-01 data row");
     const stripped = stripAnsi(dataLine!);
-    // Slice through the end of the Cost cell (the row's grand total, $128.19).
-    const costCell = "$128.19";
+    // Slice through the end of the Cost cell (the row's grand total, $147.37).
+    const costCell = "$147.37";
     const costEnd = stripped.indexOf(costCell) + costCell.length;
     const fullRow = stripped.slice(0, costEnd);
     assert.equal(fullRow.length, 96, `full data row must be 96 chars (got ${fullRow.length}): "${fullRow}"`);
@@ -525,19 +527,19 @@ describe("printTotalHistory", () => {
     // Watch mode: with prevCosts set (watch.ts populates it after the first
     // poll) the row appends a delta indicator after the Cost cell. In this pivot
     // it is rendered WITHOUT its leading space (the arrow abuts the cost \u2014
-    // "$128.19\u2191", 1 visible char) so the row is 96 + 1 = 97 exactly and
+    // "$147.37\u2191", 1 visible char) so the row is 96 + 1 = 97 exactly and
     // does NOT wrap at 97 cols. The spaced form ( \u2191, 2 chars) would render
     // 98 and wrap, corrupting the watch compositor's line-counting.
     captureLog();
-    // Row total for 2026-07-01 is 123.45 + 0.12 + 4.56 + 0.01 + 0.02 + 0.03 =
-    // 128.19; a lower prev triggers the up-arrow (\u2191).
+    // Row total for 2026-07-01 is 123.45 + 12.34 + 4.56 + 1.23 + 2.34 + 3.45 =
+    // 147.37; a lower prev triggers the up-arrow (\u2191).
     printTotalHistory("daily", data, 97, { prevCosts: new Map([["total:2026-07-01", 100]]) });
     const watchOutput = logged.join("\n");
     const watchLine = logged.find((l) => stripAnsi(l).includes("2026-07-01"));
     assert.ok(watchLine, "expected the 2026-07-01 watch-mode data row");
     const watchStripped = stripAnsi(watchLine!);
     // Sanity: the indicator rendered space-lessly, directly against the cost.
-    assert.ok(watchStripped.includes("$128.19\u2191"), `expected space-less indicator "$128.19\u2191", got: "${watchStripped}"`);
+    assert.ok(watchStripped.includes("$147.37\u2191"), `expected space-less indicator "$147.37\u2191", got: "${watchStripped}"`);
     // Measure the full row through the indicator (the arrow is the last glyph).
     const arrowEnd = watchStripped.indexOf("\u2191") + 1;
     const watchRow = watchStripped.slice(0, arrowEnd);
@@ -552,19 +554,20 @@ describe("printTotalHistory", () => {
     const mk = (cost: number): UsageEntry[] => [
       { label: "2026-07-01", totalCost: cost, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0 },
     ];
-    // Full 6-tool registry order, all nonzero (zero-cost columns are omitted);
-    // the max-cost row is the one that renders the longest bar (full width) —
-    // it is the wrap risk once a delta indicator is appended. tableWidth = 84,
+    // Full 6-tool registry order, all significant (≥ $1.00 and ≥ 0.1% of the
+    // row total, ≤ $9,999.99 — negligible-cost columns are omitted); the
+    // max-cost row is the one that renders the longest bar (full width) — it
+    // is the wrap risk once a delta indicator is appended. tableWidth = 84,
     // so bars render from ~width 107 (barWidth >= 10).
     const data = new Map<string, UsageEntry[]>([
       ["Claude Code", mk(123.45)],
-      ["Codex", mk(0.12)],
+      ["Codex", mk(12.34)],
       ["OpenCode", mk(4.56)],
-      ["Gemini", mk(0.01)],
-      ["Copilot", mk(0.02)],
-      ["Kimi", mk(0.03)],
+      ["Gemini", mk(1.23)],
+      ["Copilot", mk(2.34)],
+      ["Kimi", mk(3.45)],
     ]);
-    // A lower prev triggers the up-arrow (row total 128.19 > 100), exercising the
+    // A lower prev triggers the up-arrow (row total 147.37 > 100), exercising the
     // watch-mode delta indicator on the max-cost row.
     const prevCosts = new Map([["total:2026-07-01", 100]]);
     for (const termWidth of [107, 110, 120]) {

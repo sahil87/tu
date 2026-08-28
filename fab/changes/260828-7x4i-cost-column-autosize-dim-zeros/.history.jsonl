@@ -1,0 +1,10 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-08-28T02:15:55Z"}
+{"args":"Cost column autosize (data-sized, floor 9) in pivot + per-tool history; dim $0.00 cells; omit negligible tool columns (\u003c$1 or \u003c0.1% of grand total) in the cross-tool pivot","cmd":"fab-new","event":"command","ts":"2026-08-28T02:15:55Z"}
+{"delta":"+0.0","event":"confidence","score":4.3,"trigger":"calc-score","ts":"2026-08-28T02:19:08Z"}
+{"cmd":"fab-switch","event":"command","ts":"2026-08-28T02:20:10Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-08-28T02:20:55Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-08-28T02:21:09Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-08-28T02:46:50Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-08-28T02:50:18Z"}
+{"event":"review","result":"passed","ts":"2026-08-28T02:50:18Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-08-28T02:55:17Z"}
