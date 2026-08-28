@@ -60,7 +60,7 @@ tu [source] [period] [display] [flags]
 | `--dry-run` | — | Preview a sync without writing (honored only by `tu sync`; other invocations error) |
 | `--fresh` | `-f` | Bypass cache, fetch fresh data |
 | `--full` | — | Show full history (default is the last 3 months for daily/weekly history; no effect on monthly or snapshot) |
-| `--metric` | `-t` | Show cost (default) or total tokens in every table cell, bar and footer stat — all displays (`-t` is a boolean shorthand ≡ `--metric tokens`); no effect on `--json`/`--csv`/`--md` |
+| `--metric` | `-t` | Show cost (default) or total tokens in table cells, bars and footer stats — all displays; the snapshot table keeps its Cost column in dollars (only the delta indicator follows the metric; compact snapshot cells use the metric) (`-t` is a boolean shorthand ≡ `--metric tokens`); no effect on `--json`/`--csv`/`--md` |
 | `--user` | `-u <user>` | Show usage for a specific user, or `all` to sum every user directory in the metrics repo (multi mode only; `all` reads synced repo data only, so today lags until `--sync`; `all` is a reserved profile name — a config `user = all` is rejected with exit 2). With `--by-machine`, `-u all` breaks the total down per user instead of per machine (legend `Users:`; the JSON `machines` key carries user names) |
 | `--watch` | `-w` | Persistent polling mode with live TUI display |
 | `--interval` | `-i <s>` | Poll interval in seconds (default: 10, range: 5-3600, requires `--watch`) |

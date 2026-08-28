@@ -363,7 +363,7 @@ Help: tu help | tu -h | tu --help
 Flags:
   --json               Output data as JSON (data commands only)
   --full               Show full history (default: last 3 months for daily/weekly history)
-  --metric <m>         Show 'cost' (default) or 'tokens' in every table cell, bar and footer stat
+  --metric <m>         Show 'cost' (default) or 'tokens' in table cells, bars and footer stats (snapshot keeps its Cost column in dollars)
   -t                   Shorthand for --metric tokens
   --sync               Sync metrics before fetching (multi mode)
   --fresh / -f         Bypass cache, fetch fresh data (data commands only)

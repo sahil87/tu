@@ -2,7 +2,9 @@ import type { UsageTotals, UsageEntry } from "../core/types.js";
 import { currentLabel } from "../core/fetcher.js";
 import { bold, dim, green, red, cyan, yellow, magenta, blue, boldWhite, boldCyan, colorDisabled } from "./colors.js";
 
-// The unit every table cell, bar and footer stat renders in.
+// The unit table cells, bars and footer stats render in. The snapshot table
+// keeps its Cost column in dollars — only the delta indicator follows the
+// metric (compact snapshot cells use the metric).
 export type BarMetric = "cost" | "tokens";
 
 export interface FormatOptions {

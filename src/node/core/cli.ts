@@ -131,7 +131,7 @@ Flags:
   --since / -s <date>  Only include entries on/after date (YYYY-MM-DD or YYYYMMDD, history display)
   --until <date>       Only include entries on/before date (YYYY-MM-DD or YYYYMMDD, history display)
   --full               Show full history (default: last 3 months for daily/weekly history)
-  --metric <m>         Show 'cost' (default) or 'tokens' in every table cell, bar and footer stat
+  --metric <m>         Show 'cost' (default) or 'tokens' in table cells, bars and footer stats (snapshot keeps its Cost column in dollars)
   -t                   Shorthand for --metric tokens
   --sync               Sync metrics before fetching (multi mode)
   --dry-run            Preview sync without writing (tu sync only)
@@ -1701,9 +1701,11 @@ async function main() {
     process.stderr.write("Warning: --full applies to daily/weekly history — ignoring.\n");
   }
 
-  // --metric selects the unit every table cell, bar and footer stat renders
-  // in. It reaches every display (snapshot included) through the withCap merge
-  // below; JSON/CSV/MD emitters ignore it silently.
+  // --metric selects the unit table cells, bars and footer stats render in.
+  // The snapshot table keeps its Cost column in dollars — only the delta
+  // indicator follows the metric (compact snapshot cells use the metric). It
+  // reaches every display through the withCap merge below; JSON/CSV/MD
+  // emitters ignore it silently.
 
   // Implicit 3-month cap: daily/weekly history only, no explicit window, no
   // --full. Default sinceFlag to the floor so the cap reuses the existing
