@@ -100,6 +100,11 @@ Outside `fab/changes/260911-v2cu-hexokit-banner-sweep/`, the branch diff against
 - **T002 audit** — `grep -rn -i 'run-kit\|runkit' README.md docs/site docs/specs` → no output (exit 1). Repo-wide `grep -rn -i 'run-kit\|runkit' --exclude-dir={node_modules,dist,fab,.agents,.git} .` → exactly one hit, `src/node/core/__tests__/skill.test.ts:26` (`// run-kit context)` — the `rk context` verb, substrate tier, D2; untouched). `fab/changes/**` hits are historical tier (D11; untouched). **No present-tense run-kit product mentions exist on tu's live surfaces; nothing to flip.**
 - **T003 verification** — `git diff --stat main -- . ':!fab/changes'` → `README.md | 2 +-  (1 insertion, 1 deletion)`, no other file. `npm ci && npm run build` → exit 0 (`dist/tu.mjs 172.9kb`; the worktree initially lacked the optional `@ccusage/ccusage-linux-x64` package until `npm ci`). `npm test` → 1091 tests, 1091 pass, 0 fail — run with `env -u TU_METRICS_REPO` because this shell exports `TU_METRICS_REPO=git@github.com:wvrdz/tu-metrics.git`, which the config layer honors as a bootstrap key and which makes ~20 config/sync tests fail regardless of branch (environment leak, not a code or README issue; CI on `main` at 02deeea is green).
 
+### Hydrate + review-pr record (2026-09-11)
+
+- **Hydrate** rewrote the `build/toolchain` toolkit-standards bullet and ran the mandated `fab docs-index docs/memory` regen. Because this is the first regen since the fab-kit 2.25 upgrade (#76), the generator migrated every `docs/memory/**/index.md` and `log.md` banner from `fab memory-index` to `fab docs-index` and scaffolded the hand-managed manual block — 13 generated files, content rows unchanged. R3's "one line in README" assertion is pre-hydrate by construction; these generated files are hydrate's output, not sweep scope.
+- **Copilot review (PR #77)** — three findings, all acted on: (1) the regen dropped the root landing's "New here?" note → restored via `docs_index.roots[0].nav_note` in `fab/project/config.yaml` (override above the fence), minus its dead `../specs/glossary.md` link (no such file on `main`); (2) shll#98 merged 2026-09-11T17:51Z and shipped as shll v0.1.31 before the review → the memory pin reads the released version, not "pre-release"; (3) the generated-file scope is documented here.
+
 ## Assumptions
 
 | # | Grade | Decision | Rationale | Scores |
