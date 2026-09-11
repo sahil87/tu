@@ -9,18 +9,6 @@ help/
 
 .fab-status.yaml
 
-/.agents
-
-/.claude
-
-/.cursor
-
-/.opencode
-
-/.codex
-
-/.gemini
-
 .fab-*
 
 
@@ -28,5 +16,6 @@ help/
 
 !fab/.fab-version
 
-/.kimi
 .uploads/
+
+/.claude/settings.local.json
