@@ -36,7 +36,7 @@ stage_metrics:
     ship: {started_at: "2026-09-15T19:49:23Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-15T19:50:54Z"}
     review-pr: {started_at: "2026-09-15T19:50:54Z", driver: git-pr, iterations: 1}
 prs:
-    - ""
+    - https://github.com/sahil87/tu/pull/79
 change_type_source: explicit
 base_branch: main
 true_impact:
