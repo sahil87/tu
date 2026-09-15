@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 5
@@ -33,14 +33,16 @@ stage_metrics:
     apply: {started_at: "2026-09-15T19:43:10Z", driver: fab-fff, iterations: 2, completed_at: "2026-09-15T19:43:43Z"}
     review: {started_at: "2026-09-15T19:43:43Z", driver: fab-fff, iterations: 2, completed_at: "2026-09-15T19:48:33Z"}
     hydrate: {started_at: "2026-09-15T19:48:33Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-15T19:49:23Z"}
-    ship: {started_at: "2026-09-15T19:49:23Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-09-15T19:49:23Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-15T19:50:54Z"}
+    review-pr: {started_at: "2026-09-15T19:50:54Z", driver: git-pr, iterations: 1}
+prs:
+    - ""
 change_type_source: explicit
 base_branch: main
 true_impact:
-    added: 0
-    deleted: 0
-    net: 0
+    added: 2803
+    deleted: 264
+    net: 2539
     excluding:
         added: 0
         deleted: 0
@@ -49,9 +51,9 @@ true_impact:
         added: 0
         deleted: 0
         net: 0
-    computed_at: "2026-09-15T19:49:23Z"
-    computed_at_stage: hydrate
+    computed_at: "2026-09-15T19:50:54Z"
+    computed_at_stage: ship
 summary: 'Reconciled docs/specs/usage.md and layouts.md against the 18 memory files and the v0.11.5 binary: added toolkit contracts, pinned JSON/CSV/Markdown shapes, table semantics, verbatim help, and a 24-entry Drop-at-cutover [DECIDE] ledger for gate G0; corrected four memory claims the walk disproved (watch-only compact mode, 12-wide snapshot cells, mergeEntries verified, skill.md line count, fixed pull branch)'
 # base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-09-15T19:49:23Z
+last_updated: 2026-09-15T19:50:54Z
