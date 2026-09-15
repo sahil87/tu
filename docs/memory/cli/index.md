@@ -8,4 +8,4 @@
 
 | File | Description |
 |------|-------------|
-| [data-pipeline](data-pipeline.md) | CLI argument parsing (incl. the sync-only --dry-run global flag + fail-fast misuse guard, the --metric/-t display unit, the lb/lbh leaderboard displays + --top flag, -u all aggregate and the reserved "all" profile guard), data fetching, caching, tool registry |
+| [data-pipeline](data-pipeline.md) | CLI argument parsing (incl. the sync-only --dry-run global flag + fail-fast misuse guard, the --metric/-t display unit, the lb/lbh leaderboard displays + --top flag, -u all aggregate and the reserved "all" profile guard), data fetching, caching, tool registry, live-verified ccusage v20 per-agent daily JSON shapes (codex costUSD outlier; empty agent → daily: [], -0.0 totals) |

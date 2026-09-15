@@ -54,3 +54,15 @@ go-lint:
         exit 1
     fi
     go vet ./...
+
+# Build the harness binaries into bin/harness/ (gitignored via bin/). The fakes are
+# named for the tools they impersonate so P4 can prepend bin/harness to PATH.
+harness-build:
+    mkdir -p bin/harness
+    cd src/go && go build -o ../../bin/harness/tudiff ./cmd/tudiff
+    cd src/go && go build -o ../../bin/harness/ccusage ./cmd/fakeccusage
+    cd src/go && go build -o ../../bin/harness/git ./cmd/fakegit
+
+# Record real ccusage output for this machine into harness/fixtures/<alias>/ (default alias: hostname).
+harness-capture *ARGS: harness-build
+    bin/harness/tudiff capture {{ARGS}}

@@ -1,0 +1,59 @@
+id: r7dh
+name: 260915-r7dh-harness-fixture-capture
+created: 2026-09-15T20:47:49Z
+created_by: Sahil Ahuja
+change_type: feat
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
+plan:
+    generated: true
+    task_count: 14
+    acceptance_count: 29
+    acceptance_completed: 29
+confidence:
+    certain: 9
+    confident: 6
+    tentative: 0
+    unresolved: 0
+    score: 4.5
+    fuzzy: true
+    dimensions:
+        signal: 68.0
+        reversibility: 84.0
+        competence: 86.3
+        disambiguation: 80.3
+stage_metrics:
+    intake: {started_at: "2026-09-15T20:47:49Z", driver: fab-new, iterations: 1, completed_at: "2026-09-15T20:54:21Z"}
+    apply: {started_at: "2026-09-15T21:13:30Z", driver: fab-fff, iterations: 2, completed_at: "2026-09-15T21:15:39Z"}
+    review: {started_at: "2026-09-15T21:15:39Z", driver: fab-fff, iterations: 2, completed_at: "2026-09-15T21:18:35Z"}
+    hydrate: {started_at: "2026-09-15T21:18:35Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-15T21:23:01Z"}
+    ship: {started_at: "2026-09-15T21:23:01Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-15T21:24:21Z"}
+    review-pr: {started_at: "2026-09-15T21:24:21Z", driver: git-pr, iterations: 1, completed_at: "2026-09-15T21:44:07Z"}
+prs:
+    - https://github.com/sahil87/tu/pull/81
+base_branch: main
+change_type_source: explicit
+true_impact:
+    added: 5401
+    deleted: 11
+    net: 5390
+    excluding:
+        added: 4625
+        deleted: 0
+        net: 4625
+    tests:
+        added: 1427
+        deleted: 0
+        net: 1427
+    computed_at: "2026-09-15T21:24:21Z"
+    computed_at_stage: ship
+summary: 'harness fixture capture: tudiff capture/placeholder, fake ccusage/git, committed _placeholder corpus for all six sources (real captures stay local), corpus validation in go-build-and-test'
+# base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-09-15T22:28:52Z

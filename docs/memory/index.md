@@ -24,5 +24,6 @@ fkf_version: "0.1"
 | [cli](cli/index.md) | — |
 | [configuration](configuration/index.md) | — |
 | [display](display/index.md) | — |
+| [harness](harness/index.md) | — |
 | [sync](sync/index.md) | — |
 | [watch-mode](watch-mode/index.md) | — |

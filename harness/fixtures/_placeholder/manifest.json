@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "machine": "_placeholder",
+  "captured_at": "2026-09-15T22:29:51Z",
+  "ccusage_version": "20.0.19",
+  "ccusage_path": "",
+  "platform": "derived",
+  "timezone": "",
+  "derived_from": "live ccusage 20.0.19 `\u003cagent\u003e daily --json` output on dev-ws-sahil02, 2026-09-16 (real captures are local-only, never committed)",
+  "fixtures": [
+    {
+      "source": "claude",
+      "period": "daily",
+      "args": [
+        "--json"
+      ],
+      "file": "claude/daily.json",
+      "stderr_file": "",
+      "exit_code": 0,
+      "sha256": "b7341ac5bc442c28ad155c07e4020df28d8121d2172c722c04210a187f8dace5",
+      "days": 3,
+      "first_date": "2026-01-05",
+      "last_date": "2026-01-07",
+      "empty": false,
+      "redactions": 0,
+      "unconfirmed": true
+    },
+    {
+      "source": "codex",
+      "period": "daily",
+      "args": [
+        "--json"
+      ],
+      "file": "codex/daily.json",
+      "stderr_file": "",
+      "exit_code": 0,
+      "sha256": "5cc88c252298eefb214e0e3e4eda51d401f294c30d86c6ffbf299588180e2ece",
+      "days": 3,
+      "first_date": "2026-01-05",
+      "last_date": "2026-01-07",
+      "empty": false,
+      "redactions": 0,
+      "unconfirmed": true
+    },
+    {
+      "source": "opencode",
+      "period": "daily",
+      "args": [
+        "--json"
+      ],
+      "file": "opencode/daily.json",
+      "stderr_file": "",
+      "exit_code": 0,
+      "sha256": "3ac669a5ba9c3332a52aec753f3497a5323dd5833dc58c07ce7792673f0e663b",
+      "days": 3,
+      "first_date": "2026-01-05",
+      "last_date": "2026-01-07",
+      "empty": false,
+      "redactions": 0,
+      "unconfirmed": true
+    },
+    {
+      "source": "gemini",
+      "period": "daily",
+      "args": [
+        "--json"
+      ],
+      "file": "gemini/daily.json",
+      "stderr_file": "",
+      "exit_code": 0,
+      "sha256": "58c39cf55fdd56db7e9e06609fc1a12a29c7962a9ae04d6f15debcfe6cf60f48",
+      "days": 3,
+      "first_date": "2026-01-05",
+      "last_date": "2026-01-07",
+      "empty": false,
+      "redactions": 0,
+      "unconfirmed": true
+    },
+    {
+      "source": "copilot",
+      "period": "daily",
+      "args": [
+        "--json"
+      ],
+      "file": "copilot/daily.json",
+      "stderr_file": "",
+      "exit_code": 0,
+      "sha256": "07302a4b3d86933090f40454e05c67936f7c0ec66937d17cf2a37358251db3c1",
+      "days": 3,
+      "first_date": "2026-01-05",
+      "last_date": "2026-01-07",
+      "empty": false,
+      "redactions": 0,
+      "unconfirmed": true
+    },
+    {
+      "source": "kimi",
+      "period": "daily",
+      "args": [
+        "--json"
+      ],
+      "file": "kimi/daily.json",
+      "stderr_file": "",
+      "exit_code": 0,
+      "sha256": "17abba1cc1dc62d187d1d5fad2b180e75e05fe83aa0ded01f4fc4623d3444526",
+      "days": 3,
+      "first_date": "2026-01-05",
+      "last_date": "2026-01-07",
+      "empty": false,
+      "redactions": 0,
+      "unconfirmed": true
+    }
+  ]
+}
