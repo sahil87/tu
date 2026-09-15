@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Re-run of the sandboxed multi-mode cells against SEEDED bare repos (initial commit on main, like a GitHub-created repo).
+# Writes: index-multi.tsv (committed as index-multi-sandbox.tsv) and sandbox2/ (consumed by run-sync.sh).
 set -u
 W="${WALK_OUT:-$(cd "$(dirname "$0")" && pwd)}"
 OUT="$W/cells-multi"; rm -rf "$OUT"; mkdir -p "$OUT"

@@ -72,7 +72,7 @@ For each data display (snapshot, single-tool history, pivot history, `lb`, `lbh`
 ### Specs: Index and plan bookkeeping
 
 #### R9: Index descriptions and the plan's P1 row are updated; nothing else changes
-`docs/specs/index.md` descriptions MUST name the toolkit contracts, the machine-format pins, and the ledger; the plan's P1 Status cell MUST reference this change. The diff MUST touch only `docs/specs/*.md`, `fab/plans/sahil/26-09-15-go-port.md`, and files under `fab/changes/260915-2y3l-spec-reconciliation/`; no `src/`, test, build, formula, README, or `docs/site/` file changes.
+`docs/specs/index.md` descriptions MUST name the toolkit contracts, the machine-format pins, and the ledger; the plan's P1 Status cell MUST reference this change. The diff MUST touch only `docs/specs/*.md`, `fab/plans/sahil/26-09-15-go-port.md`, files under `fab/changes/260915-2y3l-spec-reconciliation/`, and — at hydrate, per the intake's conditional Affected Memory — `docs/memory/**` lines a captured run proved wrong; no `src/`, test, build, formula, README, or `docs/site/` file changes.
 
 - **GIVEN** the completed change
 - **WHEN** `git diff --name-only` is run against the base
@@ -119,7 +119,7 @@ For each data display (snapshot, single-tool history, pivot history, `lb`, `lbh`
 
 ### Functional Completeness
 
-- [x] A-001 R1: `reconciliation.md` indexes a capture for every matrix cell in intake §1, and no do-not-run command was executed against the real `$HOME`
+- [x] A-001 R1: `reconciliation.md` indexes every matrix cell in intake §1 (captures held locally, reproducible from the committed scripts), and no do-not-run command was executed against the real `$HOME`
 - [x] A-002 R2: every memory requirement bullet in the six content files is mapped to a spec section or marked internal with a reason; contradictions list the proving cell
 - [x] A-003 R3: `usage.md` Global Flags lists every flag from live `tu --help` plus `-j`, `-v`, and the update-scoped `--skip-brew-update`; the Setup section lists all nine non-data commands; `--dry-run` misuse reads exit 2 in every place it is mentioned
 - [x] A-004 R4: `usage.md` has a `## Toolkit Contracts` section with six subsections, each citing its `shll standards` entry and stating stdout/stderr/exit behavior; `tu skill` is specified by reference to `docs/site/skill.md`
@@ -142,7 +142,7 @@ For each data display (snapshot, single-tool history, pivot history, `lb`, `lbh`
 ### Edge Cases & Error Handling
 
 - [x] A-014 R1: the unset-`$HOME` cell shows `tu: $HOME is not set; cannot locate config` with exit 1 for a config-reading command and success for a `$HOME`-free one, and the spec states both
-- [x] A-015 R9: `git diff --name-only <base>...HEAD` lists only `docs/specs/*.md`, the plan file, and this change's folder
+- [x] A-015 R9: `git diff --name-only <base>...HEAD` lists only `docs/specs/*.md`, the plan file, this change's folder, and the hydrate-stage `docs/memory/**` corrections
 
 ### Code Quality
 

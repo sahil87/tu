@@ -152,11 +152,11 @@ Leaderboard (monthly) · 2026-09 · by cost
 # | User    |       Cost                     |         Tokens | Share | Δ vs Aug
 ──|─────────|────────────────────────────────|────────────────|───────|─────────
 1 | sahil ◂ | $12,945.64 ███████████████████ | 15,962,442,751 | 69.0% |     -55%
-2 | ashishy |  $3,333.40 ████▉               |  5,562,910,079 | 17.8% |     -51%
-3 | kannan  |  $1,598.54 ██▍                 |  1,681,643,674 |  8.5% |     -91%
-4 | vaithee |    $611.44 ▉                   |    390,936,777 |  3.3% |     -85%
-5 | pulkit  |    $155.60 ▎                   |     32,774,697 |  0.8% |     -96%
-6 | shreyas |    $116.47 ▏                   |    100,240,636 |  0.6% |     -98%
+2 | beatriz |  $3,333.40 ████▉               |  5,562,910,079 | 17.8% |     -51%
+3 | carlos  |  $1,598.54 ██▍                 |  1,681,643,674 |  8.5% |     -91%
+4 | dominic |    $611.44 ▉                   |    390,936,777 |  3.3% |     -85%
+5 | eunice  |    $155.60 ▎                   |     32,774,697 |  0.8% |     -96%
+6 | frankie |    $116.47 ▏                   |    100,240,636 |  0.6% |     -98%
 ──|─────────|────────────────────────────────|────────────────|───────|─────────
   | Total   | $18,761.10                     | 23,730,948,614 |       |
 synced 15m ago (2026-09-15T18:54:44.502Z) · tu sync to refresh
@@ -193,7 +193,7 @@ avg $886.13/month · peak $933.45 (2026-08) · █ sahil █ alice █ bob
 - **Title:** `📊 Leaderboard History ({period}[, last 3 months])` (`Leaderboard Token History` under `--metric tokens`/`-t`) in place of `Combined Cost History`
 - **Column order:** descending by window total in the display metric (a leaderboard is ranked), not registry order — ties keep first-seen order. The CSV and Markdown emitters order the same columns **alphabetically** instead (DC-16)
 - **Per-row leader:** each row's winning user cell renders `boldWhite` (color-only, width unchanged, stripped by `--no-color`/`NO_COLOR`)
-- **No negligible-column omission:** every user column renders — a low-spend user is never silently hidden from a ranking (unlike the tool pivot's omission rule); `--top <n>` is the explicit control, keeping the N highest-total user columns and folding the rest into a single `others` column so row totals are preserved. The `others` column is sorted by its own total like any user column, so it can land first or in the middle (DC-08); see Layout 19
+- **No negligible-column omission:** every user column renders — a low-spend user is never silently hidden from a ranking (unlike the tool pivot's omission rule); `--top <n>` is the explicit control, keeping the N highest-total user columns and folding the rest into a single `others` column so row totals are preserved (no `others` column when nothing was folded). The `others` column is sorted by its own total like any user column, so it can land first or in the middle (DC-08); see Layout 19
 - **Width:** with 15 users the row is ~215 chars and wraps on any ordinary terminal (in watch mode this corrupts the frame) (DC-17)
 - **Cap:** daily/weekly `lbh` carries the same implicit 3-month cap / `--full` semantics as `h` (heading hint `last 3 months`); monthly is never capped
 - **`--by-machine` warns and is ignored** (`Warning: --by-machine is not supported with leaderboard history — ignoring.`), exactly as on the all-tools pivot; multi mode only (same exit-1 guard as `lb`)
@@ -582,7 +582,7 @@ Run 'tu help' for all commands.
 
 **Command:** `tu --csv`, `tu cc h --csv`, `tu h --csv`, `tu m lb --csv`, `tu m lbh --csv`
 
-RFC 4180, comma-separated, LF line endings, no BOM, header row first, raw numbers (no thousands separators, no `$`), costs with two decimals, a `Total` row when more than one data row is visible. Rules per kind are in [usage.md › Output Formats › CSV Output](usage.md#csv-output--csv).
+RFC 4180, comma-separated, LF line endings, no BOM, header row first, raw numbers (no thousands separators, no `$`), costs with two decimals. A `Total` row is appended only for the snapshot (more than one tool with data) and the leaderboard (more than one ranked user in the full set — also under `--top`); the two history kinds never carry one. Rules per kind are in [usage.md › Output Formats › CSV Output](usage.md#csv-output--csv).
 
 **Snapshot** (zero-usage tools omitted, like the table) (DC-05):
 
@@ -593,7 +593,7 @@ Kimi,42418959,959883,159435,41299641,26.49
 Total,64290220,960013,184079,63146128,31.43
 ```
 
-**Single-tool history:**
+**Single-tool history** (no Total row):
 
 ```
 date,input,output,cache_write,cache_read,total,cost
@@ -601,7 +601,7 @@ date,input,output,cache_write,cache_read,total,cost
 2026-09-16,138,25188,25447,23998311,24049084,5.38
 ```
 
-**All-tools history** (every registry column, positional):
+**All-tools history** (every registry column, positional; no Total row):
 
 ```
 date,Claude Code,Codex,OpenCode,Gemini,Copilot,Kimi,total
@@ -621,7 +621,7 @@ Claude Code,25701156,149,25743,25675264,1005.71,999.99,5.72
 ```
 rank,user,cost,total_tokens,share,delta
 1,sahil,12945.64,15962442751,0.69,-0.553
-2,ashishy,3333.40,5562910079,0.178,-0.509
+2,beatriz,3333.40,5562910079,0.178,-0.509
 Total,,18761.10,23730948614,,
 ```
 
@@ -632,15 +632,15 @@ rank,user,machine,cost,total_tokens,share,delta
 Total,,,1014.46,25701266,,
 ```
 
-**Leaderboard history** (user columns alphabetical (DC-16); `others` column under `--top`; last column `total`):
+**Leaderboard history** (user columns alphabetical (DC-16); an `others` column under `--top` only when at least one user was folded; last column `total`; no Total row):
 
 ```
-date,akshay,anshu,ashishy,sahil,total
+date,gordon,nadia,beatriz,sahil,total
 2026-08,5930.55,1645.73,6786.31,28979.43,108178.25
 ```
 
 ```
-date,pulkit,sahil,others,total
+date,eunice,sahil,others,total
 2026-02,1047.91,2535.60,917.92,4501.43
 ```
 
@@ -650,7 +650,7 @@ No header-only edge case: an empty window still prints the header line alone.
 
 **Command:** `tu --md`, `tu cc h --md`, `tu h --md`, `tu m lb --md`, `tu m lbh --md`
 
-A `## {title}` heading (the ANSI heading without the `📊`), a blank line, then a GFM table: string columns `:---`, numeric columns `---:`, thousands separators kept, `$` costs, a bolded `**Total**` row when more than one data row is visible, trailing blank line. Rules per kind are in [usage.md › Output Formats › Markdown Output](usage.md#markdown-output--md).
+A `## {title}` heading (the ANSI heading without the `📊`), a blank line, then a GFM table: string columns `:---`, numeric columns `---:`, thousands separators kept, `$` costs, trailing blank line. A bolded `**Total**` row follows when more than one data row is visible (snapshot, single-tool history, pivot) or, for the leaderboards, when the full ranked set has more than one user (also under `--top`); a single-row window has no Total. Rules per kind are in [usage.md › Output Formats › Markdown Output](usage.md#markdown-output--md).
 
 **Snapshot:**
 
@@ -700,7 +700,7 @@ A `## {title}` heading (the ANSI heading without the `📊`), a blank line, then
 | # | User | Cost | Tokens | Share | Δ vs Aug |
 | ---: | :--- | ---: | ---: | ---: | ---: |
 | 1 | sahil | $12,945.64 | 15,962,442,751 | 69.0% | -55% |
-| 2 | ashishy | $3,333.40 | 5,562,910,079 | 17.8% | -51% |
+| 2 | beatriz | $3,333.40 | 5,562,910,079 | 17.8% | -51% |
 | **Total** |  | **$18,761.10** | **23,730,948,614** |  |  |
 ```
 
@@ -747,7 +747,7 @@ Machines: A = Sahils-Mac-mini.local, B = Sahils-MacBook-Pro.local, C = dev-ws-sa
  # | User                              |       Cost |         Tokens | Share | Δ vs Aug
 ───|───────────────────────────────────|────────────|────────────────|───────|─────────
  1 | sahil/dev-ws-sahil02 ◂            |  $9,340.16 | 11,455,277,645 | 49.8% |     -66%
- 2 | ashishy/dev-ws-ashish01           |  $3,206.02 |  5,445,803,037 | 17.1% |     -43%
+ 2 | beatriz/dev-ws-beatri01           |  $3,206.02 |  5,445,803,037 | 17.1% |     -43%
  3 | sahil/dev-ws-sahil01 ◂            |  $2,963.66 |  4,041,086,220 | 15.8% |   +4757%
 ```
 
@@ -787,7 +787,7 @@ Leaderboard (monthly) · 2026-09 · by tokens
 # | User    |       Cost                     |         Tokens | Share | Δ vs Aug
 ──|─────────|────────────────────────────────|────────────────|───────|─────────
 1 | sahil ◂ | $12,945.64 ███████████████████ | 15,962,442,751 | 67.3% |     -55%
-2 | ashishy |  $3,333.40 ██████▋             |  5,562,910,079 | 23.4% |     -22%
+2 | beatriz |  $3,333.40 ██████▋             |  5,562,910,079 | 23.4% |     -22%
 ```
 
 **Snapshot** — unchanged (Layout 1). **Machine formats** — unchanged (JSON/CSV/MD ignore the metric).
@@ -802,7 +802,7 @@ Leaderboard (monthly) · 2026-09 · by cost
 # | User        |       Cost                 |         Tokens | Share | Δ vs Aug
 ──|─────────────|────────────────────────────|────────────────|───────|─────────
 1 | sahil ◂     | $12,945.64 ███████████████ | 15,962,442,751 | 69.0% |     -55%
-2 | ashishy     |  $3,333.40 ███▉            |  5,562,910,079 | 17.8% |     -51%
+2 | beatriz     |  $3,333.40 ███▉            |  5,562,910,079 | 17.8% |     -51%
   | … +4 others |                            |                |       |
 ──|─────────────|────────────────────────────|────────────────|───────|─────────
   | Total       | $18,761.10                 | 23,730,948,614 |       |
@@ -814,13 +814,13 @@ synced 15m ago (2026-09-15T18:54:44.502Z) · tu sync to refresh
 ```
 📊 Leaderboard History (monthly)
 
-Date       |      others |       sahil |     pulkit |        Cost
+Date       |      others |       sahil |     eunice |        Cost
 ───────────|─────────────|─────────────|────────────|───────────────────────────
 2026-06    |  $12,283.77 |  $12,558.30 | $11,715.02 |  $36,557.09 ████▊
 2026-07    |  $50,269.58 |  $25,311.77 |  $9,659.17 |  $85,240.52 ███████████
 ```
 
-`--top` applies to JSON (array/keys truncated), CSV and Markdown too — the Total row still sums every user. On any non-leaderboard display it warns and is ignored.
+`--top` applies to JSON (array/keys truncated), CSV and Markdown too — the Total row still sums every user and is still emitted when the full set has more than one user, even with `--top 1`. On any non-leaderboard display it warns and is ignored.
 
 ## 20. Setup, Sync, and Diagnostic Messages
 

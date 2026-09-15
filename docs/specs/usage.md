@@ -238,7 +238,7 @@ An empty snapshot prints the heading and `  No usage`; an empty history prints t
 
 ## Output Formats
 
-Four output formats are selected by mutually exclusive flags: the ANSI table (default), `--json`/`-j`, `--csv`, `--md`. Exactly one fetch happens per command whatever the format. The three machine formats ignore `--metric`/`-t` (always cost-denominated where a unit applies), carry no bars, arrows, ANSI, separators, footer, legend, or `📊`, and honor `--since`/`--until`, `--full`, `--top`, `-u`, and `--by-machine`.
+Four output formats are selected by mutually exclusive flags: the ANSI table (default), `--json`/`-j`, `--csv`, `--md`. One data fetch happens per command whatever the format (`--sync` adds the sync's own fresh fetch before it). The three machine formats carry no bars, arrows, ANSI, separators, footer, legend, or `📊`; they honor `--since`/`--until`, `--full`, `--top`, `-u`, and `--by-machine` on the displays that support them (the same warn-and-ignore guards apply). `--metric`/`-t` leaves their cells cost-denominated (machine columns, history and snapshot values) but still drives the leaderboards: `lb` ranking, `share`, and `delta` are computed in the display metric, `lbh --top` selects columns by it, and the `lbh` Markdown heading reads `Leaderboard Token History`.
 
 ### Terminal width and color
 
@@ -277,11 +277,11 @@ Columns: Date (10), one per **visible** tool (data-sized: `max(name length, 9, l
 
 ### Leaderboard Table (`lb`)
 
-Columns: `#`, User, Cost, bar, Tokens, Share, Δ vs {previous window label}. One row per user (or `user/machine` pair under `--by-machine`), ranked descending by the display metric; the pinned user (`-u <name>`, else the config user) carries a ` ◂` marker on each of its rows. Both the Cost and Tokens columns render in every metric mode — `--metric` selects only the sort key, bar scale, share denominator and the heading's `by …` suffix. Share is a percentage with one decimal (`69.0%`, `100.0%`); Δ is a signed whole percentage (`-55%`, `+4757%`) or `new`. The rank column is 1 char wide up to 9 rows and 2 from 10. A bolded Total row (rank, Share, Δ blank) follows when ≥2 rows; a dim staleness footer (`synced {relative} ago ({ISO}) · tu sync to refresh`, or `never synced · tu sync to refresh`) closes the table. Heading: `Leaderboard (daily|weekly|monthly) · {window} · by {cost|tokens}` with no `📊` (DC-07); `{window}` is the period's current label, `{since} → {until}` under an explicit window, or `→ {until}` for an `--until`-only window (DC-13). Under `--top <n>` the rows past N collapse into one dim `… +k others` line (still counted in the Total and every share denominator).
+Columns: `#`, User, Cost, bar, Tokens, Share, Δ vs {previous window label}. One row per user (or `user/machine` pair under `--by-machine`), ranked descending by the display metric; the pinned user (`-u <name>`, else the config user) carries a ` ◂` marker on each of its rows. Both the Cost and Tokens columns render in every metric mode — `--metric` selects only the sort key, bar scale, share denominator and the heading's `by …` suffix. Share is a percentage with one decimal (`69.0%`, `100.0%`); Δ is a signed whole percentage (`-55%`, `+4757%`) or `new`. The rank column is 1 char wide up to 9 rows and 2 from 10. A bolded Total row (rank, Share, Δ blank) follows when the full ranked set has ≥2 users, also under `--top`; a dim staleness footer (`synced {relative} ago ({ISO}) · tu sync to refresh`, or `never synced · tu sync to refresh`) closes the table. Heading: `Leaderboard (daily|weekly|monthly) · {window} · by {cost|tokens}` with no `📊` (DC-07); `{window}` is the period's current label, `{since} → {until}` under an explicit window, or `→ {until}` for an `--until`-only window (DC-13). Under `--top <n>` the rows past N collapse into one dim `… +k others` line (still counted in the Total and every share denominator).
 
 ### Leaderboard History Table (`lbh`)
 
-Same shape as the all-tools pivot with users in place of tools: period rows × user columns, ordered by descending window total in the display metric (ties keep first-seen order), each row's leading user cell highlighted. Heading: `📊 Leaderboard History (daily|weekly|monthly[, last 3 months])` (`Leaderboard Token History` under tokens). No negligible-column omission. `--top <n>` keeps the N highest-total user columns and folds the rest into one `others` column so row totals are preserved; `others` is sorted with the user columns by its own total (DC-08). Month separators, current-period marker, weekend dimming, stacked bars + legend, p95 scale, footer, and zero dimming are inherited from the pivot.
+Same shape as the all-tools pivot with users in place of tools: period rows × user columns, ordered by descending window total in the display metric (ties keep first-seen order), each row's leading user cell highlighted. Heading: `📊 Leaderboard History (daily|weekly|monthly[, last 3 months])` (`Leaderboard Token History` under tokens). No negligible-column omission. `--top <n>` keeps the N highest-total user columns (in the display metric) and folds the rest into one `others` column so row totals are preserved — no `others` column when nothing was folded; `others` is sorted with the user columns by its own total (DC-08). Month separators, current-period marker, weekend dimming, stacked bars + legend, p95 scale, footer, and zero dimming are inherited from the pivot.
 
 ### JSON Output (`--json`)
 
@@ -294,13 +294,13 @@ Pretty-printed with two-space indentation and a trailing newline; keys in the or
 | Single-tool history (`tu cc h --json`) | bare array of entries `{ label, totalCost, …, totalTokens }` ascending by label; `--by-machine` adds `machines` to each entry |
 | All-tools history (`tu h --json`, `tu mh --json`) | object `{ "{Tool}": [entries] }` with every registry tool present, an empty array for a tool with no data |
 | Leaderboard (`tu m lb --json`) | array of `{ rank, user, [machine,] cost, totalTokens, share, delta }` — `machine` only under `--by-machine`; `share` a fraction; `delta` a fraction or `null` for a `new` row; `--top` truncates the array |
-| Leaderboard history (`tu m lbh --json`) | object `{ "{user}": [entries] }` (alphabetical user keys); `--top` keeps N users plus an `others` key |
+| Leaderboard history (`tu m lbh --json`) | object `{ "{user}": [entries] }` (alphabetical user keys); `--top` keeps N users plus an `others` key when at least one user was folded |
 
 `machines` values are costs even under `-t`. Incompatible with `--watch`, `--csv`, `--md` (exit 2).
 
 ### CSV Output (`--csv`)
 
-RFC 4180: header row first, comma separator, LF line endings, no BOM, no quoting needed for the shipped names (a field containing `,`, `"`, or a newline would be quoted with `"` and internal `"` doubled). Numbers raw (no thousands separators); costs two decimals without `$`; token counts integers; dates ISO. A `Total,…` row follows when more than one data row is visible; the header alone is printed for an empty window.
+RFC 4180: header row first, comma separator, LF line endings, no BOM, no quoting needed for the shipped names (a field containing `,`, `"`, or a newline would be quoted with `"` and internal `"` doubled). Numbers raw (no thousands separators); costs two decimals without `$`; token counts integers; dates ISO. A `Total,…` row follows only for the snapshot (more than one tool with data) and the leaderboard (more than one ranked user in the full set, also under `--top`); the two history kinds never carry one. The header alone is printed for an empty window.
 
 | Kind | Header | Notes |
 |------|--------|-------|
@@ -308,11 +308,11 @@ RFC 4180: header row first, comma separator, LF line endings, no BOM, no quoting
 | Single-tool history | `date,input,output,cache_write,cache_read,total,cost` | plus `machine_{name}_cost` columns under `--by-machine` |
 | All-tools history | `date,{Tool1},…,{Tool6},total` | **every registry tool** column, positional, `0.00` cells (DC-05) (DC-06) |
 | Leaderboard | `rank,user,cost,total_tokens,share,delta` (`machine` after `user` under `--by-machine`) | `share` and `delta` are fractions rounded to 3 decimals with trailing zeros dropped (`0.69`, `-0.3`, `17.309`) (DC-11); `delta` empty for a `new` row; `Total,,{cost},{tokens},,` sums every user even under `--top` |
-| Leaderboard history | `date,{user…},total` | user columns **alphabetical** (DC-16); `others` column under `--top`; last column `total` |
+| Leaderboard history | `date,{user…},total` | user columns **alphabetical** (DC-16); an `others` column under `--top` only when a user was folded; last column `total`; no Total row |
 
 ### Markdown Output (`--md`)
 
-A `## {title}` heading (the ANSI heading without `📊`, with the `, last 3 months` hint when active), a blank line, a GFM table (header, alignment row with `:---` for text and `---:` for numbers, data rows), and a trailing blank line. Numbers keep thousands separators; costs `$`-prefixed with two decimals; a `**Total**` row with bolded numbers when more than one data row is visible; no bars, arrows, footer, or legend.
+A `## {title}` heading (the ANSI heading without `📊`, with the `, last 3 months` hint when active), a blank line, a GFM table (header, alignment row with `:---` for text and `---:` for numbers, data rows), and a trailing blank line. Numbers keep thousands separators; costs `$`-prefixed with two decimals; a `**Total**` row with bolded numbers when more than one data row is visible — for the leaderboards, when the full ranked set has more than one user, also under `--top`; no bars, arrows, footer, or legend.
 
 | Kind | Title | Columns |
 |------|-------|---------|
@@ -320,7 +320,7 @@ A `## {title}` heading (the ANSI heading without `📊`, with the `, last 3 mont
 | Single-tool history | `{Tool} ({period}[, last 3 months])` | Date, Input, Output, Cache Write, Cache Read, Total, Cost [, machine columns] |
 | All-tools history | `Combined Cost History ({period}[, last 3 months])` | Date, one per tool with a **nonzero** total (exact-zero columns dropped — DC-06), Cost |
 | Leaderboard | `Leaderboard ({period})` | #, User, [Machine,] Cost, Tokens, Share (`69.0%`), Δ vs {label} (`-55%`/`new`); the Total row carries `**Total**` in the `#` cell and blanks User, Share, Δ |
-| Leaderboard history | `Leaderboard History ({period}[, last 3 months])` | Date, users **alphabetical** (DC-16) [, others], Cost |
+| Leaderboard history | `Leaderboard History ({period}[, last 3 months])` (`Leaderboard Token History` under `-t`) | Date, users **alphabetical** (DC-16) [, others when folded], Cost |
 
 ### Delta Indicators
 
@@ -406,7 +406,7 @@ Output: `Synced to ~/.tu/metrics_repo` on stdout, exit 0. On failure, stderr get
 
 #### Dry Run (`tu sync --dry-run`)
 
-`tu sync --dry-run` previews the sync without touching the working tree, the metrics repo, or the network, then prints the preview to stdout and exits 0. It shares the real write-decision path (the never-shrink guard runs identically), so the preview cannot drift from a live sync. Format (layouts §20):
+`tu sync --dry-run` previews the sync without touching the working tree, the metrics repo, or the network, then prints the preview to stdout and exits 0. The mode and metrics-dir guards run first exactly as for a live sync, so a missing metrics dir still triggers the auto-clone (a network operation that creates the clone) before the preview. It shares the real write-decision path (the never-shrink guard runs identically), so the preview cannot drift from a live sync. Format (layouts §20):
 
 ```
 Would write {N} day-file(s) under ~/.tu/metrics_repo/{user}/:
@@ -513,7 +513,7 @@ Every entry below is a **proposal**: a behavior the shipped binary exhibits that
   Spec: Output Formats › Leaderboard Table; layouts §5.
 
 - **DC-08** `[DECIDE: keep|drop]` Under `lbh --top n`, the folded `others` column is sorted with the user columns by its own total, so it can render first or in the middle instead of last.
-  Where: `tu m lbh --top 2` → `Date | others | sahil | pulkit | Cost`.
+  Where: `tu m lbh --top 2` → `Date | others | sahil | eunice | Cost`.
   Why it looks accidental: memory says `--top` "folds the rest into one `others` column" with no placement rule; a fold column that outranks real users reads as a bug (criteria 2).
   Spec: Output Formats › Leaderboard History Table; layouts §6, §19.
 

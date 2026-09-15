@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Non-watch TTY captures (compact mode needs a real terminal; COLUMNS is ignored when piped). Real config, read-only.
+# Non-watch TTY captures (compact mode needs a real terminal; COLUMNS is ignored when piped). Real config (multi mode):
+# own-user data commands write this machine's own day-files into the local metrics clone (never sync/push).
 set -u
 W="${WALK_OUT:-$(cd "$(dirname "$0")" && pwd)}"; OUT="$W/tty"; rm -rf "$OUT"; mkdir -p "$OUT"
 TU=/home/linuxbrew/.linuxbrew/bin/tu; L=walktty

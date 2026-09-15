@@ -2,6 +2,9 @@
 set -u
 W="${WALK_OUT:-$(cd "$(dirname "$0")" && pwd)}"; OUT="$W/cells-sync"; rm -rf "$OUT"; mkdir -p "$OUT"; IDX="$W/index-sync.tsv"; : > "$IDX"; N=0
 TU=/home/linuxbrew/.linuxbrew/bin/tu; SB="$W/sandbox2"; HM="HOME=$SB/home-multi"
+# Prerequisite: run-multi.sh has run under the same WALK_OUT (it creates sandbox2/, the seeded bare repos, and home-multi).
+[ -d "$SB/home-multi/.tu/metrics_repo" ] && [ -d "$SB/bare-a.git" ] || { echo "run-sync.sh: sandbox2 missing — run run-multi.sh first (same WALK_OUT)" >&2; exit 1; }
+# Writes: index-sync.tsv (committed as index-sync-sandbox.tsv).
 cap() { local name="$1"; shift; local envargs=(); while [ "$1" != "--" ]; do envargs+=("$1"); shift; done; shift
   N=$((N+1)); local id; id=$(printf '%03d' "$N"); local base="$OUT/$id-$name"
   env "${envargs[@]}" "$@" >"$base.out" 2>"$base.err"; local ec=$?; echo "$ec" > "$base.exit"

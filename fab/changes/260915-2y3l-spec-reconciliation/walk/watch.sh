@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Watch-mode frame capture via an isolated tmux server. Uses the real config (multi, read-only data commands).
+# Watch-mode frame capture via an isolated tmux server. Uses the real config (multi mode): own-user data commands
+# write this machine's own day-files into the local metrics clone (never sync/push); use a sandbox HOME to avoid that.
 set -u
 W="${WALK_OUT:-$(cd "$(dirname "$0")" && pwd)}"
 OUT="$W/watch"; rm -rf "$OUT"; mkdir -p "$OUT"
@@ -10,7 +11,8 @@ L=walkwatch
 frames() {
   local name="$1" cols="$2" rows="$3"; shift 3
   tmux -L $L kill-server 2>/dev/null
-  tmux -L $L new-session -d -s w -x "$cols" -y "$rows" "env NO_COLOR=1 $* ; echo __EXIT__=\$? ; sleep 30"
+  local cmd; cmd=$(printf '%q ' "$@")   # preserve argument boundaries (e.g. sh -c '...')
+  tmux -L $L new-session -d -s w -x "$cols" -y "$rows" "env NO_COLOR=1 $cmd ; echo __EXIT__=\$? ; sleep 30"
   sleep 1.2; tmux -L $L capture-pane -p -t w > "$OUT/$name-0-skeleton.txt"
   sleep 4;   tmux -L $L capture-pane -p -t w > "$OUT/$name-1-first.txt"
   sleep 9;   tmux -L $L capture-pane -p -t w > "$OUT/$name-2-second.txt"

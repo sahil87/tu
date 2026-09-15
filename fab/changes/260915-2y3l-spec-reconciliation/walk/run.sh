@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Binary walk for P1 spec reconciliation. Captures stdout/stderr/exit per cell.
 # Never runs: tu sync (live, real HOME), --sync (real HOME), tu update (without --help), init-metrics <url> (real HOME).
+# The r-* cells use the real multi-mode config: own-user data commands write this machine's own day-files into the local
+# metrics clone (as every invocation does); nothing is committed or pushed. Writes: index.tsv (committed as index-single-real.tsv).
 set -u
 W="${WALK_OUT:-$(cd "$(dirname "$0")" && pwd)}"
 OUT="$W/cells"; rm -rf "$OUT"; mkdir -p "$OUT"
@@ -71,7 +73,7 @@ for h in "$SB"/home-*; do linkdata "$h"; done
 for h in home-single2 home-single3 home-single4; do mkdir -p "$SB/$h"; linkdata "$SB/$h"; done
 S=(-u TU_METRICS_REPO NO_COLOR=1 COLUMNS=100)
 HS="HOME=$SB/home-single"; HM="HOME=$SB/home-multi"; HO="HOME=$SB/home-org"; HL="HOME=$SB/home-legacy"
-REAL=(NO_COLOR=1 COLUMNS=100)   # real HOME, real config (multi mode, read-only observation)
+REAL=(NO_COLOR=1 COLUMNS=100)   # real HOME, real config (multi mode; own day-file writes occur, no sync/push)
 
 # ---- non-data / toolkit ------------------------------------------------------
 cap help            "${S[@]}" $HS -- $TU help

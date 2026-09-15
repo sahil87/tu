@@ -53,7 +53,7 @@ true_impact:
         net: 0
     computed_at: "2026-09-15T19:50:54Z"
     computed_at_stage: ship
-summary: 'Reconciled docs/specs/usage.md and layouts.md against the 18 memory files and the v0.11.5 binary: added toolkit contracts, pinned JSON/CSV/Markdown shapes, table semantics, verbatim help, and a 24-entry Drop-at-cutover [DECIDE] ledger for gate G0; corrected four memory claims the walk disproved (watch-only compact mode, 12-wide snapshot cells, mergeEntries verified, skill.md line count, fixed pull branch)'
+summary: 'Reconciled docs/specs/usage.md and layouts.md against the 18 memory files and the v0.11.5 binary: added toolkit contracts, pinned JSON/CSV/Markdown shapes, table semantics, verbatim help, and a 24-entry Drop-at-cutover [DECIDE] ledger for gate G0; corrected five memory claims the walk disproved (watch-only compact mode, 12-wide snapshot cells, mergeEntries verified, skill.md line count, fixed pull branch)'
 # base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-09-15T19:50:54Z
+last_updated: 2026-09-15T20:12:07Z
