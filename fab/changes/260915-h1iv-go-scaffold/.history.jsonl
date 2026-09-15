@@ -1,0 +1,9 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-15T20:20:39Z"}
+{"args":"Context: fab/plans/sahil/26-09-15-go-port.md, row P2. Row P2 (go-scaffold): D5 layout — src/go/go.mod (module github.com/sahil87/tu, go 1.25), src/go/cmd/tu/main.go printing tu version vX.Y.Z from ldflags. Add just go-build, just go-test, just go-lint recipes. Add a CI job go-build-and-test to .github/workflows/ci.yml and add it to the ci-gate needs list. Node CI stays untouched. Depends on P0 (merged).","cmd":"fab-new","event":"command","ts":"2026-09-15T20:20:39Z"}
+{"delta":"+0.0","event":"confidence","score":4.5,"trigger":"calc-score","ts":"2026-09-15T20:22:22Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-15T20:23:35Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-15T20:24:07Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-15T20:26:45Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-15T20:30:06Z"}
+{"event":"review","result":"passed","ts":"2026-09-15T20:30:06Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-15T20:30:56Z"}

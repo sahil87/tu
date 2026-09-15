@@ -1,6 +1,8 @@
 name: CI
 
-# Build verification + tests. This workflow runs in two contexts:
+# Build verification + tests (Node lane `build-and-test` for the shipped
+# src/node/ tree, Go lane `go-build-and-test` for the unshipped src/go/
+# successor — constitution § Go Transition). This workflow runs in two contexts:
 #   - on pull requests targeting main, to GATE merges (the aggregating
 #     `ci-gate` job below is the stable required status check enforced by a
 #     branch ruleset on main — see scripts/ci-gate-ruleset.sh and README), and
@@ -40,12 +42,43 @@ jobs:
       - name: Run tests
         run: npm test
 
+  # Go successor lane (src/go/). Built, linted, and tested on every PR/push but
+  # NOT shipped — the formula still ships dist/tu.mjs until cutover (constitution
+  # v1.2.0 § Go Transition; plan fab/plans/sahil/26-09-15-go-port.md). Runs the
+  # `just go-*` recipes so "what lint means" has exactly one definition.
+  go-build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          # Single source of truth for the Go version. Pinning to go.mod also
+          # pins gofmt's rules, so the lint check matches the toolchain that
+          # wrote the files.
+          go-version-file: src/go/go.mod
+          # No go.sum yet (zero dependencies) — setup-go's cache needs one.
+          # Flip to `cache-dependency-path: src/go/go.sum` when the first
+          # dependency lands.
+          cache: false
+
+      - uses: extractions/setup-just@dd310ad5a97d8e7b41793f8ef055398d51ad4de6 # v2
+
+      - name: Lint (gofmt + go vet)
+        run: just go-lint
+
+      - name: Build
+        run: just go-build
+
+      - name: Test
+        run: just go-test
+
   # Single, stable status-check name for the branch ruleset on main to require.
   # `if: always()` so the gate reports a definitive pass/fail even when
-  # build-and-test fails or is cancelled (a skipped required check would
+  # a required job fails or is cancelled (a skipped required check would
   # otherwise block/hang the PR).
   ci-gate:
-    needs: [build-and-test]
+    needs: [build-and-test, go-build-and-test]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -53,6 +86,10 @@ jobs:
         run: |
           if [ "${{ needs.build-and-test.result }}" != "success" ]; then
             echo "build-and-test did not succeed (result: ${{ needs.build-and-test.result }})"
+            exit 1
+          fi
+          if [ "${{ needs.go-build-and-test.result }}" != "success" ]; then
+            echo "go-build-and-test did not succeed (result: ${{ needs.go-build-and-test.result }})"
             exit 1
           fi
           echo "All required CI jobs passed."
