@@ -20,7 +20,7 @@ The formatting layer (`src/node/tui/formatter.ts`) renders token usage data into
 - Inline bar charts MUST use Unicode block characters at eighths precision (U+2588-U+258F)
 - Bar width MUST auto-scale based on terminal width with 10-char minimum and 30-char maximum
 - Delta indicators (up/down arrows) MUST show when `prevCosts` map is provided (for watch mode)
-- Compact mode (date + cost only) MUST activate when terminal width < 60
+- Compact mode (date + cost only) MUST activate in watch mode when the terminal width is < 60; one-shot output never uses the compact layout and renders the full-width table regardless of terminal width
 - Colors MUST respect `NO_COLOR` env var and `--no-color` flag via `setNoColor()`
 - Available color functions: `bold`, `dim`, `green`, `red`, `cyan`, `yellow`, `magenta`, `blue`, `boldWhite`, `boldCyan`, `brightGreen`, `dimGreen`; the `colorDisabled()` accessor reports whether color output is off (260816-3tah)
 - `stripAnsi()` MUST be available for measuring visible string length
@@ -91,7 +91,7 @@ The formatting layer (`src/node/tui/formatter.ts`) renders token usage data into
   *Introduced by*: 260815-oojd-history-month-anchors-p95-bars
 - **Snapshot shows one combined Cache column at 12-wide columns**
   **Decision**: `renderTotal` (and the Markdown/CSV snapshot emitters) carry a single combined `Cache` column (write + read) between `Output` and `Cost`; the snapshot's fixed widths are 12 for both the Tool column and the numerics, landing the full row at 87 chars.
-  **Why**: `Tokens` includes cache, so without the column the visible breakdown appeared off by orders of magnitude (cache dwarfs input+output on real Claude Code data) and read as a bug; the combined column closes the row arithmetic with data already on `UsageTotals`, and 12-wide cells still hold `999,999,999,999`.
+  **Why**: `Tokens` includes cache, so without the column the visible breakdown appeared off by orders of magnitude (cache dwarfs input+output on real Claude Code data) and read as a bug; the combined column closes the row arithmetic with data already on `UsageTotals`, and 12-wide cells hold any value up to 12 characters (`999,999,999`); a wider value overflows its cell and misaligns that row while the header and dividers keep their width.
   **Rejected**: Separate Cache Write / Cache Read columns (single-tool-history granularity, too wide for an at-a-glance snapshot); a compact `487.7M (99% cache)` token treatment (departs from the snapshot's tabular idiom); keeping 14-wide columns (99-char rows past the ≤90 budget).
   *Introduced by*: 260815-nda3-snapshot-cache-token-visibility
 - **Stacked pivot bars color the already-rendered bar character sequence**
