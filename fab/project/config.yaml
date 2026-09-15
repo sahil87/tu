@@ -7,7 +7,8 @@ project:
     name: tu
 
 source_paths:
-    - src/
+    - src/node/
+    - src/go/
 # Glob/pathspec patterns identifying test files. Used by the true-impact
 # breakdown to attribute lines to tests vs. implementation (impl = total − tests).
 # Language-specific — no kit default. Patterns are :(glob) magic pathspecs, so
@@ -27,6 +28,7 @@ test_paths:
     - "**/*.test.ts"
     - "**/*.spec.js"
     - "**/*.test.js"
+    - "**/*_test.go"
 true_impact_exclude:
     - fab/
     - docs/

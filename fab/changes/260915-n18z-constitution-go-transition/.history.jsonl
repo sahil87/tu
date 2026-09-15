@@ -1,0 +1,11 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-15T18:21:54Z"}
+{"args":"Context: fab/plans/sahil/26-09-15-go-port.md, row P0. D3 transitional article — src/go/ is the successor implementation, unshipped until cutover; Go tests are _test.go siblings, the __tests__/ clause applies to src/node/ only. Update config.yaml source_paths/test_paths. Note the transition in fab/project/context.md. Bump constitution to 1.2.0.","cmd":"fab-new","event":"command","ts":"2026-09-15T18:21:54Z"}
+{"delta":"+0.0","event":"confidence","score":4.8,"trigger":"calc-score","ts":"2026-09-15T18:23:40Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-15T18:25:26Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-15T18:25:37Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-15T18:27:30Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-15T18:31:02Z"}
+{"event":"review","result":"passed","ts":"2026-09-15T18:31:02Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-15T18:32:21Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-09-15T18:33:07Z"}
+{"event":"review","result":"passed","ts":"2026-09-15T18:50:40Z"}
