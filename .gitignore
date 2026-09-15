@@ -20,3 +20,9 @@ help/
 .uploads/
 
 /.claude/settings.local.json
+
+# Real ccusage captures (harness/fixtures/<machine>/) carry the capturing user's
+# spend data and stay local. Only the schema-derived placeholder corpus is
+# committed. See docs/memory/harness/differential-harness.md.
+harness/fixtures/*/
+!harness/fixtures/_placeholder/

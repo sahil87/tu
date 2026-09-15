@@ -1,0 +1,76 @@
+{
+  "daily": [
+    {
+      "cacheCreationTokens": 1000,
+      "cacheReadTokens": 20000,
+      "costUSD": 0.5,
+      "date": "2026-01-05",
+      "inputTokens": 3000,
+      "models": {
+        "placeholder-codex-model": {
+          "cacheCreationTokens": 1000,
+          "cacheReadTokens": 20000,
+          "inputTokens": 3000,
+          "isFallback": false,
+          "outputTokens": 400,
+          "reasoningOutputTokens": 100,
+          "totalTokens": 24400
+        }
+      },
+      "outputTokens": 400,
+      "reasoningOutputTokens": 100,
+      "totalTokens": 24400
+    },
+    {
+      "cacheCreationTokens": 1000,
+      "cacheReadTokens": 20000,
+      "costUSD": 0.5,
+      "date": "2026-01-06",
+      "inputTokens": 3000,
+      "models": {
+        "placeholder-codex-model": {
+          "cacheCreationTokens": 1000,
+          "cacheReadTokens": 20000,
+          "inputTokens": 3000,
+          "isFallback": false,
+          "outputTokens": 400,
+          "reasoningOutputTokens": 100,
+          "totalTokens": 24400
+        }
+      },
+      "outputTokens": 400,
+      "reasoningOutputTokens": 100,
+      "totalTokens": 24400
+    },
+    {
+      "cacheCreationTokens": 1000,
+      "cacheReadTokens": 20000,
+      "costUSD": 0.5,
+      "date": "2026-01-07",
+      "inputTokens": 3000,
+      "models": {
+        "placeholder-codex-model": {
+          "cacheCreationTokens": 1000,
+          "cacheReadTokens": 20000,
+          "inputTokens": 3000,
+          "isFallback": false,
+          "outputTokens": 400,
+          "reasoningOutputTokens": 100,
+          "totalTokens": 24400
+        }
+      },
+      "outputTokens": 400,
+      "reasoningOutputTokens": 100,
+      "totalTokens": 24400
+    }
+  ],
+  "totals": {
+    "cacheCreationTokens": 3000,
+    "cacheReadTokens": 60000,
+    "costUSD": 1.5,
+    "inputTokens": 9000,
+    "outputTokens": 1200,
+    "reasoningOutputTokens": 300,
+    "totalTokens": 73200
+  }
+}
