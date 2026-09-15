@@ -13,5 +13,5 @@
 
 | Spec | Description |
 |------|-------------|
-| [usage](usage.md) | CLI grammar, data flow, output formats, multi-machine sync, and watch mode |
-| [layouts](layouts.md) | Visual mockups of every distinct output layout (tables, watch mode, side panel, rain) |
+| [usage](usage.md) | The complete CLI contract: grammar, flags and their misuse policy, setup commands, toolkit contracts (`--version`, `help-dump`, `update`, `shell-init`, `skill`, config-home), exit codes, data flow, pinned JSON/CSV/Markdown shapes, table semantics, multi-machine sync, watch mode, and the **Drop at cutover** ledger of `[DECIDE]` markers for gate G0 |
+| [layouts](layouts.md) | Verified mockups of every output layout: tables, token mode, machine columns, leaderboards and `--top`, CSV/Markdown/JSON shapes, watch mode and rain, status and help (verbatim), setup/sync/diagnostic messages, terminal-width behavior, color reference |

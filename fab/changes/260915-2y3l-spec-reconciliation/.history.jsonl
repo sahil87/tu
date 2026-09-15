@@ -1,0 +1,15 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-15T18:55:39Z"}
+{"args":"Row P1 (spec-reconciliation): Walk docs/specs/usage.md and docs/specs/layouts.md against the 18 memory files and the live binary. Every behavior found in memory or the binary but absent from the specs gets a line added to the spec. Every behavior that looks accidental gets a [DECIDE: keep|drop] marker under a new Drop at cutover section. Proposes only; markers resolved at gate G0. No code changes.","cmd":"fab-new","event":"command","ts":"2026-09-15T18:55:39Z"}
+{"delta":"+4.2","event":"confidence","score":4.2,"trigger":"calc-score","ts":"2026-09-15T18:59:52Z"}
+{"delta":"+0.0","event":"confidence","score":4.2,"trigger":"calc-score","ts":"2026-09-15T19:00:49Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-15T19:02:30Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-15T19:03:02Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-15T19:37:48Z"}
+{"event":"review","result":"failed","ts":"2026-09-15T19:43:10Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-15T19:43:10Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-15T19:43:43Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-15T19:48:33Z"}
+{"event":"review","result":"passed","ts":"2026-09-15T19:48:33Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-15T19:49:23Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-09-15T19:50:54Z"}
+{"event":"review","result":"passed","ts":"2026-09-15T20:15:00Z"}
