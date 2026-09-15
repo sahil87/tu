@@ -1,5 +1,6 @@
 node_modules/
 dist/
+bin/
 *.tsbuildinfo
 
 # Transient help-dump artifact — `tu help-dump` emits the contract JSON; shll.ai

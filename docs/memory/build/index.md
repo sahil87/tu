@@ -8,4 +8,4 @@
 
 | File | Description |
 |------|-------------|
-| [toolchain](toolchain.md) | esbuild bundling, Node.js test runner, TypeScript config, Homebrew distribution, help-dump producer (shll.ai pulls; envelope without `captured_at`), `skill` bundle embed (`__SKILL_MD__` define + drift guard), toolkit-standards conformance posture, CI PR-gating via `ci-gate` required check + ruleset, Go transition (`src/go/` successor tree beside shipped `src/node/`, unshipped until cutover) |
+| [toolchain](toolchain.md) | esbuild bundling, Node.js test runner, TypeScript config, Homebrew distribution, help-dump producer (shll.ai pulls; envelope without `captured_at`), `skill` bundle embed (`__SKILL_MD__` define + drift guard), toolkit-standards conformance posture, CI PR-gating via `ci-gate` required check + ruleset, Go transition (`src/go/` module beside shipped `src/node/`, `just go-build/go-test/go-lint`, `go-build-and-test` CI lane, unshipped until cutover) |

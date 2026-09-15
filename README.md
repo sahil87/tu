@@ -106,15 +106,18 @@ For end-to-end recipes — daily snapshots, history pivots, multi-machine sync, 
 
 `main` is gated by a required status check named **`ci-gate`**. The
 [`CI` workflow](https://github.com/sahil87/tu/blob/main/.github/workflows/ci.yml) runs the build and the test suite on
-every pull request targeting `main` (and on pushes to `main`); the aggregating
-`ci-gate` job passes only when `build-and-test` succeeds. A branch ruleset on
-`main` requires `ci-gate` to be green before a PR can be merged.
+every pull request targeting `main` (and on pushes to `main`) in two lanes:
+`build-and-test` for the shipped Node implementation and `go-build-and-test`
+for the unshipped Go successor under `src/go/`. The aggregating `ci-gate` job
+passes only when both lanes succeed. A branch ruleset on `main` requires
+`ci-gate` to be green before a PR can be merged.
 
 Reproduce CI locally before opening a PR:
 
 ```bash
-npm ci && npm run build && npm test
-# or, with the task runner:
+npm ci && npm run build && npm test          # Node lane
+just go-lint && just go-build && just go-test  # Go lane
+# or, with the task runner, the Node lane alone:
 just test
 ```
 
