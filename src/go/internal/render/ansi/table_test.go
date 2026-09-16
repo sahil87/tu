@@ -30,6 +30,27 @@ func snapshotRows() []view.ToolTotals {
 	}
 }
 
+// snapshotMachines is R7's given breakdown: two machines on Claude Code, the
+// sorted union ordering A = Sahils-Mac-mini.local, B = dev-ws-sahil02.
+func snapshotMachines() *view.Breakdown {
+	return &view.Breakdown{Noun: "Machines", Rows: map[string][]view.Slice{
+		"Claude Code": {
+			{Name: "Sahils-Mac-mini.local", Totals: fact.Totals{TotalCost: 8.27, TotalTokens: 12000}},
+			{Name: "dev-ws-sahil02", Totals: fact.Totals{TotalCost: 6288.75, TotalTokens: 400000}},
+		},
+	}}
+}
+
+// snapshotUsers is the same shape keyed by user (the -u all "Users" legend).
+func snapshotUsers() *view.Breakdown {
+	return &view.Breakdown{Noun: "Users", Rows: map[string][]view.Slice{
+		"Claude Code": {
+			{Name: "harness-user", Totals: fact.Totals{TotalCost: 1.40}},
+			{Name: "other-user", Totals: fact.Totals{TotalCost: 1.10}},
+		},
+	}}
+}
+
 func TestTableGoldens(t *testing.T) {
 	color := Colors{Enabled: true}
 	cases := []struct {
@@ -37,10 +58,14 @@ func TestTableGoldens(t *testing.T) {
 		golden string
 		lines  []string
 	}{
-		{"populated color", "snapshot_color.golden", Table(view.Snapshot(snapshotRows(), query.Daily), color)},
-		{"populated no-color", "snapshot_nocolor.golden", Table(view.Snapshot(snapshotRows(), query.Daily), Colors{})},
-		{"single row", "snapshot_single.golden", Table(view.Snapshot(snapshotRows()[:1], query.Daily), color)},
-		{"empty", "snapshot_empty.golden", Table(view.Snapshot(nil, query.Daily), color)},
+		{"populated color", "snapshot_color.golden", Table(view.Snapshot(snapshotRows(), query.Daily, nil, view.Cost), color)},
+		{"populated no-color", "snapshot_nocolor.golden", Table(view.Snapshot(snapshotRows(), query.Daily, nil, view.Cost), Colors{})},
+		{"single row", "snapshot_single.golden", Table(view.Snapshot(snapshotRows()[:1], query.Daily, nil, view.Cost), color)},
+		{"empty", "snapshot_empty.golden", Table(view.Snapshot(nil, query.Daily, nil, view.Cost), color)},
+		{"machines color", "snapshot_machines_color.golden", Table(view.Snapshot(snapshotRows(), query.Daily, snapshotMachines(), view.Cost), color)},
+		{"machines no-color", "snapshot_machines_nocolor.golden", Table(view.Snapshot(snapshotRows(), query.Daily, snapshotMachines(), view.Cost), Colors{})},
+		{"machines tokens", "snapshot_machines_tokens.golden", Table(view.Snapshot(snapshotRows(), query.Daily, snapshotMachines(), view.Tokens), color)},
+		{"machines users", "snapshot_machines_users.golden", Table(view.Snapshot(snapshotRows(), query.Daily, snapshotUsers(), view.Cost), color)},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -68,20 +93,25 @@ func TestTableGoldens(t *testing.T) {
 // StripANSI of the colored render must equal the no-color render, byte for
 // byte (the TS invariant behind --no-color/NO_COLOR equivalence).
 func TestStripANSIMatchesNoColor(t *testing.T) {
-	color := Table(view.Snapshot(snapshotRows(), query.Daily), Colors{Enabled: true})
-	plain := Table(view.Snapshot(snapshotRows(), query.Daily), Colors{})
-	if len(color) != len(plain) {
-		t.Fatalf("line counts differ: %d vs %d", len(color), len(plain))
-	}
-	for i := range color {
-		if StripANSI(color[i]) != plain[i] {
-			t.Errorf("line %d: StripANSI(%q) = %q, want %q", i, color[i], StripANSI(color[i]), plain[i])
+	for _, tab := range []view.Table{
+		view.Snapshot(snapshotRows(), query.Daily, nil, view.Cost),
+		view.Snapshot(snapshotRows(), query.Daily, snapshotMachines(), view.Cost),
+	} {
+		color := Table(tab, Colors{Enabled: true})
+		plain := Table(tab, Colors{})
+		if len(color) != len(plain) {
+			t.Fatalf("line counts differ: %d vs %d", len(color), len(plain))
+		}
+		for i := range color {
+			if StripANSI(color[i]) != plain[i] {
+				t.Errorf("line %d: StripANSI(%q) = %q, want %q", i, color[i], StripANSI(color[i]), plain[i])
+			}
 		}
 	}
 }
 
 func TestEmptyStateLines(t *testing.T) {
-	got := Table(view.Snapshot(nil, query.Daily), Colors{Enabled: true})
+	got := Table(view.Snapshot(nil, query.Daily, nil, view.Cost), Colors{Enabled: true})
 	want := []string{"", "\x1b[1;37m📊 Combined Usage (daily)\x1b[0m", "", "  No usage", ""}
 	if len(got) != len(want) {
 		t.Fatalf("got %d lines, want %d: %q", len(got), len(want), got)
@@ -94,7 +124,7 @@ func TestEmptyStateLines(t *testing.T) {
 }
 
 func TestDividerWidth(t *testing.T) {
-	lines := Table(view.Snapshot(snapshotRows(), query.Daily), Colors{})
+	lines := Table(view.Snapshot(snapshotRows(), query.Daily, nil, view.Cost), Colors{})
 	var div string
 	for _, l := range lines {
 		if strings.Contains(l, "─") {

@@ -110,7 +110,10 @@ type Table struct {
 	Empty   string   // "  No usage" (snapshot) / "  No data" (history), else ""
 	Footer  string   // history summary line text (dim at encode); "" when absent
 	Legend  []Swatch // stacked-bar legend; nil unless bars shown ∧ ≥2 visible tools
-	Scale   Scale    // bar geometry; Width 0 when no bars
+	// Note is a trailing dim line (the --by-machine legend), preceded by a
+	// blank line and rendered after Footer; "" when absent.
+	Note  string
+	Scale Scale // bar geometry; Width 0 when no bars
 	// DeltaSpaced selects the delta form: true renders " ↑" (single-tool
 	// history); false renders "↑" abutting the cell (the pivot's width contract).
 	DeltaSpaced bool

@@ -121,12 +121,26 @@ func TestGoldens(t *testing.T) {
 		golden string
 		lines  []string
 	}{
-		{"snapshot populated", "snapshot_populated.golden", Snapshot(snapshotRows())},
-		{"snapshot empty", "snapshot_empty.golden", Snapshot([]view.ToolTotals{{Name: "Claude Code"}})},
-		{"history populated", "history_populated.golden", History(monthlySeries)},
-		{"history empty", "history_empty.golden", History(view.Series{Name: "Claude Code"})},
+		{"snapshot populated", "snapshot_populated.golden", Snapshot(snapshotRows(), nil)},
+		{"snapshot empty", "snapshot_empty.golden", Snapshot([]view.ToolTotals{{Name: "Claude Code"}}, nil)},
+		{"history populated", "history_populated.golden", History(monthlySeries, nil)},
+		{"history empty", "history_empty.golden", History(view.Series{Name: "Claude Code"}, nil)},
 		{"total history populated", "total_history_populated.golden", TotalHistory(sixSeries())},
 		{"total history empty", "total_history_empty.golden", TotalHistory(empty)},
+		// R10: machine_{name}_cost columns, sorted names, 0.00 fill, the
+		// snapshot Total summing visible rows.
+		{"snapshot machines", "snapshot_machines.golden", Snapshot(snapshotRows(), &view.Breakdown{Noun: "Machines", Rows: map[string][]view.Slice{
+			"Claude Code": {
+				{Name: "dev-ws-sahil02", Totals: fact.Totals{TotalCost: 0.2}},
+				{Name: "Sahils-Mac-mini.local", Totals: fact.Totals{TotalCost: 0.3}},
+			},
+		}})},
+		{"history machines", "history_machines.golden", History(monthlySeries, &view.Breakdown{Noun: "Machines", Rows: map[string][]view.Slice{
+			"2026-01": {
+				{Name: "harness-machine", Totals: fact.Totals{TotalCost: 1.0}},
+				{Name: "other-box", Totals: fact.Totals{TotalCost: 0.5}},
+			},
+		}})},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -153,7 +167,7 @@ func TestGoldens(t *testing.T) {
 
 // The intake §12 captures pin the CSV shapes byte for byte.
 func TestIntakeByteReferences(t *testing.T) {
-	if got := strings.Join(History(monthlySeries), "\n") + "\n"; got !=
+	if got := strings.Join(History(monthlySeries, nil), "\n") + "\n"; got !=
 		"date,input,output,cache_write,cache_read,total,cost\n"+
 			"2026-01,9000,1200,3000,60000,73200,1.50\n" {
 		t.Errorf("cc-mh-csv bytes = %q", got)
@@ -166,7 +180,7 @@ func TestIntakeByteReferences(t *testing.T) {
 		"date,Claude Code,Codex,OpenCode,Gemini,Copilot,Kimi,total\n" {
 		t.Errorf("h-csv bytes = %q", got)
 	}
-	if got := strings.Join(Snapshot(nil), "\n") + "\n"; got != "tool,tokens,input,output,cache,cost\n" {
+	if got := strings.Join(Snapshot(nil, nil), "\n") + "\n"; got != "tool,tokens,input,output,cache,cost\n" {
 		t.Errorf("empty snapshot CSV = %q", got)
 	}
 }
@@ -179,7 +193,7 @@ func TestSnapshotTotalRowRules(t *testing.T) {
 		{Name: "Codex", Totals: dayTotals},
 		{Name: "OpenCode", Totals: hidden},
 	}
-	lines := Snapshot(rows)
+	lines := Snapshot(rows, nil)
 	last := lines[len(lines)-1]
 	if !strings.HasPrefix(last, "Total,") {
 		t.Fatalf("last line = %q, want the Total row", last)
@@ -188,14 +202,14 @@ func TestSnapshotTotalRowRules(t *testing.T) {
 		t.Errorf("Total cost = %q, want 1.25 (hidden row counted)", last)
 	}
 
-	one := Snapshot([]view.ToolTotals{{Name: "Claude Code", Totals: dayTotals}, {Name: "Codex"}})
+	one := Snapshot([]view.ToolTotals{{Name: "Claude Code", Totals: dayTotals}, {Name: "Codex"}}, nil)
 	if len(one) != 2 {
 		t.Errorf("single visible row: %d lines, want header + 1 (no Total)", len(one))
 	}
 }
 
 func TestHistoryKindsNeverCarryTotal(t *testing.T) {
-	for _, lines := range [][]string{History(dailySeries("Claude Code")), TotalHistory(sixSeries())} {
+	for _, lines := range [][]string{History(dailySeries("Claude Code"), nil), TotalHistory(sixSeries())} {
 		for _, l := range lines {
 			if strings.HasPrefix(l, "Total,") {
 				t.Errorf("history CSV must not carry a Total row: %q", l)

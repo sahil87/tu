@@ -66,6 +66,76 @@ func TestByToolByUser(t *testing.T) {
 	}
 }
 
+// R5: Relabel is the exported relabel half of RollUp — a pure copy with each
+// Date mapped to its period bucket, no summing, no sorting.
+func TestRelabel(t *testing.T) {
+	recs := []fact.Record{
+		rec("2026-01-05", "cc", unit),
+		rec("2026-01-06", "cc", unit),
+		rec("2026-02-01", "cc", unit),
+	}
+	orig := append([]fact.Record{}, recs...)
+
+	cases := []struct {
+		name string
+		p    Period
+		want []string
+	}{
+		{"daily identity", Daily, []string{"2026-01-05", "2026-01-06", "2026-02-01"}},
+		{"weekly Sundays", Weekly, []string{"2026-01-04", "2026-01-04", "2026-02-01"}},
+		{"monthly prefix", Monthly, []string{"2026-01", "2026-01", "2026-02"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := Relabel(recs, c.p)
+			if len(got) != len(recs) {
+				t.Fatalf("Relabel yielded %d records, want %d (no summing)", len(got), len(recs))
+			}
+			for i, r := range got {
+				if r.Date != c.want[i] {
+					t.Errorf("record %d Date = %q, want %q", i, r.Date, c.want[i])
+				}
+				if r.Totals != unit {
+					t.Errorf("record %d Totals = %+v, want unchanged", i, r.Totals)
+				}
+			}
+			if &got[0] == &recs[0] {
+				t.Error("Relabel aliased the input element")
+			}
+		})
+	}
+	if !reflect.DeepEqual(recs, orig) {
+		t.Error("Relabel mutated its input")
+	}
+}
+
+func TestSortByDate(t *testing.T) {
+	recs := []fact.Record{
+		rec("2026-01-10", "cc", unit),
+		rec("2026-01-05", "cc", unit),
+		rec("2026-01-07", "codex", unit),
+		rec("2026-01-05", "codex", unit),
+	}
+	orig := append([]fact.Record{}, recs...)
+	got := SortByDate(recs)
+	want := []string{"2026-01-05", "2026-01-05", "2026-01-07", "2026-01-10"}
+	for i, w := range want {
+		if got[i].Date != w {
+			t.Fatalf("SortByDate[%d].Date = %q, want %q", i, got[i].Date, w)
+		}
+	}
+	// Stable: within 2026-01-05 the cc record stays ahead of the codex one.
+	if got[0].Tool != "cc" || got[1].Tool != "codex" {
+		t.Errorf("equal-date order not stable: %q, %q", got[0].Tool, got[1].Tool)
+	}
+	if &got[0] == &recs[1] {
+		t.Error("SortByDate aliased the input element")
+	}
+	if !reflect.DeepEqual(recs, orig) {
+		t.Error("SortByDate mutated its input")
+	}
+}
+
 func TestRollUpMonthly(t *testing.T) {
 	var recs []fact.Record
 	for _, d := range []string{"2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08", "2026-01-09", "2026-01-10"} {

@@ -47,7 +47,16 @@ var snapshotColumns = []Column{
 //     hidden yet counted).
 //   - Token mode changes nothing in the one-shot table (the delta indicator
 //     is watch-only).
-func Snapshot(rows []ToolTotals, p query.Period) Table {
+//
+// A non-nil breakdown with at least one name appends the letter-coded machine
+// columns after Cost (the TS renderTotal machineCosts branch): cells in the
+// DISPLAYED metric m even though the base columns are metric-neutral (`tu -t
+// --by-machine` shows token machine cells beside a $ Cost column), dim on
+// exact zero, per-name sums on the Total row, and the legend as Table.Note.
+// The names union spans every row (a hidden tool can still carry slices); the
+// width pre-pass and the sums cover visible rows only. Nil ⇒ today's output
+// byte-for-byte.
+func Snapshot(rows []ToolTotals, p query.Period, bd *Breakdown, m Metric) Table {
 	t := Table{
 		Title:   "📊 Combined Usage (" + p.String() + ")",
 		Columns: snapshotColumns,
@@ -64,32 +73,51 @@ func Snapshot(rows []ToolTotals, p query.Period) Table {
 		return t
 	}
 
-	t.Rows = append(t.Rows, headerRow(snapshotColumns), Row{Kind: Divider})
+	names := bd.Names()
+	var machineSumsSnapshot []float64
+	if len(names) > 0 {
+		visibleKeys := make([]string, 0, visible)
+		for _, r := range rows {
+			if r.TotalTokens > 0 {
+				visibleKeys = append(visibleKeys, r.Name)
+			}
+		}
+		sums, cellValues := machineSums(bd, visibleKeys, names, m)
+		machineSumsSnapshot = sums
+		t.Columns = machineColumns(snapshotColumns, names, machineWidth(cellValues, sums, m))
+		t.Note = bd.note(names)
+	}
+
+	t.Rows = append(t.Rows, headerRow(t.Columns), Row{Kind: Divider})
 
 	var grand fact.Totals
 	for _, r := range rows {
 		if r.TotalTokens > 0 {
-			t.Rows = append(t.Rows, Row{Kind: Data, Cells: []Cell{
+			cells := []Cell{
 				{Text: r.Name},
 				{Text: render.FormatInt(r.TotalTokens)},
 				{Text: render.FormatInt(r.InputTokens)},
 				{Text: render.FormatInt(r.OutputTokens)},
 				{Text: render.FormatInt(r.CacheCreationTokens + r.CacheReadTokens)},
 				{Text: render.FormatCost(r.TotalCost)},
-			}})
+			}
+			cells = append(cells, machineCells(bd, r.Name, names, m)...)
+			t.Rows = append(t.Rows, Row{Kind: Data, Cells: cells})
 		}
 		grand = grand.Add(r.Totals)
 	}
 
 	if visible > 1 {
-		t.Rows = append(t.Rows, Row{Kind: Divider}, Row{Kind: Total, Cells: []Cell{
+		cells := []Cell{
 			{Text: "Total"},
 			{Text: render.FormatInt(grand.TotalTokens)},
 			{Text: render.FormatInt(grand.InputTokens)},
 			{Text: render.FormatInt(grand.OutputTokens)},
 			{Text: render.FormatInt(grand.CacheCreationTokens + grand.CacheReadTokens)},
 			{Text: render.FormatCost(grand.TotalCost)},
-		}})
+		}
+		cells = append(cells, machineTotalCells(machineSumsSnapshot, m)...)
+		t.Rows = append(t.Rows, Row{Kind: Divider}, Row{Kind: Total, Cells: cells})
 	}
 	return t
 }

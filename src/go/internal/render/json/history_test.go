@@ -29,8 +29,15 @@ func TestHistoryGoldens(t *testing.T) {
 		golden string
 		lines  []string
 	}{
-		{"history populated", "history_populated.golden", History(monthlySeries)},
-		{"history empty", "history_empty.golden", History(view.Series{Name: "Claude Code"})},
+		{"history populated", "history_populated.golden", History(monthlySeries, nil)},
+		{"history empty", "history_empty.golden", History(view.Series{Name: "Claude Code"}, nil)},
+		// R9: machines after totalTokens, first-seen slice order per label.
+		{"history machines", "history_machines.golden", History(monthlySeries, &view.Breakdown{Noun: "Machines", Rows: map[string][]view.Slice{
+			"2026-01": {
+				{Name: "harness-machine", Totals: fact.Totals{TotalCost: 1.0}},
+				{Name: "other-box", Totals: fact.Totals{TotalCost: 0.5}},
+			},
+		}})},
 		{"total history mixed", "total_history_mixed.golden", TotalHistory([]view.Series{
 			monthlySeries,
 			{Name: "Codex"},
@@ -62,7 +69,7 @@ func TestHistoryGoldens(t *testing.T) {
 
 // The intake §12 captures pin the two history JSON shapes byte for byte.
 func TestIntakeByteReferences(t *testing.T) {
-	got := strings.Join(History(monthlySeries), "\n") + "\n"
+	got := strings.Join(History(monthlySeries, nil), "\n") + "\n"
 	want := "[\n" +
 		"  {\n" +
 		`    "label": "2026-01",` + "\n" +
@@ -91,7 +98,7 @@ func TestIntakeByteReferences(t *testing.T) {
 		t.Errorf("h-json bytes =\n%q\nwant:\n%q", got, want)
 	}
 
-	if got := strings.Join(History(view.Series{Name: "Claude Code"}), "\n"); got != "[]" {
+	if got := strings.Join(History(view.Series{Name: "Claude Code"}, nil), "\n"); got != "[]" {
 		t.Errorf("empty single-tool history = %q, want []", got)
 	}
 }

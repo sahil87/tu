@@ -60,17 +60,18 @@ func TestRunDevFallback(t *testing.T) {
 // 1). {} and {"cc"} left this list in V2; {"m","dh","--json"} and {"--csv"}
 // left it in B2 (history + the csv/md encoders) — they now fetch and render
 // (covered end-to-end in e2e_test.go). {"--help"} left it in B8 (the toolkit
-// layer); the multi-mode data cases left it in B3. The list runs under a
-// staged MULTI home: {"sync"} pins that B6's command still routes to the
-// placeholder, as do {"h","--by-machine"} for B4's flag and {"lb"} for B5's
-// leaderboard even where multi mode is now in scope.
+// layer); the multi-mode data cases left it in B3; {"h","--by-machine"} left
+// it in B4 (the flag warns-and-clears on the all-tools pivot and renders).
+// The list runs under a staged MULTI home: {"sync"} pins that B6's command
+// still routes to the placeholder, as does {"lb"} for B5's leaderboard even
+// where multi mode is now in scope.
 func TestRunNotImplemented(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
 	if err := harness.StageHome(home, harness.ConfMulti, e2eSeedDir); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
-	for _, args := range [][]string{{"sync"}, {"h", "--by-machine"}, {"lb"}} {
+	for _, args := range [][]string{{"sync"}, {"lb"}} {
 		var stdout, stderr bytes.Buffer
 		code := run(args, &stdout, &stderr)
 		if code != 1 {

@@ -26,11 +26,14 @@ const scaleBreak = "┊"
 //	      (padded cells joined " | "; the Date cell wrapped per its
 //	      LabelStyle; Dim cells dim-wrapped; delta indicator and bar
 //	      appended), [Dim(divider + barDiv), total (each cell padded then
-//	      BoldWhite-wrapped, joined " | ")], [Dim(Footer) + legend], ""
+//	      BoldWhite-wrapped, joined " | ")], [Dim(Footer) + legend],
+//	      ["", Dim(Note)], ""
 //
 // barDiv is "─" + "─"×Scale.Width when bars are shown (Scale.Width > 0) and
 // extends every divider — header, month separators, and the Total divider.
-// The snapshot divider is 87 visible characters.
+// The snapshot divider is 87 visible characters. Note is the --by-machine
+// legend: a blank line then the dim text, after the footer (or the last row
+// when there is no footer), before the trailing blank.
 func Table(t view.Table, c Colors) []string {
 	lines := []string{"", c.BoldWhite(t.Title), ""}
 	if t.Empty != "" {
@@ -54,6 +57,9 @@ func Table(t view.Table, c Colors) []string {
 	}
 	if t.Footer != "" {
 		lines = append(lines, c.footerLine(t.Footer, t.Legend))
+	}
+	if t.Note != "" {
+		lines = append(lines, "", c.Dim(t.Note))
 	}
 	return append(lines, "")
 }

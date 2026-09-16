@@ -46,6 +46,20 @@ func ByUser(recs []fact.Record, user string) []fact.Record {
 	return out
 }
 
+// Relabel returns a copy of recs with each Date mapped to its period bucket
+// (daily: identity; weekly: WeekLabel(Date); monthly: Date[:7]) — the relabel
+// half of RollUp, exported for the by-machine breakdown, which groups on the
+// bucketed labels but sums in record input order itself. No summing, no
+// sorting; the input is never mutated or returned.
+func Relabel(recs []fact.Record, p Period) []fact.Record {
+	out := make([]fact.Record, len(recs))
+	for i, r := range recs {
+		r.Date = relabel(r.Date, p)
+		out[i] = r
+	}
+	return out
+}
+
 // RollUp re-labels each record to its period bucket (daily: identity; weekly:
 // WeekLabel(Date); monthly: Date[:7]) and sums Totals over records sharing
 // (Date', Tool, User, Machine). Output is ascending by Date (byte order equals
@@ -57,8 +71,7 @@ func RollUp(recs []fact.Record, p Period) []fact.Record {
 	}
 	index := make(map[groupKey]int)
 	var out []fact.Record
-	for _, r := range recs {
-		r.Date = relabel(r.Date, p)
+	for _, r := range Relabel(recs, p) {
 		k := groupKey{r.Date, r.Tool, r.User, r.Machine}
 		if i, ok := index[k]; ok {
 			out[i].Totals = out[i].Totals.Add(r.Totals)
@@ -84,6 +97,21 @@ func relabel(date string, p Period) string {
 	default:
 		return date
 	}
+}
+
+// SortByDate returns a copy of recs stably sorted ascending by Date (byte
+// order equals the TS localeCompare on ISO labels). The main-table pipeline
+// sorts the collapsed daily records before RollUp because the TS mergeEntries
+// sorts its daily merge by label ahead of the period aggregation: a
+// machine-major gather order (own machine's days first, then other machines
+// in walk order) would otherwise sum a month/week bucket in a different
+// association and emit different raw JSON float bytes when dates interleave
+// across machines. Pure: the input is never mutated or returned.
+func SortByDate(recs []fact.Record) []fact.Record {
+	out := make([]fact.Record, len(recs))
+	copy(out, recs)
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Date < out[j].Date })
+	return out
 }
 
 // Dim is a record dimension GroupBy can group on.

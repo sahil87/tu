@@ -62,14 +62,32 @@ func TestGoldens(t *testing.T) {
 		golden string
 		lines  []string
 	}{
-		{"snapshot populated", "snapshot_populated.golden", Snapshot(snapshotRows(), query.Daily)},
-		{"snapshot empty", "snapshot_empty.golden", Snapshot(nil, query.Daily)},
-		{"history populated", "history_populated.golden", History(monthlySeries, query.Monthly, false)},
+		{"snapshot populated", "snapshot_populated.golden", Snapshot(snapshotRows(), query.Daily, nil)},
+		{"snapshot empty", "snapshot_empty.golden", Snapshot(nil, query.Daily, nil)},
+		{"history populated", "history_populated.golden", History(monthlySeries, query.Monthly, false, nil)},
 		{"history with total", "history_with_total.golden", History(view.Series{Name: "Claude Code", Entries: []view.Entry{
 			{Label: "2026-01-05", Totals: dayTotals},
 			{Label: "2026-01-06", Totals: dayTotals},
-		}}, query.Daily, false)},
-		{"history empty cap", "history_empty_cap.golden", History(view.Series{Name: "Claude Code"}, query.Daily, true)},
+		}}, query.Daily, false, nil)},
+		{"history empty cap", "history_empty_cap.golden", History(view.Series{Name: "Claude Code"}, query.Daily, true, nil)},
+		// R11: name-headed machine columns (verbatim names, ---: alignment,
+		// FormatCost cells, bold Total sums).
+		{"snapshot machines", "snapshot_machines.golden", Snapshot(snapshotRows(), query.Daily, &view.Breakdown{Noun: "Machines", Rows: map[string][]view.Slice{
+			"Claude Code": {
+				{Name: "dev-ws-sahil02", Totals: fact.Totals{TotalCost: 0.2}},
+				{Name: "Sahils-Mac-mini.local", Totals: fact.Totals{TotalCost: 0.3}},
+			},
+		}})},
+		{"history machines", "history_machines.golden", History(view.Series{Name: "Claude Code", Entries: []view.Entry{
+			{Label: "2026-01-05", Totals: dayTotals},
+			{Label: "2026-01-06", Totals: dayTotals},
+		}}, query.Daily, false, &view.Breakdown{Noun: "Machines", Rows: map[string][]view.Slice{
+			"2026-01-05": {{Name: "harness-machine", Totals: dayTotals}},
+			"2026-01-06": {
+				{Name: "harness-machine", Totals: fact.Totals{TotalCost: 0.75}},
+				{Name: "other-box", Totals: fact.Totals{TotalCost: 0.40}},
+			},
+		}})},
 		{"total history populated", "total_history_populated.golden", TotalHistory(sixSeries(), query.Daily, false)},
 		{"total history empty cap", "total_history_empty_cap.golden", TotalHistory(sixEmptySeries(), query.Daily, true)},
 		{"total history omission", "total_history_omission.golden", TotalHistory([]view.Series{
@@ -104,7 +122,7 @@ func TestGoldens(t *testing.T) {
 // The intake §12 captures pin the Markdown shapes byte for byte, including
 // the trailing blank line.
 func TestIntakeByteReferences(t *testing.T) {
-	got := strings.Join(History(monthlySeries, query.Monthly, false), "\n") + "\n"
+	got := strings.Join(History(monthlySeries, query.Monthly, false, nil), "\n") + "\n"
 	want := "## Claude Code (monthly)\n" +
 		"\n" +
 		"| Date | Input | Output | Cache Write | Cache Read | Total | Cost |\n" +
@@ -125,7 +143,7 @@ func TestIntakeByteReferences(t *testing.T) {
 		t.Errorf("h-md bytes =\n%q\nwant:\n%q", got, want)
 	}
 
-	got = strings.Join(Snapshot(nil, query.Daily), "\n") + "\n"
+	got = strings.Join(Snapshot(nil, query.Daily, nil), "\n") + "\n"
 	want = "## Combined Usage (daily)\n" +
 		"\n" +
 		"| Tool | Tokens | Input | Output | Cache | Cost |\n" +
@@ -162,7 +180,7 @@ func TestTotalHistoryExactZeroOmission(t *testing.T) {
 }
 
 func TestHistoryTotalRowGate(t *testing.T) {
-	one := History(monthlySeries, query.Monthly, false)
+	one := History(monthlySeries, query.Monthly, false, nil)
 	for _, l := range one {
 		if strings.Contains(l, "**Total**") {
 			t.Errorf("single-entry history must not carry a Total row: %q", l)
@@ -171,7 +189,7 @@ func TestHistoryTotalRowGate(t *testing.T) {
 	two := History(view.Series{Name: "Claude Code", Entries: []view.Entry{
 		{Label: "2026-01-05", Totals: dayTotals},
 		{Label: "2026-01-06", Totals: dayTotals},
-	}}, query.Daily, false)
+	}}, query.Daily, false, nil)
 	found := false
 	for _, l := range two {
 		if strings.HasPrefix(l, "| **Total** |") {

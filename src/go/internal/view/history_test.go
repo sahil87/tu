@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sahil87/tu/internal/fact"
 	"github.com/sahil87/tu/internal/query"
 )
 
@@ -24,7 +25,7 @@ func dailyOpts(width int) HistoryOptions {
 }
 
 func TestHistoryPlaceholderWindow(t *testing.T) {
-	tab := History(placeholderSeries(), dailyOpts(80))
+	tab := History(placeholderSeries(), dailyOpts(80), nil)
 
 	if tab.Title != "📊 Claude Code (daily)" {
 		t.Errorf("Title = %q", tab.Title)
@@ -74,7 +75,7 @@ func TestHistoryPlaceholderWindow(t *testing.T) {
 }
 
 func TestHistoryCapHint(t *testing.T) {
-	tab := History(Series{Name: "Claude Code"}, HistoryOptions{Period: query.Daily, Now: historyNow, Width: 80, CapActive: true})
+	tab := History(Series{Name: "Claude Code"}, HistoryOptions{Period: query.Daily, Now: historyNow, Width: 80, CapActive: true}, nil)
 	if tab.Title != "📊 Claude Code (daily, last 3 months)" {
 		t.Errorf("Title = %q", tab.Title)
 	}
@@ -88,7 +89,7 @@ func TestHistoryCapHint(t *testing.T) {
 
 func TestHistorySingleRow(t *testing.T) {
 	s := Series{Name: "Claude Code", Entries: []Entry{{Label: "2026-01", Totals: fact3x}}}
-	tab := History(s, HistoryOptions{Period: query.Monthly, Now: historyNow, Width: 80})
+	tab := History(s, HistoryOptions{Period: query.Monthly, Now: historyNow, Width: 80}, nil)
 	if !equalKinds(kinds(tab.Rows), Header, Divider, Data) {
 		t.Errorf("row kinds = %v, want Header Divider Data (no Total for one row)", kinds(tab.Rows))
 	}
@@ -101,7 +102,7 @@ func TestHistoryMetricColumnGrowth(t *testing.T) {
 	big := dayTotals
 	big.TotalCost = 59634.40
 	s := Series{Name: "Claude Code", Entries: []Entry{{Label: "2026-01-05", Totals: big}}}
-	tab := History(s, dailyOpts(80))
+	tab := History(s, dailyOpts(80), nil)
 	if tab.Columns[6].Width != 10 {
 		t.Errorf("cost column width = %d, want 10 ($59,634.40)", tab.Columns[6].Width)
 	}
@@ -114,7 +115,7 @@ func TestHistorySeparatorsDailyOnly(t *testing.T) {
 		{Label: "2026-02-01", Totals: dayTotals},
 		{Label: "2026-02-02", Totals: dayTotals},
 	}
-	tab := History(Series{Name: "Claude Code", Entries: entries}, dailyOpts(80))
+	tab := History(Series{Name: "Claude Code", Entries: entries}, dailyOpts(80), nil)
 	if !equalKinds(kinds(tab.Rows), Header, Divider, Data, Data, Separator, Data, Data, Divider, Total) {
 		t.Errorf("row kinds = %v, want a Separator between the January and February rows only", kinds(tab.Rows))
 	}
@@ -124,7 +125,7 @@ func TestHistorySeparatorsDailyOnly(t *testing.T) {
 		{Label: "2026-01-25", Totals: dayTotals},
 		{Label: "2026-02-01", Totals: dayTotals},
 	}
-	tab = History(Series{Name: "Claude Code", Entries: weekly}, HistoryOptions{Period: query.Weekly, Now: historyNow, Width: 80})
+	tab = History(Series{Name: "Claude Code", Entries: weekly}, HistoryOptions{Period: query.Weekly, Now: historyNow, Width: 80}, nil)
 	if !equalKinds(kinds(tab.Rows), Header, Divider, Data, Data, Divider, Total) {
 		t.Errorf("weekly row kinds = %v, want no Separator", kinds(tab.Rows))
 	}
@@ -139,20 +140,20 @@ func TestHistoryLabelStyles(t *testing.T) {
 	}
 	s := Series{Name: "Claude Code", Entries: entries}
 
-	tab := History(s, dailyOpts(80))
+	tab := History(s, dailyOpts(80), nil)
 	if tab.Rows[2].Cells[0].Style != Plain || tab.Rows[3].Cells[0].Style != Weekend {
 		t.Errorf("styles = %v, %v; want Plain, Weekend", tab.Rows[2].Cells[0].Style, tab.Rows[3].Cells[0].Style)
 	}
 
 	saturdayNow := time.Date(2026, 1, 10, 9, 0, 0, 0, time.UTC)
-	tab = History(s, HistoryOptions{Period: query.Daily, Now: saturdayNow, Width: 80})
+	tab = History(s, HistoryOptions{Period: query.Daily, Now: saturdayNow, Width: 80}, nil)
 	if tab.Rows[3].Cells[0].Style != Current {
 		t.Errorf("weekend-today style = %v, want Current (the marker wins)", tab.Rows[3].Cells[0].Style)
 	}
 }
 
 func TestHistoryTokenMode(t *testing.T) {
-	tab := History(placeholderSeries(), HistoryOptions{Period: query.Daily, Now: historyNow, Width: 80, Metric: Tokens})
+	tab := History(placeholderSeries(), HistoryOptions{Period: query.Daily, Now: historyNow, Width: 80, Metric: Tokens}, nil)
 	if tab.Columns[6].Title != "Tokens" {
 		t.Errorf("last column title = %q, want Tokens", tab.Columns[6].Title)
 	}
@@ -184,7 +185,7 @@ func TestHistoryDeltasFromPrev(t *testing.T) {
 	}
 	o := dailyOpts(80)
 	o.Prev = prev
-	tab := History(placeholderSeries(), o)
+	tab := History(placeholderSeries(), o, nil)
 	want := []Delta{DeltaUp, DeltaDown, DeltaNone}
 	for i, w := range want {
 		if tab.Rows[2+i].Delta != w {
@@ -195,11 +196,11 @@ func TestHistoryDeltasFromPrev(t *testing.T) {
 
 func TestHistoryBarBudget(t *testing.T) {
 	// 80 columns: 80 − 97 − 3 − 9 − 1 = −30 → no bars.
-	if tab := History(placeholderSeries(), dailyOpts(80)); tab.Scale.Width != 0 {
+	if tab := History(placeholderSeries(), dailyOpts(80), nil); tab.Scale.Width != 0 {
 		t.Errorf("Scale.Width at 80 = %d, want 0", tab.Scale.Width)
 	}
 	// 140 columns: min(140 − 97 − 3 − 9 − 1, 30) = 30 → single-zone bars of 30.
-	tab := History(placeholderSeries(), dailyOpts(140))
+	tab := History(placeholderSeries(), dailyOpts(140), nil)
 	if tab.Scale.Width != 30 || tab.Scale.TwoZone {
 		t.Errorf("Scale at 140 = %+v, want single-zone width 30", tab.Scale)
 	}
@@ -221,3 +222,84 @@ func TestHistoryBarBudget(t *testing.T) {
 
 // fact3x is the monthly roll-up of the three placeholder days.
 var fact3x = dayTotals.Add(dayTotals).Add(dayTotals)
+
+// ── B4: machine columns ────────────────────────────────────────────────────
+
+// historyBreakdown is the seeded two-machine split over the placeholder
+// window: harness-machine sums 1.75, other-box 0.40.
+func historyBreakdown() *Breakdown {
+	return &Breakdown{Noun: "Machines", Rows: map[string][]Slice{
+		"2026-01-05": {{Name: "harness-machine", Totals: dayTotals}},
+		"2026-01-06": {
+			{Name: "harness-machine", Totals: fact.Totals{TotalCost: 0.75}},
+			{Name: "other-box", Totals: fact.Totals{TotalCost: 0.40}},
+		},
+		"2026-01-07": {{Name: "harness-machine", Totals: dayTotals}},
+	}}
+}
+
+// R7: machine columns follow the metric column with a shared width, cells sit
+// before the delta/bar, the Total row carries per-name sums over every entry,
+// and Note holds the legend.
+func TestHistoryMachineColumns(t *testing.T) {
+	tab := History(placeholderSeries(), dailyOpts(80), historyBreakdown())
+
+	if got := []string{tab.Columns[7].Title, tab.Columns[8].Title}; got[0] != "A" || got[1] != "B" {
+		t.Errorf("machine columns = %v, want [A B]", got)
+	}
+	if tab.Columns[7].Width != 9 || tab.Columns[8].Width != 9 {
+		t.Errorf("machine widths = %d/%d, want 9", tab.Columns[7].Width, tab.Columns[8].Width)
+	}
+	row := tab.Rows[3].Cells // 2026-01-06
+	if row[7].Text != "$0.75" || row[8].Text != "$0.40" {
+		t.Errorf("01-06 machine cells = %q, %q", row[7].Text, row[8].Text)
+	}
+	row = tab.Rows[2].Cells // 2026-01-05: other-box absent → dim zero
+	if row[7].Text != "$0.50" || row[8].Text != "$0.00" || !row[8].Dim {
+		t.Errorf("01-05 machine cells = %q, %+v", row[7].Text, row[8])
+	}
+	total := tab.Rows[6].Cells
+	if total[7].Text != "$1.75" || total[8].Text != "$0.40" || total[7].Dim {
+		t.Errorf("total machine cells = %q, %q", total[7].Text, total[8].Text)
+	}
+	if tab.Note != "Machines: A = harness-machine, B = other-box" {
+		t.Errorf("Note = %q", tab.Note)
+	}
+	if tab.Footer != "avg $0.50/day · peak $0.50 (2026-01-05)" {
+		t.Errorf("Footer = %q (the machine columns must not touch it)", tab.Footer)
+	}
+}
+
+// R7: the machine columns eat the bar budget — at 80 columns no bar renders;
+// at 160 (97 + 3 + 9 + 24 + 1 = 134, min(160−134, 30) = 26) bars return.
+func TestHistoryMachineBarBudget(t *testing.T) {
+	if tab := History(placeholderSeries(), dailyOpts(80), historyBreakdown()); tab.Scale.Width != 0 {
+		t.Errorf("Scale.Width at 80 with machines = %d, want 0", tab.Scale.Width)
+	}
+	tab := History(placeholderSeries(), dailyOpts(160), historyBreakdown())
+	if tab.Scale.Width != 26 {
+		t.Errorf("Scale.Width at 160 with machines = %d, want 26 (160−97−3−9−2×12−1)", tab.Scale.Width)
+	}
+	for i := 2; i <= 4; i++ {
+		if tab.Rows[i].Bar == nil {
+			t.Errorf("row %d has no bar at 160", i)
+		}
+	}
+}
+
+// R7: nil breakdown on the history table is byte-identical (no columns, no
+// Note, today's bar budget).
+func TestHistoryNilBreakdown(t *testing.T) {
+	tab := History(placeholderSeries(), dailyOpts(80), nil)
+	if len(tab.Columns) != 7 || tab.Note != "" {
+		t.Errorf("nil breakdown changed the table: %d columns, Note %q", len(tab.Columns), tab.Note)
+	}
+}
+
+// A-018: the empty history early-returns with no columns and no Note.
+func TestHistoryMachinesEmptyState(t *testing.T) {
+	tab := History(Series{Name: "Claude Code"}, dailyOpts(80), historyBreakdown())
+	if tab.Empty != "  No data" || len(tab.Columns) != 0 || tab.Note != "" {
+		t.Errorf("empty state = %q, %d columns, Note %q", tab.Empty, len(tab.Columns), tab.Note)
+	}
+}

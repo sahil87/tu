@@ -159,3 +159,53 @@ func TestNormalizeUserNoticeFirst(t *testing.T) {
 		t.Errorf("notices = %v, want -u then since/until", notices)
 	}
 }
+
+// R1: the two --by-machine warn-and-clear guards, in TS main() position —
+// after the -u guard, before the since/until guard.
+func TestNormalizeByMachineGuards(t *testing.T) {
+	cases := []struct {
+		name      string
+		req       Request
+		mode      config.Mode
+		wantFlag  bool
+		wantNotes []string
+	}{
+		{"all-tools history", Request{Display: History, Flags: Flags{ByMachine: true}}, config.Single, false, []string{byMachinePivotNotice}},
+		{"all-tools history multi", Request{Display: History, Flags: Flags{ByMachine: true}}, config.Multi, false, []string{byMachinePivotNotice}},
+		{"leaderboard history", Request{Display: LeaderboardHistory, Flags: Flags{ByMachine: true}}, config.Multi, false, []string{byMachineLbhNotice}},
+		{"single-source history keeps it", Request{Source: "cc", Display: History, Flags: Flags{ByMachine: true}}, config.Single, true, nil},
+		{"all-tools snapshot keeps it", Request{Flags: Flags{ByMachine: true}}, config.Single, true, nil},
+		{"single-source snapshot keeps it", Request{Source: "cc", Flags: Flags{ByMachine: true}}, config.Multi, true, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			req, notices, _ := Normalize(c.req, c.mode, guardsNow)
+			if req.Flags.ByMachine != c.wantFlag {
+				t.Errorf("ByMachine = %v, want %v", req.Flags.ByMachine, c.wantFlag)
+			}
+			if len(notices) != len(c.wantNotes) {
+				t.Fatalf("notices = %v, want %v", notices, c.wantNotes)
+			}
+			for i, n := range c.wantNotes {
+				if notices[i] != n {
+					t.Errorf("notices[%d] = %q, want %q", i, notices[i], n)
+				}
+			}
+		})
+	}
+}
+
+// R1: `-u other --by-machine h` in single mode emits the -u line first, then
+// the pivot line; both flags are cleared.
+func TestNormalizeByMachineNoticeOrder(t *testing.T) {
+	req, notices, _ := Normalize(Request{
+		Display: History,
+		Flags:   Flags{User: "other-user", ByMachine: true},
+	}, config.Single, guardsNow)
+	if len(notices) != 2 || notices[0] != userNotice || notices[1] != byMachinePivotNotice {
+		t.Errorf("notices = %v, want -u then the pivot notice", notices)
+	}
+	if req.Flags.ByMachine || req.Flags.User != "" {
+		t.Errorf("flags = %+v, want both cleared", req.Flags)
+	}
+}

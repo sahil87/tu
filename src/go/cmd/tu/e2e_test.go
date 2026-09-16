@@ -460,10 +460,73 @@ func TestE2ESinceInvalidWarnsAndRenders(t *testing.T) {
 		"Warning: --since/--until apply to history display — ignoring.\n")
 }
 
-// --by-machine is B4's surface: still the placeholder, exit 1.
-func TestE2EHistoryByMachinePlaceholder(t *testing.T) {
-	assertRun(t, []string{"h", "--by-machine"}, 1, "", notImplementedMsg+"\n")
-	assertRun(t, []string{"cc", "h", "--by-machine"}, 1, "", notImplementedMsg+"\n")
+// ── B4: machine columns ────────────────────────────────────────────────────
+//
+// Byte references: intake §9 (node v24, placeholder corpus + committed seed,
+// TZ=UTC, piped, width 80 — no bars).
+
+// The empty-state by-machine surfaces: the all-tools pivot warns and clears
+// (capped pivot heading + "  No data", exit 0); the single-tool history keeps
+// the flag and renders its capped empty state.
+func TestE2EHistoryByMachineEmptyStates(t *testing.T) {
+	assertRun(t, []string{"h", "--by-machine"}, 0,
+		"\n\x1b[1;37m📊 Combined Cost History (daily, last 3 months)\x1b[0m\n\n  No data\n\n",
+		"Warning: --by-machine is not supported with all-tools history — ignoring.\n")
+	assertRun(t, []string{"cc", "h", "--by-machine"}, 0,
+		"\n\x1b[1;37m📊 Claude Code (daily, last 3 months)\x1b[0m\n\n  No data\n\n", "")
+	// The multi-home snapshot on today is "  No usage" (no current-label
+	// records) — no columns, no legend; -u all is in scope (multi), no notice.
+	stageVariant(t, "multi")
+	assertRun(t, []string{"--by-machine", "-u", "all"}, 0,
+		"\n\x1b[1;37m📊 Combined Usage (daily)\x1b[0m\n\n  No usage\n\n", "")
+}
+
+// The populated multi-mode single-tool window with machine columns: A =
+// harness-machine, B = other-box; the 2026-01-06 row splits $0.75 / $0.40;
+// the Total row carries the per-machine sums $1.75 / $0.40; the legend trails
+// the footer.
+const e2eMultiCCHWindowByMachine = "\n\x1b[1;37m📊 Claude Code (daily)\x1b[0m\n\n\x1b[1;36mDate        \x1b[0m | \x1b[1;36m         Input\x1b[0m | \x1b[1;36m        Output\x1b[0m | \x1b[1;36m   Cache Write\x1b[0m | \x1b[1;36m    Cache Read\x1b[0m | \x1b[1;36m         Total\x1b[0m | \x1b[1;36m     Cost\x1b[0m | \x1b[1;36m        A\x1b[0m | \x1b[1;36m        B\x1b[0m\n\x1b[2m─────────────|────────────────|────────────────|────────────────|────────────────|────────────────|───────────|───────────|──────────\x1b[0m\n2026-01-05   |          3,000 |            400 |          1,000 |         20,000 |         24,400 |     $0.50 |     $0.50 | \x1b[2m    $0.00\x1b[0m\n2026-01-06   |          6,000 |            800 |          2,000 |         40,000 |         48,800 |     $1.15 |     $0.75 |     $0.40\n2026-01-07   |          3,000 |            400 |          1,000 |         20,000 |         24,400 |     $0.50 |     $0.50 | \x1b[2m    $0.00\x1b[0m\n\x1b[2m─────────────|────────────────|────────────────|────────────────|────────────────|────────────────|───────────|───────────|──────────\x1b[0m\n\x1b[1;37mTotal       \x1b[0m | \x1b[1;37m        12,000\x1b[0m | \x1b[1;37m         1,600\x1b[0m | \x1b[1;37m         4,000\x1b[0m | \x1b[1;37m        80,000\x1b[0m | \x1b[1;37m        97,600\x1b[0m | \x1b[1;37m    $2.15\x1b[0m | \x1b[1;37m    $1.75\x1b[0m | \x1b[1;37m    $0.40\x1b[0m\n\x1b[2mavg $0.72/day · peak $1.15 (2026-01-06)\x1b[0m\n\n\x1b[2mMachines: A = harness-machine, B = other-box\x1b[0m\n\n"
+
+func TestE2EMultiHistoryByMachine(t *testing.T) {
+	stageVariant(t, "multi")
+	assertRun(t, []string{"cc", "h", "--by-machine", "--since", "2026-01-01", "--until", "2026-01-31"}, 0, e2eMultiCCHWindowByMachine, "")
+}
+
+// The monthly JSON carries the machines object in first-seen key order (own
+// machine first) with cost values after totalTokens.
+func TestE2EMultiMonthlyByMachineJSON(t *testing.T) {
+	stageVariant(t, "multi")
+	assertRun(t, []string{"cc", "mh", "--by-machine", "--json"}, 0,
+		"[\n  {\n    \"label\": \"2026-01\",\n    \"totalCost\": 2.15,\n    \"inputTokens\": 12000,\n    \"outputTokens\": 1600,\n    \"cacheCreationTokens\": 4000,\n    \"cacheReadTokens\": 80000,\n    \"totalTokens\": 97600,\n    \"machines\": {\n      \"harness-machine\": 1.75,\n      \"other-box\": 0.4\n    }\n  }\n]\n", "")
+}
+
+// Under -u all the columns key by user (the header prefix stays machine_).
+func TestE2EMultiMonthlyByMachineUserAllCSV(t *testing.T) {
+	stageVariant(t, "multi")
+	assertRun(t, []string{"cc", "mh", "--by-machine", "-u", "all", "--csv"}, 0,
+		"date,input,output,cache_write,cache_read,total,cost,machine_harness-user_cost,machine_other-user_cost\n"+
+			"2026-01,12000,1600,4000,80000,97600,2.50,1.40,1.10\n", "")
+}
+
+// The single-home pinned-machine window under -u all: the -u warning, then
+// machine columns (one column, the local machine) — the TS clears -u before
+// computing the users legend.
+const e2eSingleCCHWindowByMachine = "\n\x1b[1;37m📊 Claude Code (daily)\x1b[0m\n\n\x1b[1;36mDate        \x1b[0m | \x1b[1;36m         Input\x1b[0m | \x1b[1;36m        Output\x1b[0m | \x1b[1;36m   Cache Write\x1b[0m | \x1b[1;36m    Cache Read\x1b[0m | \x1b[1;36m         Total\x1b[0m | \x1b[1;36m     Cost\x1b[0m | \x1b[1;36m        A\x1b[0m\n\x1b[2m─────────────|────────────────|────────────────|────────────────|────────────────|────────────────|───────────|──────────\x1b[0m\n2026-01-05   |          3,000 |            400 |          1,000 |         20,000 |         24,400 |     $0.50 |     $0.50\n2026-01-06   |          3,000 |            400 |          1,000 |         20,000 |         24,400 |     $0.50 |     $0.50\n2026-01-07   |          3,000 |            400 |          1,000 |         20,000 |         24,400 |     $0.50 |     $0.50\n\x1b[2m─────────────|────────────────|────────────────|────────────────|────────────────|────────────────|───────────|──────────\x1b[0m\n\x1b[1;37mTotal       \x1b[0m | \x1b[1;37m         9,000\x1b[0m | \x1b[1;37m         1,200\x1b[0m | \x1b[1;37m         3,000\x1b[0m | \x1b[1;37m        60,000\x1b[0m | \x1b[1;37m        73,200\x1b[0m | \x1b[1;37m    $1.50\x1b[0m | \x1b[1;37m    $1.50\x1b[0m\n\x1b[2mavg $0.50/day · peak $0.50 (2026-01-05)\x1b[0m\n\n\x1b[2mMachines: A = harness-machine\x1b[0m\n\n"
+
+func TestE2ESingleByMachineUserAll(t *testing.T) {
+	// A pinned machine (no metrics_repo → single mode) keeps the legend byte
+	// stable across hosts.
+	home := stageVariant(t, "single")
+	conf := filepath.Join(home, ".config", "tu")
+	if err := os.MkdirAll(conf, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(conf, "tu.conf"), []byte("version = 2\nmachine = harness-machine\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	assertRun(t, []string{"cc", "h", "--by-machine", "-u", "all", "--since", "2026-01-01", "--until", "2026-01-31"}, 0,
+		e2eSingleCCHWindowByMachine,
+		"Warning: -u flag requires multi mode — ignoring.\n")
 }
 
 // ── B3: metrics-repo source and multi-mode merge ───────────────────────────
