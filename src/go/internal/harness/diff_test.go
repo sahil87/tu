@@ -117,6 +117,30 @@ func TestCompareGreen(t *testing.T) {
 	}
 }
 
+// R13 (B1): NormalizeHome replaces every occurrence of the staged home with
+// the literal "$HOME".
+func TestNormalizeHome(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		home string
+		want string
+	}{
+		{"no occurrence", "no path here\n", "/tmp/c/node/home", "no path here\n"},
+		{"multiple occurrences", "/h/.tu/a then /h/.tu/b\n", "/h", "$HOME/.tu/a then $HOME/.tu/b\n"},
+		{"prefix inside a longer path", "/h/.tu/metrics_repo/x\n", "/h", "$HOME/.tu/metrics_repo/x\n"},
+		{"empty home is a no-op", "/h/a\n", "", "/h/a\n"},
+		{"empty input", "", "/h", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := NormalizeHome([]byte(c.in), c.home); string(got) != c.want {
+				t.Errorf("NormalizeHome(%q, %q) = %q, want %q", c.in, c.home, got, c.want)
+			}
+		})
+	}
+}
+
 // R13: exit is the first compared channel.
 func TestCompareExitFirst(t *testing.T) {
 	node := SideCapture{Stdout: []byte("a"), Stderr: []byte("b"), Exit: 0}
@@ -193,7 +217,7 @@ func TestCompareCallsInformational(t *testing.T) {
 	if err := os.WriteFile(goLog, []byte(strings.Join(reversed, "\n")+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	nodeN, goN, differ, err := CompareCallLogs(nodeLog, goLog)
+	nodeN, goN, differ, err := CompareCallLogs(nodeLog, goLog, "", "")
 	if err != nil || differ || nodeN != 2 || goN != 2 {
 		t.Errorf("CompareCallLogs = %d/%d differ=%v err=%v", nodeN, goN, differ, err)
 	}
@@ -206,7 +230,7 @@ func TestCompareCallsInformational(t *testing.T) {
 	if err := os.Remove(goLog); err != nil {
 		t.Fatal(err)
 	}
-	nodeN, goN, differ, err = CompareCallLogs(nodeLog, goLog)
+	nodeN, goN, differ, err = CompareCallLogs(nodeLog, goLog, "", "")
 	if err != nil || !differ || nodeN != 6 || goN != 0 {
 		t.Errorf("CompareCallLogs = %d/%d differ=%v err=%v", nodeN, goN, differ, err)
 	}
@@ -294,5 +318,68 @@ func TestStageOracle(t *testing.T) {
 		if raw, err := os.ReadFile(filepath.Join(src, name)); err != nil || len(raw) == 0 {
 			t.Errorf("source %s modified", name)
 		}
+	}
+}
+
+// R13 (B1): captures that differ only in the staged home path compare green,
+// and divergence details are computed on the normalized bytes.
+func TestCompareHomeNormalized(t *testing.T) {
+	node := SideCapture{
+		Stdout: []byte("Already initialized: /tmp/c/node/home/.tu/metrics_repo\n"),
+		Exit:   0,
+		Home:   "/tmp/c/node/home",
+	}
+	goCap := SideCapture{
+		Stdout: []byte("Already initialized: /tmp/c/go/home/.tu/metrics_repo\n"),
+		Exit:   0,
+		Home:   "/tmp/c/go/home",
+	}
+	r := Compare(baseCase(), node, goCap)
+	if r.Status != StatusGreen {
+		t.Errorf("status = %q, want green (home-only difference)", r.Status)
+	}
+
+	// A real difference past the home is still red, with offset and excerpts
+	// computed on the normalized bytes.
+	goCap.Stdout = []byte("Already initialized: /tmp/c/go/home/.tu/other\n")
+	r = Compare(baseCase(), node, goCap)
+	if r.Status != StatusRed || r.Channel != "stdout" {
+		t.Fatalf("result = %+v", r)
+	}
+	if r.Offset != len("Already initialized: $HOME/.tu/") {
+		t.Errorf("offset = %d, want %d (normalized bytes)", r.Offset, len("Already initialized: $HOME/.tu/"))
+	}
+	if r.NodeExcerpt != `"metrics_repo\n"` || r.GoExcerpt != `"other\n"` {
+		t.Errorf("excerpts = %q / %q", r.NodeExcerpt, r.GoExcerpt)
+	}
+}
+
+// R13 (B1): call-log argv that differ only by the two staged homes do not
+// differ.
+func TestCompareCallLogsHomeNormalized(t *testing.T) {
+	dir := t.TempDir()
+	nodeLog := filepath.Join(dir, "node.calls.jsonl")
+	goLog := filepath.Join(dir, "go.calls.jsonl")
+	nodeLine := `{"tool":"git","argv":["-C","/tmp/c/node/home/.tu/metrics_repo","rev-parse","--git-dir"],"cwd":"/a"}` + "\n"
+	goLine := `{"tool":"git","argv":["-C","/tmp/c/go/home/.tu/metrics_repo","rev-parse","--git-dir"],"cwd":"/b"}` + "\n"
+	if err := os.WriteFile(nodeLog, []byte(nodeLine), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(goLog, []byte(goLine), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	nodeN, goN, differ, err := CompareCallLogs(nodeLog, goLog, "/tmp/c/node/home", "/tmp/c/go/home")
+	if err != nil || differ || nodeN != 1 || goN != 1 {
+		t.Errorf("CompareCallLogs = %d/%d differ=%v err=%v, want 1/1 differ=false", nodeN, goN, differ, err)
+	}
+
+	// A real argv difference still differs under normalization.
+	goLine = `{"tool":"git","argv":["-C","/tmp/c/go/home/.tu/other","rev-parse","--git-dir"],"cwd":"/b"}` + "\n"
+	if err := os.WriteFile(goLog, []byte(goLine), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, _, differ, err = CompareCallLogs(nodeLog, goLog, "/tmp/c/node/home", "/tmp/c/go/home")
+	if err != nil || !differ {
+		t.Errorf("CompareCallLogs differ=%v err=%v, want differ=true", differ, err)
 	}
 }

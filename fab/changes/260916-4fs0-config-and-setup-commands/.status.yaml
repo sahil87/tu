@@ -1,0 +1,59 @@
+id: 4fs0
+name: 260916-4fs0-config-and-setup-commands
+created: 2026-09-16T15:29:27Z
+created_by: sahil-noon
+change_type: feat
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
+plan:
+    generated: true
+    task_count: 14
+    acceptance_count: 29
+    acceptance_completed: 29
+confidence:
+    certain: 7
+    confident: 9
+    tentative: 0
+    unresolved: 0
+    score: 3.9
+    fuzzy: true
+    dimensions:
+        signal: 67.5
+        reversibility: 86.6
+        competence: 84.1
+        disambiguation: 73.8
+stage_metrics:
+    intake: {started_at: "2026-09-16T15:29:27Z", driver: fab-new, iterations: 1, completed_at: "2026-09-16T15:36:52Z"}
+    apply: {started_at: "2026-09-16T15:36:52Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T15:56:01Z"}
+    review: {started_at: "2026-09-16T15:56:01Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T16:01:33Z"}
+    hydrate: {started_at: "2026-09-16T16:01:33Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T16:07:40Z"}
+    ship: {started_at: "2026-09-16T16:07:40Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T16:10:47Z"}
+    review-pr: {started_at: "2026-09-16T16:10:47Z", driver: git-pr, iterations: 1, completed_at: "2026-09-16T16:35:32Z"}
+prs:
+    - https://github.com/sahil87/tu/pull/86
+change_type_source: explicit
+base_branch: main
+true_impact:
+    added: 3423
+    deleted: 128
+    net: 3295
+    excluding:
+        added: 2474
+        deleted: 112
+        net: 2362
+    tests:
+        added: 1489
+        deleted: 37
+        net: 1452
+    computed_at: "2026-09-16T16:10:47Z"
+    computed_at_stage: ship
+summary: 'Go port row B1: full config cascade with embedded defaults, init-conf/init-metrics/status setup commands, the sync.Exec git driver, exit-code constants plus the --dry-run and init-metrics-arity usage errors, and compare-side home normalization in the harness — 95 cases green'
+# base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-09-16T16:35:32Z

@@ -45,9 +45,21 @@ type Flags struct {
 	Top                                                                          int
 }
 
+// Exit codes — the shll toolkit convention (spec § Exit Codes): 0 = success,
+// 1 = operational failure (well-formed invocation that could not complete;
+// also the placeholder), 2 = usage error (the invocation itself was wrong).
+// cmd/tu returns only these values.
+const (
+	ExitOK          = 0
+	ExitOperational = 1
+	ExitUsage       = 2
+)
+
 // Request is the parsed invocation. Source "" means all tools (aliases
 // resolved); Command holds the first positional when it is a non-data command
-// ("" for data commands); Version is set when a version flag appears anywhere.
+// ("" for data commands); Args carries the positionals after Command (nil for
+// data commands — B8 reads shell-init's arg from here); Version is set when a
+// version flag appears anywhere.
 type Request struct {
 	Source  string
 	Period  query.Period
@@ -55,6 +67,7 @@ type Request struct {
 	Format  Format
 	Flags   Flags
 	Command string
+	Args    []string
 	Version bool
 }
 

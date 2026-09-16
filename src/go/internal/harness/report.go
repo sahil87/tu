@@ -306,10 +306,13 @@ func WriteReport(dir string, h ReportHeader, results []Result) error {
 	return os.WriteFile(filepath.Join(dir, "report.json"), append(raw, '\n'), 0o644)
 }
 
-// WriteCaseCaptures writes one case's raw per-side captures under
+// WriteCaseCaptures writes one case's per-side captures under
 // <reportDir>/cases/<case ID as nested dirs>/: {node,go}.{stdout,stderr,exit}
-// for pipe cases, {node,go}.{tty,exit} for tty cases. The call logs are
-// written by the fakes themselves (TUDIFF_CALL_LOG points here).
+// for pipe cases, {node,go}.{tty,exit} for tty cases. The byte channels are
+// home-normalized with each side's staged Home, so the files hold exactly
+// what Compare compared and `diff node.stdout go.stdout` stays useful. The
+// call logs are written by the fakes themselves (TUDIFF_CALL_LOG points
+// here).
 func WriteCaseCaptures(reportDir string, r Result, node, goCap SideCapture) error {
 	dir := filepath.Join(reportDir, "cases", filepath.FromSlash(r.Case.ID))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -327,14 +330,14 @@ func WriteCaseCaptures(reportDir string, r Result, node, goCap SideCapture) erro
 	}
 	for _, side := range sides {
 		if r.Case.IO == IOTTY {
-			if err := write(side.name+".tty", side.cap.TTY); err != nil {
+			if err := write(side.name+".tty", NormalizeHome(side.cap.TTY, side.cap.Home)); err != nil {
 				return err
 			}
 		} else {
-			if err := write(side.name+".stdout", side.cap.Stdout); err != nil {
+			if err := write(side.name+".stdout", NormalizeHome(side.cap.Stdout, side.cap.Home)); err != nil {
 				return err
 			}
-			if err := write(side.name+".stderr", side.cap.Stderr); err != nil {
+			if err := write(side.name+".stderr", NormalizeHome(side.cap.Stderr, side.cap.Home)); err != nil {
 				return err
 			}
 		}

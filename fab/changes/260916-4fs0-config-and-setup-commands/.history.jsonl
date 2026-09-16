@@ -1,0 +1,12 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-16T15:29:27Z"}
+{"args":"Context: fab/plans/sahil/26-09-15-go-port.md, row B1. Read the Decisions and Target architecture sections before writing the intake. Do not change any external surface listed under Goal. Build the config cascade (tu.conf/org.conf/legacy), init-conf, status, init-metrics (git clone, clone marker), and the exit-code table. Harness gate: conf variants and setup commands.","cmd":"fab-new","event":"command","ts":"2026-09-16T15:29:27Z"}
+{"delta":"+0.0","event":"confidence","score":3.9,"trigger":"calc-score","ts":"2026-09-16T15:34:41Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-16T15:36:18Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-16T15:36:52Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-16T15:56:01Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-16T16:01:33Z"}
+{"event":"review","result":"passed","ts":"2026-09-16T16:01:33Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-16T16:07:40Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-09-16T16:10:47Z"}
+{"cmd":"git-pr-review","event":"command","ts":"2026-09-16T16:12:58Z"}
+{"event":"review","result":"passed","ts":"2026-09-16T16:35:32Z"}
