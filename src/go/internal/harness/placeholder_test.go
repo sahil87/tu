@@ -213,6 +213,9 @@ func TestReadConfirmed(t *testing.T) {
 	})
 	for name, tc := range map[string]struct{ content, want string }{
 		"malformed json":  {`{"claude": `, "confirmed.json"},
+		"top-level null":  {`null`, "must be a JSON object"},
+		"trailing value":  {`{"claude": ` + validLedgerEntry + `} {"kimi": ` + validLedgerEntry + `}`, "trailing JSON value"},
+		"trailing junk":   {`{"claude": ` + validLedgerEntry + `} junk`, "trailing content"},
 		"unknown source":  {`{"opencod": ` + validLedgerEntry + `}`, `unknown source "opencod"`},
 		"missing machine": {`{"claude": {"date": "2026-09-16", "ccusage_version": "20.0.19"}}`, "claude: machine is required"},
 		"missing date":    {`{"claude": {"machine": "m", "ccusage_version": "20.0.19"}}`, "claude: date is required"},

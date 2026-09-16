@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -250,9 +251,22 @@ func ReadConfirmed(dir string) (map[string]ConfirmedBy, error) {
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
-	ledger := map[string]ConfirmedBy{}
+	var ledger map[string]ConfirmedBy
 	if err := dec.Decode(&ledger); err != nil {
 		return nil, fmt.Errorf("tudiff: %s: %w", ConfirmedLedgerFile, err)
+	}
+	if ledger == nil {
+		return nil, fmt.Errorf("tudiff: %s: document must be a JSON object, not null", ConfirmedLedgerFile)
+	}
+	// The whole file must be that one object — mirror LoadMatrix's
+	// trailing-content check so a stray second value cannot slip through.
+	var extra json.RawMessage
+	switch err := dec.Decode(&extra); err {
+	case io.EOF:
+	case nil:
+		return nil, fmt.Errorf("tudiff: %s: trailing JSON value after the ledger object", ConfirmedLedgerFile)
+	default:
+		return nil, fmt.Errorf("tudiff: %s: trailing content after the ledger object: %w", ConfirmedLedgerFile, err)
 	}
 	for source, cb := range ledger {
 		if !slices.Contains(DefaultSources, source) {
