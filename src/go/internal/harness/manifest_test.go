@@ -87,6 +87,41 @@ func TestManifestRoundTrip(t *testing.T) {
 	if strings.Contains(string(raw), "derived_from") {
 		t.Error("empty DerivedFrom must be omitted")
 	}
+	if strings.Contains(string(raw), "confirmed_by") {
+		t.Error("nil ConfirmedBy must be omitted — a real capture's manifest carries no ledger field")
+	}
+	back, err := ReadManifest(dir)
+	if err != nil {
+		t.Fatalf("ReadManifest: %v", err)
+	}
+	if !reflect.DeepEqual(back, m) {
+		t.Errorf("round trip mismatch:\n got %+v\nwant %+v", back, m)
+	}
+}
+
+func TestManifestConfirmedByRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	m := &Manifest{
+		Schema:  SchemaVersion,
+		Machine: PlaceholderAlias,
+		Fixtures: []Fixture{{
+			Source: "claude", Period: "daily", Args: []string{"--json"}, File: "claude/daily.json",
+			Unconfirmed: false,
+			ConfirmedBy: &ConfirmedBy{Machine: "dev-ws-sahil02", Date: "2026-09-16", CcusageVersion: "20.0.19"},
+		}},
+	}
+	if err := WriteManifest(dir, m); err != nil {
+		t.Fatalf("WriteManifest: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	want := "\"unconfirmed\": false,\n      \"confirmed_by\": {\n        \"machine\": \"dev-ws-sahil02\",\n        \"date\": \"2026-09-16\",\n        \"ccusage_version\": \"20.0.19\"\n      }"
+	if !strings.Contains(s, want) {
+		t.Errorf("confirmed_by not serialized after unconfirmed with machine/date/ccusage_version order:\n%s", s)
+	}
 	back, err := ReadManifest(dir)
 	if err != nil {
 		t.Fatalf("ReadManifest: %v", err)

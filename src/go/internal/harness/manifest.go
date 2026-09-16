@@ -57,6 +57,21 @@ type Fixture struct {
 	Empty       bool     `json:"empty"`
 	Redactions  int      `json:"redactions"`
 	Unconfirmed bool     `json:"unconfirmed"`
+	// ConfirmedBy is present exactly when a _placeholder entry's shape has
+	// been human-confirmed against a real capture (plan row P3b); it is
+	// merged from <alias>/confirmed.json by WritePlaceholders and never
+	// appears on a real capture's entries.
+	ConfirmedBy *ConfirmedBy `json:"confirmed_by,omitempty"`
+}
+
+// ConfirmedBy records who confirmed that a placeholder's key-path set matches
+// a real ccusage capture: the machine the comparison ran on, the day it ran,
+// and the ccusage version that produced the real output. Field order is the
+// serialized key order.
+type ConfirmedBy struct {
+	Machine        string `json:"machine"`
+	Date           string `json:"date"` // YYYY-MM-DD
+	CcusageVersion string `json:"ccusage_version"`
 }
 
 // FixturePath is the manifest-relative path of a fixture's recorded stdout.

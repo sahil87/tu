@@ -1,0 +1,22 @@
+{
+  "claude": {
+    "machine": "dev-ws-sahil02",
+    "date": "2026-09-16",
+    "ccusage_version": "20.0.19"
+  },
+  "codex": {
+    "machine": "dev-ws-sahil02",
+    "date": "2026-09-16",
+    "ccusage_version": "20.0.19"
+  },
+  "gemini": {
+    "machine": "dev-ws-sahil02",
+    "date": "2026-09-16",
+    "ccusage_version": "20.0.19"
+  },
+  "kimi": {
+    "machine": "dev-ws-sahil02",
+    "date": "2026-09-16",
+    "ccusage_version": "20.0.19"
+  }
+}
