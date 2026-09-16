@@ -73,6 +73,41 @@ jobs:
       - name: Test
         run: just go-test
 
+  # Differential harness (plan row P4): byte-diff node dist/tu.mjs against
+  # bin/tu over harness/matrix.json against the placeholder corpus. Every case
+  # is red until Phase 1 lands, so the job is informational: continue-on-error
+  # keeps the red exit 1 from failing the workflow, the report is uploaded as
+  # an artifact, and ci-gate does NOT need this job. Plan row R3 removes
+  # continue-on-error and adds go-diff to ci-gate's needs.
+  go-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: src/go/go.mod
+          cache: false
+
+      - uses: extractions/setup-just@dd310ad5a97d8e7b41793f8ef055398d51ad4de6 # v2
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Differential harness (placeholder matrix)
+        run: just go-diff --placeholder
+        continue-on-error: true # every case is red until Phase 1 lands; R3 removes this and adds the job to ci-gate
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: tudiff-report
+          path: bin/harness/report/
+
   # Single, stable status-check name for the branch ruleset on main to require.
   # `if: always()` so the gate reports a definitive pass/fail even when
   # a required job fails or is cancelled (a skipped required check would

@@ -1,0 +1,15 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-16T10:34:08Z"}
+{"args":"Context: fab/plans/sahil/26-09-15-go-port.md, row P4. tudiff run in src/go/cmd/tudiff — argument matrix file; temp $HOME with conf variants (single, multi, org.conf, legacy); env matrix (NO_COLOR, TU_METRICS_REPO, TTY vs pipe via script); fixed TZ plus one alternate; byte-diff of stdout, stderr and exit code between node dist/tu.mjs and the Go binary using the P3a fake ccusage and fake git on PATH; reads real captures from harness/fixtures/\u003cmachine\u003e/ when present, falls back to _placeholder (D7); first divergence per case plus summary count (the burndown). Wire just go-diff and a CI job that runs the placeholder matrix and uploads the report as an artifact without failing the build.","cmd":"fab-new","event":"command","ts":"2026-09-16T10:34:08Z"}
+{"delta":"+3.9","event":"confidence","score":3.9,"trigger":"calc-score","ts":"2026-09-16T10:39:54Z"}
+{"delta":"+0.0","event":"confidence","score":3.9,"trigger":"calc-score","ts":"2026-09-16T10:40:08Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-16T10:41:53Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-16T10:42:14Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-16T11:02:35Z"}
+{"event":"review","result":"failed","ts":"2026-09-16T11:06:35Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-16T11:06:35Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-16T11:09:32Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-16T11:14:19Z"}
+{"event":"review","result":"passed","ts":"2026-09-16T11:14:19Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-16T11:19:17Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-09-16T11:22:05Z"}
+{"event":"review","result":"passed","ts":"2026-09-16T11:39:12Z"}

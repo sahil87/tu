@@ -1,0 +1,3 @@
+# Seeded metrics repo
+
+A deterministic mini-clone of a tu metrics repo, copied into the staged `$HOME/.tu/metrics_repo/` of the differential harness's multi-mode `$HOME` variants (`multi`, `org`, `legacy`). The layout follows the metrics-repo spec (`<user>/<year>/<machine>/<tool>-<date>.jsonl`, one `UsageEntry` JSON object per line): two profiles (`harness-user`, `other-user`) across two machines so leaderboard and `-u` cases have rows, with the own-machine `cc` day-files straddling the placeholder fixtures' `0.5` cost so both arms of the own-machine max-merge (live wins / stored wins) are exercised. `docs/` is never scanned as a user directory, which is exactly why this README lives here.
