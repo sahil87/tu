@@ -5,7 +5,9 @@
 // Date is an ISO label string ("YYYY-MM-DD" or "YYYY-MM"), never a time.Time:
 // monthly roll-up labels have no instant, and lexicographic order on ISO
 // labels is the total order every filter relies on. Tool holds the registry
-// key (cc, codex, oc, gemini, copilot, kimi), not the display name.
+// key (cc, codex, oc, gemini, copilot, kimi), not the display name. The
+// registry itself (Tool, Tools, Lookup) lives here too: key, display name,
+// and column order are properties of the fact model.
 package fact
 
 // Record is one observed usage fact. The four string fields carry no JSON

@@ -13,7 +13,6 @@ import (
 	"github.com/sahil87/tu/internal/query"
 	"github.com/sahil87/tu/internal/render/ansi"
 	"github.com/sahil87/tu/internal/source"
-	"github.com/sahil87/tu/internal/source/ccusage"
 )
 
 // fakeFetcher is an in-memory Fetcher: it hands back records per tool and
@@ -29,7 +28,7 @@ type fetchCall struct {
 	fresh bool
 }
 
-func (f *fakeFetcher) Fetch(_ context.Context, tool ccusage.Tool, _ string, _ []string, fresh bool) ([]fact.Record, *source.Error) {
+func (f *fakeFetcher) Fetch(_ context.Context, tool fact.Tool, _ string, _ []string, fresh bool) ([]fact.Record, *source.Error) {
 	f.calls = append(f.calls, fetchCall{tool: tool.Key, fresh: fresh})
 	return f.byTool[tool.Key], f.fetchErrs[tool.Key]
 }
@@ -38,7 +37,7 @@ func (f *fakeFetcher) FetchAll(_ context.Context, _ string, _ []string, fresh bo
 	f.calls = append(f.calls, fetchCall{fresh: fresh})
 	var recs []fact.Record
 	var errs []*source.Error
-	for _, tool := range ccusage.Tools {
+	for _, tool := range fact.Tools {
 		recs = append(recs, f.byTool[tool.Key]...)
 		if err := f.fetchErrs[tool.Key]; err != nil {
 			errs = append(errs, err)
@@ -249,9 +248,6 @@ func TestRunUnported(t *testing.T) {
 	}
 }
 
-// The Fetcher interface is satisfied by the real source adapter.
-var _ Fetcher = (*ccusage.Source)(nil)
-
 // ── B2: history ────────────────────────────────────────────────────────────
 
 // historyNow is outside the placeholder window, so no row carries the
@@ -268,7 +264,7 @@ func historyDeps(f *fakeFetcher, width int) Deps {
 // three days, every tool at $0.50 / 24,400 tokens.
 func placeholderCorpus() map[string][]fact.Record {
 	byTool := make(map[string][]fact.Record)
-	for _, tool := range ccusage.Tools {
+	for _, tool := range fact.Tools {
 		for _, d := range []string{"2026-01-05", "2026-01-06", "2026-01-07"} {
 			byTool[tool.Key] = append(byTool[tool.Key], fact.Record{Date: d, Tool: tool.Key, Totals: fakeTotals})
 		}

@@ -12,13 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sahil87/tu/internal/fact"
 	"github.com/sahil87/tu/internal/source"
 )
-
-// DefaultTimeout is the per-source deadline the command edge should put on
-// the context it hands to Fetch. The source itself imposes no deadline: it
-// honors the given context only.
-const DefaultTimeout = 120 * time.Second
 
 // ResolveBinary returns the ccusage binary path, in order: (1) the vendor
 // sibling of the running executable (the tarball layout: binary +
@@ -53,7 +49,7 @@ func ResolveBinary() (string, error) {
 // Output goes to real files, not in-memory pipes: a killed child (context
 // deadline) can leave grandchildren holding a pipe open, and exec.Wait would
 // then block past the deadline waiting for pipe EOF.
-func run(ctx context.Context, tool Tool, binary string, args []string) ([]byte, *source.Error) {
+func run(ctx context.Context, tool fact.Tool, binary string, args []string) ([]byte, *source.Error) {
 	outFile, err := os.CreateTemp("", "tu-ccusage-stdout")
 	if err != nil {
 		return nil, &source.Error{Tool: tool.Key, Name: tool.Name, Kind: source.KindExec, Detail: spawnDetail(binary, err), Err: err}

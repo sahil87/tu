@@ -13,13 +13,13 @@ import (
 	renderjson "github.com/sahil87/tu/internal/render/json"
 	"github.com/sahil87/tu/internal/render/markdown"
 	"github.com/sahil87/tu/internal/source"
-	"github.com/sahil87/tu/internal/source/ccusage"
 	"github.com/sahil87/tu/internal/view"
 )
 
-// Fetcher is what command needs from a source; *ccusage.Source satisfies it.
+// Fetcher is what command needs from a source. *ccusage.Source satisfies it
+// (asserted where cmd/tu assigns it); B3's *metrics.Source will too.
 type Fetcher interface {
-	Fetch(ctx context.Context, tool ccusage.Tool, period string, extraArgs []string, fresh bool) ([]fact.Record, *source.Error)
+	Fetch(ctx context.Context, tool fact.Tool, period string, extraArgs []string, fresh bool) ([]fact.Record, *source.Error)
 	FetchAll(ctx context.Context, period string, extraArgs []string, fresh bool) ([]fact.Record, []*source.Error)
 }
 
@@ -74,18 +74,18 @@ func Run(ctx context.Context, req Request, mode config.Mode, deps Deps) (Result,
 		return Result{}, ErrUnported
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, ccusage.DefaultTimeout)
+	ctx, cancel := context.WithTimeout(ctx, source.DefaultTimeout)
 	defer cancel()
 
 	// Fetch daily only — the TS only ever calls daily; roll-up is client-side.
 	var recs []fact.Record
 	var errs []*source.Error
-	tool, _ := ccusage.Lookup(req.Source)
+	tool, _ := fact.Lookup(req.Source)
 	if req.Source == "" {
-		recs, errs = deps.Source.FetchAll(ctx, ccusage.PeriodDaily, nil, req.Flags.Fresh)
+		recs, errs = deps.Source.FetchAll(ctx, source.PeriodDaily, nil, req.Flags.Fresh)
 	} else {
 		var serr *source.Error
-		recs, serr = deps.Source.Fetch(ctx, tool, ccusage.PeriodDaily, nil, req.Flags.Fresh)
+		recs, serr = deps.Source.Fetch(ctx, tool, source.PeriodDaily, nil, req.Flags.Fresh)
 		if serr != nil {
 			errs = []*source.Error{serr}
 		}
@@ -106,10 +106,10 @@ func runSnapshot(req Request, recs []fact.Record, errs []*source.Error, notices 
 		byTool[g.Key.Tool] = g.Totals
 	}
 
-	tools := ccusage.Tools
+	tools := fact.Tools
 	if req.Source != "" {
-		tool, _ := ccusage.Lookup(req.Source)
-		tools = []ccusage.Tool{tool}
+		tool, _ := fact.Lookup(req.Source)
+		tools = []fact.Tool{tool}
 	}
 	rows := make([]view.ToolTotals, 0, len(tools))
 	for _, t := range tools {
@@ -155,10 +155,10 @@ func runSnapshot(req Request, recs []fact.Record, errs []*source.Error, notices 
 func runHistory(req Request, daily []fact.Record, errs []*source.Error, notices []string, capActive bool, deps Deps) Result {
 	recs := query.RollUp(query.Window(daily, req.Flags.Since, req.Flags.Until), req.Period)
 
-	tools := ccusage.Tools
+	tools := fact.Tools
 	if req.Source != "" {
-		tool, _ := ccusage.Lookup(req.Source)
-		tools = []ccusage.Tool{tool}
+		tool, _ := fact.Lookup(req.Source)
+		tools = []fact.Tool{tool}
 	}
 	series := make([]view.Series, len(tools))
 	byKey := make(map[string]int, len(tools))

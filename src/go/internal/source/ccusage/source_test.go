@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sahil87/tu/internal/fact"
 	"github.com/sahil87/tu/internal/source"
 	"github.com/sahil87/tu/internal/source/cache"
 )
@@ -91,20 +92,20 @@ func newCallLog(t *testing.T) string {
 	return path
 }
 
-func lookupTool(t *testing.T, key string) Tool {
+func lookupTool(t *testing.T, key string) fact.Tool {
 	t.Helper()
-	tool, ok := Lookup(key)
+	tool, ok := fact.Lookup(key)
 	if !ok {
-		t.Fatalf("Lookup(%q) missed", key)
+		t.Fatalf("fact.Lookup(%q) missed", key)
 	}
 	return tool
 }
 
 func TestFetchEachTool(t *testing.T) {
 	src := &Source{Binary: fakeBinary, User: "alice", Machine: "ws-1"}
-	for _, tool := range Tools {
+	for _, tool := range fact.Tools {
 		t.Run(tool.Key, func(t *testing.T) {
-			records, serr := src.Fetch(context.Background(), tool, PeriodDaily, nil, false)
+			records, serr := src.Fetch(context.Background(), tool, source.PeriodDaily, nil, false)
 			if serr != nil {
 				t.Fatalf("Fetch error: %v", serr)
 			}
@@ -128,7 +129,7 @@ func TestFetchArgvComposition(t *testing.T) {
 	src := &Source{Binary: fakeBinary}
 
 	cc := lookupTool(t, "cc")
-	if _, serr := src.Fetch(context.Background(), cc, PeriodDaily, nil, false); serr != nil {
+	if _, serr := src.Fetch(context.Background(), cc, source.PeriodDaily, nil, false); serr != nil {
 		t.Fatal(serr)
 	}
 	lines := readCallLog(t, logPath)
@@ -177,7 +178,7 @@ func TestFetchNonexistentBinary(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "ccusage")
 	src := &Source{Binary: missing}
 
-	_, serr := src.Fetch(context.Background(), lookupTool(t, "cc"), PeriodDaily, nil, false)
+	_, serr := src.Fetch(context.Background(), lookupTool(t, "cc"), source.PeriodDaily, nil, false)
 	if serr == nil {
 		t.Fatal("expected an error for a nonexistent binary")
 	}
@@ -193,7 +194,7 @@ func TestFetchEmptyStderrKeepsNewline(t *testing.T) {
 	stub := writeStub(t, "#!/bin/sh\nexit 1\n")
 	src := &Source{Binary: stub}
 
-	_, serr := src.Fetch(context.Background(), lookupTool(t, "cc"), PeriodDaily, nil, false)
+	_, serr := src.Fetch(context.Background(), lookupTool(t, "cc"), source.PeriodDaily, nil, false)
 	if serr == nil {
 		t.Fatal("expected an error")
 	}
@@ -210,7 +211,7 @@ func TestFetchTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	_, serr := src.Fetch(ctx, lookupTool(t, "cc"), PeriodDaily, nil, false)
+	_, serr := src.Fetch(ctx, lookupTool(t, "cc"), source.PeriodDaily, nil, false)
 	elapsed := time.Since(start)
 
 	if serr == nil {
@@ -231,7 +232,7 @@ func TestResolveBinaryMissing(t *testing.T) {
 	t.Setenv("PATH", t.TempDir()) // no ccusage anywhere; no vendor sibling beside the test binary
 	src := &Source{}              // Binary == "" → ResolveBinary()
 
-	_, serr := src.Fetch(context.Background(), lookupTool(t, "cc"), PeriodDaily, nil, false)
+	_, serr := src.Fetch(context.Background(), lookupTool(t, "cc"), source.PeriodDaily, nil, false)
 	if serr == nil {
 		t.Fatal("expected an error when no ccusage binary exists")
 	}
@@ -262,7 +263,7 @@ func TestResolveBinaryPathFallback(t *testing.T) {
 
 func TestFetchAllDaily(t *testing.T) {
 	src := &Source{Binary: fakeBinary, User: "alice", Machine: "ws-1"}
-	records, errs := src.FetchAll(context.Background(), PeriodDaily, nil, false)
+	records, errs := src.FetchAll(context.Background(), source.PeriodDaily, nil, false)
 
 	if len(errs) != 0 {
 		t.Fatalf("errs = %v, want none", errs)
@@ -271,7 +272,7 @@ func TestFetchAllDaily(t *testing.T) {
 		t.Fatalf("got %d records, want 18", len(records))
 	}
 	for i, r := range records {
-		wantTool := Tools[i/3]
+		wantTool := fact.Tools[i/3]
 		if r.Tool != wantTool.Key {
 			t.Errorf("record %d Tool = %q, want %q (registry order)", i, r.Tool, wantTool.Key)
 		}
@@ -291,15 +292,15 @@ func TestFetchAllWeekly(t *testing.T) {
 	if len(records) != 0 {
 		t.Errorf("records = %v, want none", records)
 	}
-	if len(errs) != len(Tools) {
-		t.Fatalf("got %d errors, want %d", len(errs), len(Tools))
+	if len(errs) != len(fact.Tools) {
+		t.Fatalf("got %d errors, want %d", len(errs), len(fact.Tools))
 	}
 	for i, err := range errs {
 		if err.Kind != source.KindExec {
 			t.Errorf("error %d Kind = %v, want KindExec", i, err.Kind)
 		}
-		if err.Tool != Tools[i].Key {
-			t.Errorf("error %d Tool = %q, want %q (registry order)", i, err.Tool, Tools[i].Key)
+		if err.Tool != fact.Tools[i].Key {
+			t.Errorf("error %d Tool = %q, want %q (registry order)", i, err.Tool, fact.Tools[i].Key)
 		}
 	}
 }
@@ -312,11 +313,11 @@ func TestFetchCacheHitSkipsBinary(t *testing.T) {
 	src := &Source{Binary: fakeBinary, User: "alice", Machine: "ws-1", Cache: store}
 	cc := lookupTool(t, "cc")
 
-	first, serr := src.Fetch(context.Background(), cc, PeriodDaily, nil, false)
+	first, serr := src.Fetch(context.Background(), cc, source.PeriodDaily, nil, false)
 	if serr != nil {
 		t.Fatal(serr)
 	}
-	second, serr := src.Fetch(context.Background(), cc, PeriodDaily, nil, false)
+	second, serr := src.Fetch(context.Background(), cc, source.PeriodDaily, nil, false)
 	if serr != nil {
 		t.Fatal(serr)
 	}
@@ -342,7 +343,7 @@ func TestFetchFreshReinvokesAndRewrites(t *testing.T) {
 	src := &Source{Binary: fakeBinary, Cache: store}
 	cc := lookupTool(t, "cc")
 
-	if _, serr := src.Fetch(context.Background(), cc, PeriodDaily, nil, false); serr != nil {
+	if _, serr := src.Fetch(context.Background(), cc, source.PeriodDaily, nil, false); serr != nil {
 		t.Fatal(serr)
 	}
 	cacheFile := filepath.Join(dir, cache.Key{Tool: "cc", Period: "daily"}.Filename())
@@ -351,7 +352,7 @@ func TestFetchFreshReinvokesAndRewrites(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, serr := src.Fetch(context.Background(), cc, PeriodDaily, nil, true); serr != nil {
+	if _, serr := src.Fetch(context.Background(), cc, source.PeriodDaily, nil, true); serr != nil {
 		t.Fatal(serr)
 	}
 	lines := readCallLog(t, logPath)
@@ -386,7 +387,7 @@ func TestFetchEmptyDailyWritesNoCache(t *testing.T) {
 	dir := t.TempDir()
 	src := &Source{Binary: stub, Cache: &cache.Store{Dir: dir, TTL: cache.TTL, Now: time.Now}}
 
-	records, serr := src.Fetch(context.Background(), lookupTool(t, "cc"), PeriodDaily, nil, false)
+	records, serr := src.Fetch(context.Background(), lookupTool(t, "cc"), source.PeriodDaily, nil, false)
 	if serr != nil {
 		t.Fatalf("Fetch error: %v", serr)
 	}
