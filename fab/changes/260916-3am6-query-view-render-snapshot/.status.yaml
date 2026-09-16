@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 12
@@ -33,25 +33,27 @@ stage_metrics:
     apply: {started_at: "2026-09-16T14:32:52Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T14:48:06Z"}
     review: {started_at: "2026-09-16T14:48:06Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T14:55:58Z"}
     hydrate: {started_at: "2026-09-16T14:55:58Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T15:02:45Z"}
-    ship: {started_at: "2026-09-16T15:02:45Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-09-16T15:02:45Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T15:05:12Z"}
+    review-pr: {started_at: "2026-09-16T15:05:12Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/tu/pull/85
 base_branch: main
 change_type_source: explicit
 true_impact:
-    added: 0
-    deleted: 0
-    net: 0
+    added: 4255
+    deleted: 25
+    net: 4230
     excluding:
-        added: 0
-        deleted: 0
-        net: 0
+        added: 3175
+        deleted: 20
+        net: 3155
     tests:
-        added: 0
-        deleted: 0
-        net: 0
-    computed_at: "2026-09-16T15:02:45Z"
-    computed_at_stage: hydrate
+        added: 1546
+        deleted: 1
+        net: 1545
+    computed_at: "2026-09-16T15:05:12Z"
+    computed_at_stage: ship
 summary: documents the Go port's query/view/render layers and the command edge (config, Parse, Run, cmd/tu) behind the 52-case green snapshot gate; updates fact-and-sources and toolchain to the wired-in present truth
 # base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-09-16T15:02:45Z
+last_updated: 2026-09-16T15:05:12Z
