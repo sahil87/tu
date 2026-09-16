@@ -24,12 +24,14 @@ func (Exec) IsRepo(dir string) bool {
 	return cmd.Run() == nil
 }
 
-// Clone runs `git clone url dir` with the given writers attached to the
-// child's stdout and stderr (the TS stdio "inherit"); a non-zero exit is
-// returned as *exec.ExitError. No timeout, no GIT_TERMINAL_PROMPT — those
+// Clone runs `git clone url dir` with the given reader and writers attached to
+// the child's stdin, stdout and stderr (the TS stdio "inherit" — stdin included,
+// so an interactive clone can still prompt for credentials or a passphrase); a
+// non-zero exit is returned as *exec.ExitError. No timeout, no GIT_TERMINAL_PROMPT — those
 // belong to B3's auto-clone guard, not to the interactive init-metrics clone.
-func (Exec) Clone(ctx context.Context, url, dir string, stdout, stderr io.Writer) error {
+func (Exec) Clone(ctx context.Context, url, dir string, stdin io.Reader, stdout, stderr io.Writer) error {
 	cmd := exec.CommandContext(ctx, "git", "clone", url, dir)
+	cmd.Stdin = stdin
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	return cmd.Run()

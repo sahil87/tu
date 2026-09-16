@@ -90,7 +90,7 @@ func TestClonePassthrough(t *testing.T) {
 	t.Setenv("FAKEGIT_STDOUT", "clone-out")
 	t.Setenv("FAKEGIT_STDERR", "clone-err")
 	var stdout, stderr bytes.Buffer
-	if err := (Exec{}).Clone(context.Background(), "u", "/y", &stdout, &stderr); err != nil {
+	if err := (Exec{}).Clone(context.Background(), "u", "/y", nil, &stdout, &stderr); err != nil {
 		t.Fatalf("Clone err = %v", err)
 	}
 	if stdout.String() != "clone-out" || stderr.String() != "clone-err" {
@@ -109,7 +109,7 @@ func TestCloneFailure(t *testing.T) {
 	t.Setenv("FAKEGIT_EXIT", "128")
 	t.Setenv("FAKEGIT_STDERR", "boom")
 	var stdout, stderr bytes.Buffer
-	err := (Exec{}).Clone(context.Background(), "u", "/y", &stdout, &stderr)
+	err := (Exec{}).Clone(context.Background(), "u", "/y", nil, &stdout, &stderr)
 	var exitErr *exec.ExitError
 	if err == nil || !errors.As(err, &exitErr) {
 		t.Fatalf("err = %v, want *exec.ExitError", err)

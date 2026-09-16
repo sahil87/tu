@@ -179,7 +179,7 @@ func runCommand(req command.Request, env config.Env, stdout, stderr io.Writer) i
 			// The clone runs at the edge with the process streams passed
 			// through (the TS stdio "inherit": git's "Cloning into …" chatter
 			// reaches the user's stderr).
-			if cerr := (metricsync.Exec{}).Clone(context.Background(), res.Clone.URL, res.Clone.Dir, stdout, stderr); cerr != nil {
+			if cerr := (metricsync.Exec{}).Clone(context.Background(), res.Clone.URL, res.Clone.Dir, os.Stdin, stdout, stderr); cerr != nil {
 				fmt.Fprintf(stderr, "Error: git clone failed (exit %d).\n", cloneExitCode(cerr))
 				return command.ExitOperational
 			}
