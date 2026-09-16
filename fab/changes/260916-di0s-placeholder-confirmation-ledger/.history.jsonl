@@ -1,0 +1,10 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-16T11:55:44Z"}
+{"args":"Context: fab/plans/sahil/26-09-15-go-port.md, row P3c. Add a committed harness/fixtures/_placeholder/confirmed.json ledger that tudiff placeholder merges into the manifest (unconfirmed: false + confirmed_by); corpus test asserts manifest and ledger agree; seed with claude, codex, gemini, kimi from P3b.","cmd":"fab-new","event":"command","ts":"2026-09-16T11:55:44Z"}
+{"delta":"+0.0","event":"confidence","score":4.3,"trigger":"calc-score","ts":"2026-09-16T11:57:40Z"}
+{"delta":"+0.0","event":"confidence","score":4.3,"trigger":"calc-score","ts":"2026-09-16T11:58:26Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-16T12:00:04Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-16T12:00:18Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-16T12:04:40Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-16T12:08:25Z"}
+{"event":"review","result":"passed","ts":"2026-09-16T12:08:25Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-16T12:10:24Z"}

@@ -159,12 +159,148 @@ func TestWritePlaceholders(t *testing.T) {
 		t.Fatalf("manifest has %d fixtures, want 2", len(m.Fixtures))
 	}
 	for _, fx := range m.Fixtures {
-		if !fx.Unconfirmed {
-			t.Errorf("%s: unconfirmed must be true", fx.Source)
+		if !fx.Unconfirmed || fx.ConfirmedBy != nil {
+			t.Errorf("%s: with no ledger every entry must be unconfirmed with no confirmed_by", fx.Source)
 		}
 		if fx.Days != 3 || fx.Empty || fx.FirstDate != PlaceholderDates[0] || fx.LastDate != PlaceholderDates[2] {
 			t.Errorf("%s: days=%d empty=%v range=%s..%s, want 3/false/%s..%s", fx.Source, fx.Days, fx.Empty, fx.FirstDate, fx.LastDate, PlaceholderDates[0], PlaceholderDates[2])
 		}
+	}
+	raw, err := os.ReadFile(filepath.Join(out, "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte("confirmed_by")) {
+		t.Error("no-ledger manifest must not contain confirmed_by")
+	}
+}
+
+func writeLedger(t *testing.T, dir, content string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ConfirmedLedgerFile), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+const validLedgerEntry = `{"machine": "dev-ws-sahil02", "date": "2026-09-16", "ccusage_version": "20.0.19"}`
+
+// R2: the ledger reader's contract — absent is empty, everything malformed
+// is a loud error naming the file and the problem.
+func TestReadConfirmed(t *testing.T) {
+	t.Run("missing file is an empty ledger", func(t *testing.T) {
+		ledger, err := ReadConfirmed(t.TempDir())
+		if err != nil {
+			t.Fatalf("ReadConfirmed: %v", err)
+		}
+		if ledger == nil || len(ledger) != 0 {
+			t.Errorf("ledger = %v, want empty non-nil map", ledger)
+		}
+	})
+	t.Run("valid", func(t *testing.T) {
+		dir := t.TempDir()
+		writeLedger(t, dir, `{"claude": `+validLedgerEntry+`, "kimi": `+validLedgerEntry+`}`)
+		ledger, err := ReadConfirmed(dir)
+		if err != nil {
+			t.Fatalf("ReadConfirmed: %v", err)
+		}
+		want := ConfirmedBy{Machine: "dev-ws-sahil02", Date: "2026-09-16", CcusageVersion: "20.0.19"}
+		if len(ledger) != 2 || ledger["claude"] != want || ledger["kimi"] != want {
+			t.Errorf("ledger = %+v", ledger)
+		}
+	})
+	for name, tc := range map[string]struct{ content, want string }{
+		"malformed json":  {`{"claude": `, "confirmed.json"},
+		"unknown source":  {`{"opencod": ` + validLedgerEntry + `}`, `unknown source "opencod"`},
+		"missing machine": {`{"claude": {"date": "2026-09-16", "ccusage_version": "20.0.19"}}`, "claude: machine is required"},
+		"missing date":    {`{"claude": {"machine": "m", "ccusage_version": "20.0.19"}}`, "claude: date is required"},
+		"bad date":        {`{"claude": {"machine": "m", "date": "16-09-2026", "ccusage_version": "20.0.19"}}`, "YYYY-MM-DD"},
+		"missing version": {`{"claude": {"machine": "m", "date": "2026-09-16"}}`, "claude: ccusage_version is required"},
+		"unknown field":   {`{"claude": {"machine": "m", "date": "2026-09-16", "ccusage_verison": "20.0.19"}}`, "ccusage_verison"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeLedger(t, dir, tc.content)
+			_, err := ReadConfirmed(dir)
+			if err == nil {
+				t.Fatalf("expected an error for %s", name)
+			}
+			if !strings.Contains(err.Error(), ConfirmedLedgerFile) || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error = %q, want it to name %s and contain %q", err, ConfirmedLedgerFile, tc.want)
+			}
+		})
+	}
+}
+
+// R4: a listed source is flipped to confirmed with the ledger entry attached;
+// an unlisted one keeps today's shape; a ledger key outside this run's
+// sources is validated but emits nothing.
+func TestWritePlaceholdersMergesLedger(t *testing.T) {
+	out := filepath.Join(t.TempDir(), PlaceholderAlias)
+	writeLedger(t, out, `{"codex": `+validLedgerEntry+`, "gemini": `+validLedgerEntry+`}`)
+	if err := WritePlaceholders(out, []string{"codex", "opencode"}); err != nil {
+		t.Fatalf("WritePlaceholders: %v", err)
+	}
+	m, err := ReadManifest(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Fixtures) != 2 {
+		t.Fatalf("manifest has %d fixtures, want 2 (gemini is in the ledger but not in this run)", len(m.Fixtures))
+	}
+	want := ConfirmedBy{Machine: "dev-ws-sahil02", Date: "2026-09-16", CcusageVersion: "20.0.19"}
+	for _, fx := range m.Fixtures {
+		switch fx.Source {
+		case "codex":
+			if fx.Unconfirmed || fx.ConfirmedBy == nil || *fx.ConfirmedBy != want {
+				t.Errorf("codex: unconfirmed=%v confirmed_by=%+v, want false/%+v", fx.Unconfirmed, fx.ConfirmedBy, want)
+			}
+		case "opencode":
+			if !fx.Unconfirmed || fx.ConfirmedBy != nil {
+				t.Errorf("opencode: unconfirmed=%v confirmed_by=%+v, want true/nil", fx.Unconfirmed, fx.ConfirmedBy)
+			}
+		}
+	}
+	raw, err := os.ReadFile(filepath.Join(out, "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := bytes.Count(raw, []byte(`"confirmed_by"`)); n != 1 {
+		t.Errorf("confirmed_by appears %d times, want exactly 1:\n%s", n, raw)
+	}
+	// The ledger changes flags, never fixture bytes.
+	fresh, err := EncodePretty(PlaceholderFor("codex"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(out, "codex", "daily.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, fresh) {
+		t.Error("codex fixture bytes changed under a confirmed ledger entry")
+	}
+}
+
+// R4: a ledger error aborts before anything is written.
+func TestWritePlaceholdersLedgerErrorWritesNothing(t *testing.T) {
+	out := filepath.Join(t.TempDir(), PlaceholderAlias)
+	writeLedger(t, out, `not json`)
+	if err := WritePlaceholders(out, []string{"codex"}); err == nil {
+		t.Fatal("expected a ledger error")
+	}
+	entries, err := os.ReadDir(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != ConfirmedLedgerFile {
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("out dir has %v, want only %s", names, ConfirmedLedgerFile)
 	}
 }
 

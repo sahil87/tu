@@ -1,12 +1,16 @@
 package harness
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -217,11 +221,65 @@ func EncodePretty(v any) ([]byte, error) {
 	return append(raw, '\n'), nil
 }
 
+// ConfirmedLedgerFile is the per-alias ledger of human-confirmed placeholder
+// shapes (plan row P3b), read by WritePlaceholders from <out>/confirmed.json
+// and committed alongside the placeholder corpus. It is the only hand-written
+// file under _placeholder/: manifest.json is regenerated from the fixtures
+// plus this ledger, so a confirmation recorded here survives regeneration
+// where a hand-edited manifest flag would not.
+const ConfirmedLedgerFile = "confirmed.json"
+
+// ledgerDate is the accepted shape of a ConfirmedBy.Date: provenance, so a
+// plain YYYY-MM-DD pattern rather than a calendar parse.
+var ledgerDate = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+
+// ReadConfirmed loads <dir>/confirmed.json: a JSON object keyed by ccusage
+// source name whose values carry machine, date, and ccusage_version. A
+// missing file is an empty ledger, not an error. Malformed JSON, a key that
+// is not one of DefaultSources, a missing or malformed field, or an unknown
+// field is an error — the ledger is hand-edited and a typo must fail loudly
+// rather than leave a source silently unconfirmed.
+func ReadConfirmed(dir string) (map[string]ConfirmedBy, error) {
+	path := filepath.Join(dir, ConfirmedLedgerFile)
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return map[string]ConfirmedBy{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("tudiff: %s: %w", ConfirmedLedgerFile, err)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	ledger := map[string]ConfirmedBy{}
+	if err := dec.Decode(&ledger); err != nil {
+		return nil, fmt.Errorf("tudiff: %s: %w", ConfirmedLedgerFile, err)
+	}
+	for source, cb := range ledger {
+		if !slices.Contains(DefaultSources, source) {
+			return nil, fmt.Errorf("tudiff: %s: unknown source %q (known: %s)", ConfirmedLedgerFile, source, strings.Join(DefaultSources, ", "))
+		}
+		switch {
+		case cb.Machine == "":
+			return nil, fmt.Errorf("tudiff: %s: %s: machine is required", ConfirmedLedgerFile, source)
+		case cb.Date == "":
+			return nil, fmt.Errorf("tudiff: %s: %s: date is required", ConfirmedLedgerFile, source)
+		case !ledgerDate.MatchString(cb.Date):
+			return nil, fmt.Errorf("tudiff: %s: %s: date %q must be YYYY-MM-DD", ConfirmedLedgerFile, source, cb.Date)
+		case cb.CcusageVersion == "":
+			return nil, fmt.Errorf("tudiff: %s: %s: ccusage_version is required", ConfirmedLedgerFile, source)
+		}
+	}
+	return ledger, nil
+}
+
 // WritePlaceholders writes <out>/<source>/daily.json for each source plus a
-// regenerated <out>/manifest.json with every entry unconfirmed. Real captures
-// (any alias other than PlaceholderAlias) are local-only and may coexist with
-// the placeholder corpus; the replayer's ordered TUDIFF_FIXTURES list decides
-// which wins at replay time.
+// regenerated <out>/manifest.json. Every entry is unconfirmed unless its
+// source is listed in <out>/confirmed.json (ReadConfirmed), in which case it
+// is unconfirmed: false with that ledger entry as confirmed_by. A ledger
+// error aborts before any file is written. Real captures (any alias other
+// than PlaceholderAlias) are local-only and may coexist with the placeholder
+// corpus; the replayer's ordered TUDIFF_FIXTURES list decides which wins at
+// replay time.
 func WritePlaceholders(out string, sources []string) error {
 	// Refuse to overwrite a real alias's corpus: a mistaken --out pointing at
 	// a capture directory would clobber its fixtures.
@@ -230,6 +288,10 @@ func WritePlaceholders(out string, sources []string) error {
 			return fmt.Errorf("tudiff: %s already holds the captured corpus of %s — refusing to overwrite it with placeholders", out, m.Machine)
 		}
 	} else if !os.IsNotExist(err) {
+		return err
+	}
+	ledger, err := ReadConfirmed(out)
+	if err != nil {
 		return err
 	}
 
@@ -254,6 +316,10 @@ func WritePlaceholders(out string, sources []string) error {
 			Args:        []string{"--json"},
 			File:        FixturePath(source, "daily"),
 			Unconfirmed: true,
+		}
+		if cb, ok := ledger[source]; ok {
+			fx.Unconfirmed = false
+			fx.ConfirmedBy = &cb
 		}
 		fx.Days, fx.FirstDate, fx.LastDate, fx.Empty = Summarize(raw)
 		sum := sha256.Sum256(raw)

@@ -124,8 +124,19 @@ func runPlaceholder(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	for _, source := range sources {
-		fmt.Fprintf(stdout, "%s daily --json  placeholder  -> %s/%s\n", source, *out, harness.FixturePath(source, "daily"))
+	// Report from the manifest just written — one source of truth for what
+	// the ledger merge actually produced.
+	m, err := harness.ReadManifest(*out)
+	if err != nil {
+		fmt.Fprintf(stderr, "tudiff: cannot read back %s/manifest.json: %v\n", *out, err)
+		return 1
+	}
+	for _, fx := range m.Fixtures {
+		state := "(unconfirmed)"
+		if fx.ConfirmedBy != nil {
+			state = fmt.Sprintf("(confirmed: %s %s)", fx.ConfirmedBy.Machine, fx.ConfirmedBy.Date)
+		}
+		fmt.Fprintf(stdout, "%s %s %s  placeholder %s  -> %s/%s\n", fx.Source, fx.Period, strings.Join(fx.Args, " "), state, *out, fx.File)
 	}
 	return 0
 }

@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "machine": "_placeholder",
-  "captured_at": "2026-09-15T22:29:51Z",
+  "captured_at": "2026-09-16T12:08:39Z",
   "ccusage_version": "20.0.19",
   "ccusage_path": "",
   "platform": "derived",
@@ -23,7 +23,12 @@
       "last_date": "2026-01-07",
       "empty": false,
       "redactions": 0,
-      "unconfirmed": true
+      "unconfirmed": false,
+      "confirmed_by": {
+        "machine": "dev-ws-sahil02",
+        "date": "2026-09-16",
+        "ccusage_version": "20.0.19"
+      }
     },
     {
       "source": "codex",
@@ -40,7 +45,12 @@
       "last_date": "2026-01-07",
       "empty": false,
       "redactions": 0,
-      "unconfirmed": true
+      "unconfirmed": false,
+      "confirmed_by": {
+        "machine": "dev-ws-sahil02",
+        "date": "2026-09-16",
+        "ccusage_version": "20.0.19"
+      }
     },
     {
       "source": "opencode",
@@ -74,7 +84,12 @@
       "last_date": "2026-01-07",
       "empty": false,
       "redactions": 0,
-      "unconfirmed": true
+      "unconfirmed": false,
+      "confirmed_by": {
+        "machine": "dev-ws-sahil02",
+        "date": "2026-09-16",
+        "ccusage_version": "20.0.19"
+      }
     },
     {
       "source": "copilot",
@@ -108,7 +123,12 @@
       "last_date": "2026-01-07",
       "empty": false,
       "redactions": 0,
-      "unconfirmed": true
+      "unconfirmed": false,
+      "confirmed_by": {
+        "machine": "dev-ws-sahil02",
+        "date": "2026-09-16",
+        "ccusage_version": "20.0.19"
+      }
     }
   ]
 }

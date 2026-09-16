@@ -41,6 +41,10 @@ func TestCorpus(t *testing.T) {
 			continue
 		}
 
+		if alias == PlaceholderAlias {
+			assertLedgerAgreement(t, dir, m)
+		}
+
 		for _, fx := range m.Fixtures {
 			prefix := alias + "/" + fx.File
 
@@ -64,6 +68,42 @@ func TestCorpus(t *testing.T) {
 			if fx.Unconfirmed && alias != PlaceholderAlias {
 				t.Errorf("%s: unconfirmed: true outside %s/", prefix, PlaceholderAlias)
 			}
+			if fx.ConfirmedBy != nil && alias != PlaceholderAlias {
+				t.Errorf("%s: confirmed_by outside %s/ — a real capture is confirmed by being real, not by the ledger", prefix, PlaceholderAlias)
+			}
+		}
+	}
+}
+
+// assertLedgerAgreement checks that the placeholder manifest is what the
+// generator would produce from the committed confirmed.json: every listed
+// source is unconfirmed: false with that exact confirmed_by, every unlisted
+// source is unconfirmed: true with none, and no ledger key is missing from
+// the corpus. A mismatch means one side was edited without regenerating.
+func assertLedgerAgreement(t *testing.T, dir string, m *Manifest) {
+	t.Helper()
+	ledger, err := ReadConfirmed(dir)
+	if err != nil {
+		t.Errorf("%s: %v", PlaceholderAlias, err)
+		return
+	}
+	seen := map[string]bool{}
+	for _, fx := range m.Fixtures {
+		prefix := PlaceholderAlias + "/" + fx.File
+		if fx.Period == "daily" {
+			seen[fx.Source] = true
+		}
+		cb, listed := ledger[fx.Source]
+		switch {
+		case listed && (fx.Unconfirmed || fx.ConfirmedBy == nil || *fx.ConfirmedBy != cb):
+			t.Errorf("%s: manifest disagrees with %s (unconfirmed=%v confirmed_by=%+v, ledger %+v) — re-run tudiff placeholder", prefix, ConfirmedLedgerFile, fx.Unconfirmed, fx.ConfirmedBy, cb)
+		case !listed && (!fx.Unconfirmed || fx.ConfirmedBy != nil):
+			t.Errorf("%s: confirmed in the manifest but not listed in %s — re-run tudiff placeholder", prefix, ConfirmedLedgerFile)
+		}
+	}
+	for source := range ledger {
+		if !seen[source] {
+			t.Errorf("%s/%s: source %q is confirmed but has no daily fixture in the corpus — re-run tudiff placeholder", PlaceholderAlias, ConfirmedLedgerFile, source)
 		}
 	}
 }
