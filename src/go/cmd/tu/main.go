@@ -5,7 +5,8 @@
 // formula (constitution v1.2.0 § Go Transition). Plan and decision log:
 // fab/plans/sahil/26-09-15-go-port.md.
 //
-// The binary answers the single-mode snapshot grammar (tu, tu cc, tu m, --json,
+// The binary answers the single-mode snapshot and history grammars (tu,
+// tu cc, tu m, tu h, tu cc mh --since/--until/--full, --json/--csv/--md,
 // --no-color, --fresh, …) and the setup commands (init-conf, init-metrics,
 // status) for real; everything else prints the deliberate not-implemented
 // placeholder the differential harness diffs against.
@@ -25,6 +26,8 @@ import (
 	// (TZ=Asia/Kolkata) must resolve everywhere Node's bundled ICU does. Go
 	// consults the embed only when the system database is missing.
 	_ "time/tzdata"
+
+	"golang.org/x/term"
 
 	"github.com/sahil87/tu/internal/command"
 	"github.com/sahil87/tu/internal/config"
@@ -57,6 +60,26 @@ func currentUsername() (string, error) {
 		return "", err
 	}
 	return u.Username, nil
+}
+
+// defaultWidth is the width budget when stdout is not a TTY (a pipe, a
+// bytes.Buffer in tests, or a probe error) — the TS process.stdout.columns ?? 80.
+// COLUMNS is never consulted (DC-12).
+const defaultWidth = 80
+
+// terminalWidth reports the stdout TTY width, or defaultWidth when stdout is
+// not a terminal (or the size probe fails). Only cmd/tu probes; renderers
+// receive the width as a value.
+func terminalWidth(stdout io.Writer) int {
+	f, ok := stdout.(*os.File)
+	if !ok || !term.IsTerminal(int(f.Fd())) {
+		return defaultWidth
+	}
+	w, _, err := term.GetSize(int(f.Fd()))
+	if err != nil || w <= 0 {
+		return defaultWidth
+	}
+	return w
 }
 
 // run is the testable entry point: it dispatches on args and writes to the
@@ -112,6 +135,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		Source: src,
 		Now:    time.Now,
 		Colors: ansi.Colors{Enabled: !req.Flags.NoColor && os.Getenv("NO_COLOR") == ""},
+		Width:  terminalWidth(stdout),
 	}
 
 	res, err := command.Run(context.Background(), req, cfg.Mode, deps)
@@ -122,6 +146,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return command.ExitOperational
+	}
+	// The TS main() order: guard notices first (printed before any fetch),
+	// then the source fetch warnings, then stdout.
+	for _, n := range res.Notices {
+		fmt.Fprintln(stderr, n)
 	}
 	source.WriteWarnings(stderr, res.Warnings)
 	for _, l := range res.Lines {

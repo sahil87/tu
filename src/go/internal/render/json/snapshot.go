@@ -1,7 +1,9 @@
 // Package json is the JSON encoder: it renders the snapshot object exactly as
 // the TS emitJson (JSON.stringify(obj, null, 2) plus console.log's trailing
-// newline) does. The writer is hand-ordered — Go maps are unordered and
-// struct marshalling cannot emit the conditional "label" key first — using
+// newline) does, and the two history shapes (history.go: a bare entry array
+// for one tool, an object keyed by display name with [] inline for empty
+// series). The writer is hand-ordered — Go maps are unordered and struct
+// marshalling cannot emit the conditional "label" key first — using
 // encoding/json only for scalar encoding. Returned as lines; nothing here
 // writes to a stream.
 package json

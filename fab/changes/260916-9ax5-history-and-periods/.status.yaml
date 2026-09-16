@@ -1,0 +1,57 @@
+id: 9ax5
+name: 260916-9ax5-history-and-periods
+created: 2026-09-16T16:45:40Z
+created_by: sahil-noon
+change_type: feat
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
+    review-pr: pending
+plan:
+    generated: true
+    task_count: 17
+    acceptance_count: 39
+    acceptance_completed: 39
+confidence:
+    certain: 17
+    confident: 7
+    tentative: 0
+    unresolved: 0
+    score: 4.3
+    fuzzy: true
+    dimensions:
+        signal: 74.6
+        reversibility: 85.6
+        competence: 90.4
+        disambiguation: 82.9
+stage_metrics:
+    intake: {started_at: "2026-09-16T16:45:40Z", driver: fab-new, iterations: 1, completed_at: "2026-09-16T16:55:14Z"}
+    apply: {started_at: "2026-09-16T16:55:14Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T17:18:35Z"}
+    review: {started_at: "2026-09-16T17:18:35Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T17:22:32Z"}
+    hydrate: {started_at: "2026-09-16T17:22:32Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T17:29:54Z"}
+    ship: {started_at: "2026-09-16T17:29:54Z", driver: fab-fff, iterations: 1}
+prs: []
+change_type_source: explicit
+base_branch: main
+true_impact:
+    added: 0
+    deleted: 0
+    net: 0
+    excluding:
+        added: 0
+        deleted: 0
+        net: 0
+    tests:
+        added: 0
+        deleted: 0
+        net: 0
+    computed_at: "2026-09-16T17:29:54Z"
+    computed_at_stage: hydrate
+summary: 'Go port row B2: single-mode history displays (h/dh/wh/mh) with --since/--until/--full, the 3-month cap, warn-and-clear guards, bars/deltas/footer/legend in the view model, new render/csv and render/markdown encoders, the two JSON history shapes, and the x/term width probe — 134 of 368 placeholder harness cases green'
+# base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-09-16T17:29:54Z
