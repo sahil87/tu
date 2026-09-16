@@ -43,6 +43,16 @@ func CurrentLabel(p Period, now time.Time) string {
 	}
 }
 
+// ThreeMonthFloor is the implicit history cap's floor: the first day of the
+// local month two calendar months back, so the window spans three calendar
+// months including the current one (2026-09-16 → "2026-07-01"; 2026-01-15 →
+// "2025-11-01" — time.Date normalizes the month underflow). Mirrors the TS
+// threeMonthFloor; the caller passes deps.Now() so the harness tz axis holds.
+func ThreeMonthFloor(now time.Time) string {
+	floor := time.Date(now.Year(), now.Month()-2, 1, 0, 0, 0, 0, now.Location())
+	return floor.Format("2006-01-02")
+}
+
 // WeekLabel maps a daily ISO label to its week's Sunday using UTC date
 // arithmetic on the date-only string (DST-immune, mirroring the TS weekLabel).
 // A label that does not parse as 2006-01-02 is returned unchanged — it becomes

@@ -397,3 +397,90 @@ func TestE2EReservedUser(t *testing.T) {
 	}
 	assertRun(t, []string{"cc"}, 2, "", `Error: config user "all" is reserved (used by -u all)`+"\n")
 }
+
+// ── B2: history displays, windows, and the csv/md encoders ─────────────────
+//
+// Byte references: intake §12 (node v24, placeholder corpus, TZ=UTC, piped).
+// The e2e binary writes to a bytes.Buffer, so the width is 80 throughout (no
+// bars — R19).
+
+// The populated single-tool window (`cc h --since --until`, §12 cc-h-window;
+// identical under TZ=Asia/Kolkata and to `cc h --full`).
+const e2eCCHWindow = "\n\x1b[1;37m📊 Claude Code (daily)\x1b[0m\n\n\x1b[1;36mDate        \x1b[0m | \x1b[1;36m         Input\x1b[0m | \x1b[1;36m        Output\x1b[0m | \x1b[1;36m   Cache Write\x1b[0m | \x1b[1;36m    Cache Read\x1b[0m | \x1b[1;36m         Total\x1b[0m | \x1b[1;36m     Cost\x1b[0m\n\x1b[2m─────────────|────────────────|────────────────|────────────────|────────────────|────────────────|──────────\x1b[0m\n2026-01-05   |          3,000 |            400 |          1,000 |         20,000 |         24,400 |     $0.50\n2026-01-06   |          3,000 |            400 |          1,000 |         20,000 |         24,400 |     $0.50\n2026-01-07   |          3,000 |            400 |          1,000 |         20,000 |         24,400 |     $0.50\n\x1b[2m─────────────|────────────────|────────────────|────────────────|────────────────|────────────────|──────────\x1b[0m\n\x1b[1;37mTotal       \x1b[0m | \x1b[1;37m         9,000\x1b[0m | \x1b[1;37m         1,200\x1b[0m | \x1b[1;37m         3,000\x1b[0m | \x1b[1;37m        60,000\x1b[0m | \x1b[1;37m        73,200\x1b[0m | \x1b[1;37m    $1.50\x1b[0m\n\x1b[2mavg $0.50/day · peak $0.50 (2026-01-05)\x1b[0m\n\n"
+
+// The populated all-tools window (`h --since --until`, §12 h-window; the same
+// bytes for `h --full` and the `dh`/`history` aliases).
+const e2eHWindow = "\n\x1b[1;37m📊 Combined Cost History (daily)\x1b[0m\n\n\x1b[1;36mDate      \x1b[0m | \x1b[1;36mClaude Code\x1b[0m | \x1b[1;36m    Codex\x1b[0m | \x1b[1;36m OpenCode\x1b[0m | \x1b[1;36m   Gemini\x1b[0m | \x1b[1;36m  Copilot\x1b[0m | \x1b[1;36m     Kimi\x1b[0m | \x1b[1;36m     Cost\x1b[0m\n\x1b[2m───────────|─────────────|───────────|───────────|───────────|───────────|───────────|──────────\x1b[0m\n2026-01-05 |       $0.50 |     $0.50 |     $0.50 |     $0.50 |     $0.50 |     $0.50 |     $3.00\n2026-01-06 |       $0.50 |     $0.50 |     $0.50 |     $0.50 |     $0.50 |     $0.50 |     $3.00\n2026-01-07 |       $0.50 |     $0.50 |     $0.50 |     $0.50 |     $0.50 |     $0.50 |     $3.00\n\x1b[2m───────────|─────────────|───────────|───────────|───────────|───────────|───────────|──────────\x1b[0m\n\x1b[1;37mTotal     \x1b[0m | \x1b[1;37m      $1.50\x1b[0m | \x1b[1;37m    $1.50\x1b[0m | \x1b[1;37m    $1.50\x1b[0m | \x1b[1;37m    $1.50\x1b[0m | \x1b[1;37m    $1.50\x1b[0m | \x1b[1;37m    $1.50\x1b[0m | \x1b[1;37m    $9.00\x1b[0m\n\x1b[2mavg $3.00/day · peak $3.00 (2026-01-05)\x1b[0m\n\n"
+
+func TestE2EHistoryWindow(t *testing.T) {
+	assertRun(t, []string{"cc", "h", "--since", "2026-01-01", "--until", "2026-01-31"}, 0, e2eCCHWindow, "")
+	assertRun(t, []string{"h", "--since", "2026-01-01", "--until", "2026-01-31"}, 0, e2eHWindow, "")
+	// --full is the uncapped equivalent; the aliases share the bytes.
+	assertRun(t, []string{"cc", "h", "--full"}, 0, e2eCCHWindow, "")
+	assertRun(t, []string{"dh", "--full"}, 0, e2eHWindow, "")
+}
+
+// The weekly window rolls up to one row labeled with the leading Sunday
+// 2026-01-04, which precedes --since (R2).
+func TestE2EWeeklyWindow(t *testing.T) {
+	want := "\n\x1b[1;37m📊 Combined Cost History (weekly)\x1b[0m\n\n\x1b[1;36mDate      \x1b[0m | \x1b[1;36mClaude Code\x1b[0m | \x1b[1;36m    Codex\x1b[0m | \x1b[1;36m OpenCode\x1b[0m | \x1b[1;36m   Gemini\x1b[0m | \x1b[1;36m  Copilot\x1b[0m | \x1b[1;36m     Kimi\x1b[0m | \x1b[1;36m     Cost\x1b[0m\n\x1b[2m───────────|─────────────|───────────|───────────|───────────|───────────|───────────|──────────\x1b[0m\n2026-01-04 |       $1.50 |     $1.50 |     $1.50 |     $1.50 |     $1.50 |     $1.50 |     $9.00\n\n"
+	assertRun(t, []string{"wh", "--since", "2026-01-01", "--until", "2026-01-31"}, 0, want, "")
+}
+
+// One-row windows render no divider, Total or footer (§12 mh / cc-mh).
+func TestE2EMonthlyHistory(t *testing.T) {
+	all := "\n\x1b[1;37m📊 Combined Cost History (monthly)\x1b[0m\n\n\x1b[1;36mDate      \x1b[0m | \x1b[1;36mClaude Code\x1b[0m | \x1b[1;36m    Codex\x1b[0m | \x1b[1;36m OpenCode\x1b[0m | \x1b[1;36m   Gemini\x1b[0m | \x1b[1;36m  Copilot\x1b[0m | \x1b[1;36m     Kimi\x1b[0m | \x1b[1;36m     Cost\x1b[0m\n\x1b[2m───────────|─────────────|───────────|───────────|───────────|───────────|───────────|──────────\x1b[0m\n2026-01    |       $1.50 |     $1.50 |     $1.50 |     $1.50 |     $1.50 |     $1.50 |     $9.00\n\n"
+	assertRun(t, []string{"mh"}, 0, all, "")
+
+	cc := "\n\x1b[1;37m📊 Claude Code (monthly)\x1b[0m\n\n\x1b[1;36mDate        \x1b[0m | \x1b[1;36m         Input\x1b[0m | \x1b[1;36m        Output\x1b[0m | \x1b[1;36m   Cache Write\x1b[0m | \x1b[1;36m    Cache Read\x1b[0m | \x1b[1;36m         Total\x1b[0m | \x1b[1;36m     Cost\x1b[0m\n\x1b[2m─────────────|────────────────|────────────────|────────────────|────────────────|────────────────|──────────\x1b[0m\n2026-01      |          9,000 |          1,200 |          3,000 |         60,000 |         73,200 |     $1.50\n\n"
+	assertRun(t, []string{"cc", "mh"}, 0, cc, "")
+}
+
+// Bare daily history is capped (the placeholder corpus predates the floor):
+// the heading carries the hint and the table is the empty state.
+func TestE2EHistoryCappedEmpty(t *testing.T) {
+	assertRun(t, []string{"h"}, 0,
+		"\n\x1b[1;37m📊 Combined Cost History (daily, last 3 months)\x1b[0m\n\n  No data\n\n", "")
+	assertRun(t, []string{"cc", "h"}, 0,
+		"\n\x1b[1;37m📊 Claude Code (daily, last 3 months)\x1b[0m\n\n  No data\n\n", "")
+}
+
+func TestE2EHistoryJSON(t *testing.T) {
+	assertRun(t, []string{"h", "--json"}, 0,
+		"{\n  \"Claude Code\": [],\n  \"Codex\": [],\n  \"OpenCode\": [],\n  \"Gemini\": [],\n  \"Copilot\": [],\n  \"Kimi\": []\n}\n", "")
+	assertRun(t, []string{"cc", "mh", "--json"}, 0,
+		"[\n  {\n    \"label\": \"2026-01\",\n    \"totalCost\": 1.5,\n    \"inputTokens\": 9000,\n    \"outputTokens\": 1200,\n    \"cacheCreationTokens\": 3000,\n    \"cacheReadTokens\": 60000,\n    \"totalTokens\": 73200\n  }\n]\n", "")
+}
+
+func TestE2EHistoryCSV(t *testing.T) {
+	assertRun(t, []string{"h", "--csv"}, 0,
+		"date,Claude Code,Codex,OpenCode,Gemini,Copilot,Kimi,total\n", "")
+	assertRun(t, []string{"cc", "mh", "--csv"}, 0,
+		"date,input,output,cache_write,cache_read,total,cost\n2026-01,9000,1200,3000,60000,73200,1.50\n", "")
+	// Snapshot CSV empties (the placeholder corpus never matches today).
+	assertRun(t, []string{"--csv"}, 0, "tool,tokens,input,output,cache,cost\n", "")
+	assertRun(t, []string{"cc", "--csv"}, 0, "tool,tokens,input,output,cache,cost\n", "")
+}
+
+func TestE2EHistoryMarkdown(t *testing.T) {
+	assertRun(t, []string{"h", "--md"}, 0,
+		"## Combined Cost History (daily, last 3 months)\n\n| Date | Claude Code | Codex | OpenCode | Gemini | Copilot | Kimi | Cost |\n| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n\n", "")
+	assertRun(t, []string{"cc", "mh", "--md"}, 0,
+		"## Claude Code (monthly)\n\n| Date | Input | Output | Cache Write | Cache Read | Total | Cost |\n| :--- | ---: | ---: | ---: | ---: | ---: | ---: |\n| 2026-01 | 9,000 | 1,200 | 3,000 | 60,000 | 73,200 | $1.50 |\n\n", "")
+	assertRun(t, []string{"--md"}, 0,
+		"## Combined Usage (daily)\n\n| Tool | Tokens | Input | Output | Cache | Cost |\n| :--- | ---: | ---: | ---: | ---: | ---: |\n\n", "")
+}
+
+// The since/until snapshot guard: a well-shaped impossible date warns on
+// stderr and still renders the (empty) snapshot with exit 0 (since-invalid).
+func TestE2ESinceInvalidWarnsAndRenders(t *testing.T) {
+	assertRun(t, []string{"--since", "2026-13-01"}, 0,
+		"\n\x1b[1;37m📊 Combined Usage (daily)\x1b[0m\n\n  No usage\n\n",
+		"Warning: --since/--until apply to history display — ignoring.\n")
+}
+
+// --by-machine is B4's surface: still the placeholder, exit 1.
+func TestE2EHistoryByMachinePlaceholder(t *testing.T) {
+	assertRun(t, []string{"h", "--by-machine"}, 1, "", notImplementedMsg+"\n")
+	assertRun(t, []string{"cc", "h", "--by-machine"}, 1, "", notImplementedMsg+"\n")
+}

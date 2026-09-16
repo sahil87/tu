@@ -90,3 +90,24 @@ func TestWeekLabel(t *testing.T) {
 		}
 	}
 }
+
+func TestThreeMonthFloor(t *testing.T) {
+	kolkata := mustLoadLocation(t, "Asia/Kolkata")
+	cases := []struct {
+		name string
+		now  time.Time
+		want string
+	}{
+		{"utc september", time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC), "2026-07-01"},
+		{"kolkata september", time.Date(2026, 9, 16, 12, 0, 0, 0, kolkata), "2026-07-01"},
+		{"utc january rollover", time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC), "2025-11-01"},
+		{"kolkata january rollover", time.Date(2026, 1, 15, 12, 0, 0, 0, kolkata), "2025-11-01"},
+		{"utc february", time.Date(2026, 2, 28, 12, 0, 0, 0, time.UTC), "2025-12-01"},
+		{"kolkata february", time.Date(2026, 2, 28, 12, 0, 0, 0, kolkata), "2025-12-01"},
+	}
+	for _, c := range cases {
+		if got := ThreeMonthFloor(c.now); got != c.want {
+			t.Errorf("%s: ThreeMonthFloor(%v) = %q, want %q", c.name, c.now, got, c.want)
+		}
+	}
+}

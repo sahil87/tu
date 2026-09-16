@@ -1,0 +1,4 @@
+tool,tokens,input,output,cache,cost
+Claude Code,24400,3000,400,21000,0.50
+Codex,24400,3000,400,21000,0.50
+Total,48800,6000,800,42000,1.00

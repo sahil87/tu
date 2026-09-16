@@ -1,0 +1,11 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-16T16:45:40Z"}
+{"args":"Context: fab/plans/sahil/26-09-15-go-port.md, row B2. Read the Decisions and Target architecture sections before writing the intake. Do not change any external surface listed under Goal. Build dh/wh/mh history displays, weekly Sunday alignment, --since/--until, deltas, bars, bar scale/percentile, render/csv, render/markdown. Harness gate: all history cases, single mode.","cmd":"fab-new","event":"command","ts":"2026-09-16T16:45:40Z"}
+{"delta":"+4.3","event":"confidence","score":4.3,"trigger":"calc-score","ts":"2026-09-16T16:53:27Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-16T16:54:49Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-16T16:55:14Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-16T17:18:35Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-16T17:22:32Z"}
+{"event":"review","result":"passed","ts":"2026-09-16T17:22:32Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-16T17:29:54Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-09-16T17:32:00Z"}
+{"event":"review","result":"passed","ts":"2026-09-16T17:50:44Z"}

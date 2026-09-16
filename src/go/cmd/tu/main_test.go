@@ -67,11 +67,13 @@ func TestRunDevFallback(t *testing.T) {
 }
 
 // TestRunNotImplemented covers the recognized-but-unported surface: non-data
-// commands, unported displays, and unported formats keep the scaffold's
-// placeholder (stderr, exit 1). {} and {"cc"} left this list in V2 — they now
-// fetch and render (covered end-to-end in e2e_test.go).
+// commands and unported flags keep the scaffold's placeholder (stderr, exit
+// 1). {} and {"cc"} left this list in V2; {"m","dh","--json"} and {"--csv"}
+// left it in B2 (history + the csv/md encoders) — they now fetch and render
+// (covered end-to-end in e2e_test.go). {"h","--by-machine"} pins that B4's
+// flag still routes to the placeholder.
 func TestRunNotImplemented(t *testing.T) {
-	for _, args := range [][]string{{"--help"}, {"m", "dh", "--json"}, {"--csv"}} {
+	for _, args := range [][]string{{"--help"}, {"h", "--by-machine"}} {
 		var stdout, stderr bytes.Buffer
 		code := run(args, &stdout, &stderr)
 		if code != 1 {
@@ -177,4 +179,14 @@ func firstNonEmptyLine(s string) string {
 		}
 	}
 	return ""
+}
+
+// terminalWidth falls back to 80 for a non-*os.File writer (the e2e suite's
+// bytes.Buffer) — R19; COLUMNS is never read.
+func TestTerminalWidthFallback(t *testing.T) {
+	t.Setenv("COLUMNS", "199")
+	var buf bytes.Buffer
+	if got := terminalWidth(&buf); got != 80 {
+		t.Errorf("terminalWidth(bytes.Buffer) = %d, want 80", got)
+	}
 }

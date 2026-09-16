@@ -54,6 +54,24 @@ func (c Colors) BoldCyan(s string) string    { return c.wrap(codeBoldCyan, s) }
 func (c Colors) BrightGreen(s string) string { return c.wrap(codeBrightGreen, s) }
 func (c Colors) DimGreen(s string) string    { return c.wrap(codeDimGreen, s) }
 
+// palette is the stacked-segment color lookup (the TS STACK_PALETTE): slots
+// 0–3 are Green, Magenta, Blue, Cyan; slot ≥ 4 is uncolored. Yellow is
+// excluded — it is reserved for the two-zone overflow.
+func (c Colors) palette(slot int) func(string) string {
+	switch slot {
+	case 0:
+		return c.Green
+	case 1:
+		return c.Magenta
+	case 2:
+		return c.Blue
+	case 3:
+		return c.Cyan
+	default:
+		return func(s string) string { return s }
+	}
+}
+
 // ansiRE matches one SGR escape sequence (the TS stripAnsi pattern).
 var ansiRE = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 

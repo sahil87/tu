@@ -225,3 +225,24 @@ func TestGroupByDate(t *testing.T) {
 		t.Errorf("group = %+v", groups[0])
 	}
 }
+
+// The history path windows daily records BEFORE rolling up (intake §3): a
+// window that starts mid-week yields a leading partial week labeled by its
+// Sunday, which precedes `since`.
+func TestWindowThenRollUpWeekly(t *testing.T) {
+	recs := []fact.Record{
+		rec("2026-01-05", "cc", unit),
+		rec("2026-01-06", "cc", unit),
+		rec("2026-01-07", "cc", unit),
+	}
+	rolled := RollUp(Window(recs, "2026-01-01", "2026-01-31"), Weekly)
+	if len(rolled) != 1 {
+		t.Fatalf("rolled = %d records, want 1: %+v", len(rolled), rolled)
+	}
+	if rolled[0].Date != "2026-01-04" {
+		t.Errorf("label = %q, want the Sunday 2026-01-04 (precedes since)", rolled[0].Date)
+	}
+	if rolled[0].Totals.TotalCost != 1.5 || rolled[0].Totals.TotalTokens != 3*24400 {
+		t.Errorf("totals = %+v, want the three days summed", rolled[0].Totals)
+	}
+}
