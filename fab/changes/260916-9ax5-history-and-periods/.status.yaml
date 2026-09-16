@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 17
@@ -33,25 +33,27 @@ stage_metrics:
     apply: {started_at: "2026-09-16T16:55:14Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T17:18:35Z"}
     review: {started_at: "2026-09-16T17:18:35Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T17:22:32Z"}
     hydrate: {started_at: "2026-09-16T17:22:32Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T17:29:54Z"}
-    ship: {started_at: "2026-09-16T17:29:54Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-09-16T17:29:54Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T17:32:00Z"}
+    review-pr: {started_at: "2026-09-16T17:32:00Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/tu/pull/87
 change_type_source: explicit
 base_branch: main
 true_impact:
-    added: 0
-    deleted: 0
-    net: 0
+    added: 5078
+    deleted: 96
+    net: 4982
     excluding:
-        added: 0
-        deleted: 0
-        net: 0
+        added: 4010
+        deleted: 58
+        net: 3952
     tests:
-        added: 0
-        deleted: 0
-        net: 0
-    computed_at: "2026-09-16T17:29:54Z"
-    computed_at_stage: hydrate
+        added: 2141
+        deleted: 11
+        net: 2130
+    computed_at: "2026-09-16T17:32:00Z"
+    computed_at_stage: ship
 summary: 'Go port row B2: single-mode history displays (h/dh/wh/mh) with --since/--until/--full, the 3-month cap, warn-and-clear guards, bars/deltas/footer/legend in the view model, new render/csv and render/markdown encoders, the two JSON history shapes, and the x/term width probe — 134 of 368 placeholder harness cases green'
 # base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-09-16T17:29:54Z
+last_updated: 2026-09-16T17:32:00Z
