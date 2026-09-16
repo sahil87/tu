@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 )
@@ -96,6 +97,14 @@ func LoadMatrix(path string) (*Matrix, error) {
 	if err := dec.Decode(&m); err != nil {
 		return nil, err
 	}
+	var extra json.RawMessage
+	switch err := dec.Decode(&extra); err {
+	case io.EOF:
+	case nil:
+		return nil, fmt.Errorf("trailing JSON value after matrix document")
+	default:
+		return nil, fmt.Errorf("trailing content after matrix document: %w", err)
+	}
 	if err := m.validate(); err != nil {
 		return nil, err
 	}
@@ -137,6 +146,9 @@ func (m *Matrix) validate() error {
 }
 
 func validateAxis(id, name string, values []string) error {
+	if values != nil && len(values) == 0 {
+		return fmt.Errorf("case %q: %s axis is an empty array (omit the key for the base value)", id, name)
+	}
 	seen := map[string]bool{}
 	for _, v := range values {
 		valid := false

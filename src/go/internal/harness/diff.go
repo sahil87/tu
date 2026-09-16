@@ -145,7 +145,9 @@ func copyFile(src, dst string, mode os.FileMode) error {
 
 // RunPipe executes one side with stdin from /dev/null and stdout/stderr
 // captured into separate buffers, bounded by timeout. A deadline sets
-// TimedOut and Exit -1.
+// TimedOut and Exit -1. A non-exit execution failure (e.g. the binary fails
+// to start) is preserved in Err so Compare can reject the capture instead of
+// treating the bare Exit -1 as a comparable result.
 func RunPipe(name string, args []string, dir string, env []string, timeout time.Duration) SideCapture {
 	var c SideCapture
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -163,6 +165,12 @@ func RunPipe(name string, args []string, dir string, env []string, timeout time.
 	c.Stdout = outBuf.Bytes()
 	c.Stderr = errBuf.Bytes()
 	c.Exit, c.TimedOut = exitOf(ctx, err)
+	if err != nil && !c.TimedOut {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			c.Err = err.Error()
+		}
+	}
 	return c
 }
 
@@ -265,7 +273,10 @@ type byteChannel struct {
 
 // Compare byte-diffs one case's two captures, stopping at the first differing
 // channel: pipe cases compare exit, stdout, stderr; tty cases compare exit,
-// tty. A timeout on either side is a timeout verdict regardless of bytes.
+// tty. A timeout on either side is a timeout verdict regardless of bytes. A
+// capture-level error on either side (Err non-empty — a failed exec or a
+// missing exit sentinel) is a red verdict: errored captures are not
+// comparable, so identical failures must never read as green.
 func Compare(c Case, node, goCap SideCapture) Result {
 	r := Result{
 		Case:     c,
@@ -280,6 +291,13 @@ func Compare(c Case, node, goCap SideCapture) Result {
 		r.Channel = "timeout"
 		r.NodeTimeout = node.TimedOut
 		r.GoTimeout = goCap.TimedOut
+		return r
+	}
+	if node.Err != "" || goCap.Err != "" {
+		r.Status = StatusRed
+		r.Channel = "harness"
+		r.NodeExcerpt = strconv.Quote(node.Err)
+		r.GoExcerpt = strconv.Quote(goCap.Err)
 		return r
 	}
 	if node.Exit != goCap.Exit {

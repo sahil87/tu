@@ -58,7 +58,10 @@ func UnconfirmedReplays(callLogPath string, aliases []string) (bool, error) {
 			return nil
 		}
 		m, err := aliasManifest(manifests, aliases, alias)
-		if err != nil || m == nil {
+		if err != nil {
+			return err // manifest unreadable/malformed — not an alias miss
+		}
+		if m == nil {
 			return nil // alias not in this run's list — nothing to look up
 		}
 		for _, fx := range m.Fixtures {

@@ -247,6 +247,10 @@ func WriteReport(dir string, h ReportHeader, results []Result) error {
 		return err
 	}
 	s := SummarizeResults(results)
+	script := h.Script
+	if script == "" {
+		script = "n/a" // match RenderHeader's display of "no TTY cases selected"
+	}
 	doc := reportJSON{
 		Schema: 1,
 		Header: reportHeaderJ{
@@ -256,7 +260,7 @@ func WriteReport(dir string, h ReportHeader, results []Result) error {
 			Go:          h.GoPath,
 			GoVersion:   h.GoVersion,
 			Fixtures:    h.Fixtures,
-			Script:      h.Script,
+			Script:      script,
 			Matrix:      h.MatrixPath,
 			Cases:       h.Cases,
 			Filter:      h.Filter,
