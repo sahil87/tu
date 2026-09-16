@@ -842,6 +842,37 @@ func TestRunMultiAssociationOrder(t *testing.T) {
 	}
 }
 
+// PR #91 review: when dates interleave across machines (own machine holds the
+// 01-05 and 01-07 records, another machine the 01-06 one), the collapsed
+// daily sequence is machine-major — but the TS mergeEntries sorts its daily
+// merge by label before the period aggregation. The roll-up must therefore
+// sum the bucket date-sorted: (0.2 + 0.1) + 0.3 = 0.6000000000000001, not
+// the machine-major (0.2 + 0.3) + 0.1 = 0.6.
+func TestRunMultiInterleavedDateAssociation(t *testing.T) {
+	a, b, c := 0.2, 0.1, 0.3
+	if (a+c)+b == (a+b)+c {
+		t.Fatal("the test values do not distinguish the summation orders")
+	}
+	repo := &fakeRepo{recs: map[string]map[string][]fact.Record{
+		"harness-user": {"cc": {
+			storedRec("harness-user", "harness-machine", "2026-01-05", "cc", a),
+			storedRec("harness-user", "harness-machine", "2026-01-07", "cc", c),
+			storedRec("harness-user", "other-box", "2026-01-06", "cc", b),
+		}},
+	}}
+	f := &fakeFetcher{} // no live records: the repo path alone carries the sum
+	res, err := Run(context.Background(), Request{
+		Source: "cc", Display: History, Period: query.Monthly, Format: JSON,
+		Flags: Flags{Interval: 10},
+	}, multiCfg, multiDeps(f, repo))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if joined := strings.Join(res.Lines, "\n"); !strings.Contains(joined, `"totalCost": 0.6000000000000001,`) {
+		t.Errorf("monthly totalCost must associate date-sorted (0.6000000000000001):\n%s", joined)
+	}
+}
+
 // R11/A-011: in multi mode a tool with a record on the current label carries
 // "label" in --json; zero tools carry nothing.
 func TestRunMultiSnapshotLabel(t *testing.T) {

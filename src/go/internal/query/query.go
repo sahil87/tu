@@ -99,6 +99,21 @@ func relabel(date string, p Period) string {
 	}
 }
 
+// SortByDate returns a copy of recs stably sorted ascending by Date (byte
+// order equals the TS localeCompare on ISO labels). The main-table pipeline
+// sorts the collapsed daily records before RollUp because the TS mergeEntries
+// sorts its daily merge by label ahead of the period aggregation: a
+// machine-major gather order (own machine's days first, then other machines
+// in walk order) would otherwise sum a month/week bucket in a different
+// association and emit different raw JSON float bytes when dates interleave
+// across machines. Pure: the input is never mutated or returned.
+func SortByDate(recs []fact.Record) []fact.Record {
+	out := make([]fact.Record, len(recs))
+	copy(out, recs)
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Date < out[j].Date })
+	return out
+}
+
 // Dim is a record dimension GroupBy can group on.
 type Dim int
 

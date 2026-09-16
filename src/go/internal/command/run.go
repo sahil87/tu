@@ -193,13 +193,13 @@ func buildHistoryBreakdown(req Request, cfg config.Config, raw []fact.Record) *v
 //	                                 no source errors
 //
 // The records are the stamped, UN-COLLAPSED per-machine/per-user records: the
-// callers apply Collapse(recs, Tool, Date) for the main table (the daily
-// cross-machine/cross-user sum preceding the Window/RollUp/GroupBy tail — in
-// single mode the identity on unique keys), while the --by-machine breakdown
-// groups the same raw records on the machine/user dimension the collapse
-// would drop. Record order is unchanged and load-bearing for --json float
-// bytes: own machine first, then other machines in walk order; for -u all,
-// users ascending then walk order.
+// callers apply Collapse(recs, Tool, Date) followed by a stable date sort for
+// the main table (the daily cross-machine/cross-user sum preceding the
+// Window/RollUp/GroupBy tail — in single mode the identity on unique keys),
+// while the --by-machine breakdown groups the same raw records on the
+// machine/user dimension the collapse would drop. Record order is unchanged
+// and load-bearing for --json float bytes: own machine first, then other
+// machines in walk order; for -u all, users ascending then walk order.
 func gather(ctx context.Context, req Request, cfg config.Config, deps Deps) ([]fact.Record, []*source.Error) {
 	tools := fact.Tools
 	if req.Source != "" {
@@ -283,7 +283,7 @@ func gatherAllUsers(repo Repo, tools []fact.Tool) []fact.Record {
 // and the --by-machine breakdown (B4).
 func runSnapshot(req Request, cfg config.Config, raw []fact.Record, errs []*source.Error, notices []string, deps Deps) Result {
 	cur := query.CurrentLabel(req.Period, deps.Now())
-	groups := query.GroupBy(query.Window(query.RollUp(query.Collapse(raw, query.Tool, query.Date), req.Period), cur, cur), query.Tool)
+	groups := query.GroupBy(query.Window(query.RollUp(query.SortByDate(query.Collapse(raw, query.Tool, query.Date)), req.Period), cur, cur), query.Tool)
 	byTool := make(map[string]fact.Totals, len(groups))
 	for _, g := range groups {
 		byTool[g.Key.Tool] = g.Totals
@@ -344,15 +344,19 @@ func runSnapshot(req Request, cfg config.Config, raw []fact.Record, errs []*sour
 }
 
 // runHistory composes the history pipeline: the daily collapse (the TS
-// mergeEntries summation order), then the window on the DAILY records first
-// and the roll-up second (a partial month sums only in-window days; a
-// mid-week window yields a leading partial week labeled by its Sunday), then
-// ONE GroupBy(Tool, Date) pass builds the registry-ordered series — no
-// per-tool aggregation loop. The --by-machine breakdown (single source only —
-// Normalize cleared the flag on the all-tools pivot) groups the SAME raw
-// records on the machine/user dimension.
+// mergeEntries summation order), then a stable date sort on the collapsed
+// records (mergeEntries sorts its daily merge by label ahead of the period
+// aggregation — without it a machine-major gather order associates a
+// month/week bucket's sum differently and the raw JSON float bytes can
+// differ), then the window on the DAILY records first and the roll-up second
+// (a partial month sums only in-window days; a mid-week window yields a
+// leading partial week labeled by its Sunday), then ONE GroupBy(Tool, Date)
+// pass builds the registry-ordered series — no per-tool aggregation loop. The
+// --by-machine breakdown (single source only — Normalize cleared the flag on
+// the all-tools pivot) groups the SAME raw records on the machine/user
+// dimension.
 func runHistory(req Request, cfg config.Config, raw []fact.Record, errs []*source.Error, notices []string, capActive bool, deps Deps) Result {
-	recs := query.RollUp(query.Window(query.Collapse(raw, query.Tool, query.Date), req.Flags.Since, req.Flags.Until), req.Period)
+	recs := query.RollUp(query.Window(query.SortByDate(query.Collapse(raw, query.Tool, query.Date)), req.Flags.Since, req.Flags.Until), req.Period)
 
 	tools := fact.Tools
 	if req.Source != "" {
