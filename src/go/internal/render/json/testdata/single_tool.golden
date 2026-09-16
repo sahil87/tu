@@ -1,0 +1,11 @@
+{
+  "Claude Code": {
+    "label": "2026-09-16",
+    "totalCost": 0.5,
+    "inputTokens": 3000,
+    "outputTokens": 400,
+    "cacheCreationTokens": 1000,
+    "cacheReadTokens": 20000,
+    "totalTokens": 24400
+  }
+}

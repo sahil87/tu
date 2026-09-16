@@ -1,0 +1,14 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-16T14:09:54Z"}
+{"args":"Context: fab/plans/sahil/26-09-15-go-port.md, row V2. Read the Decisions and Target architecture sections before writing the intake. Do not change any external surface listed under Goal. Build query (pure: window filter by since/until, user/tool filter, daily to weekly/monthly roll-up, GroupBy(dims...) as the one group-by for tool/machine/user pivots), view (pure: query result to table model — columns, rows, cells, deltas, bar scales, legend; no ANSI), and render/ansi (pad, color, NO_COLOR primitives, the snapshot table) plus render/json. command parses the bare grammar: tu, tu cc, tu m, --json, --no-color, --fresh. Single mode only. Harness gate: every single-mode snapshot case must go green.","cmd":"fab-new","event":"command","ts":"2026-09-16T14:09:54Z"}
+{"delta":"+4.1","event":"confidence","score":4.1,"trigger":"calc-score","ts":"2026-09-16T14:16:39Z"}
+{"delta":"+0.0","event":"confidence","score":4.1,"trigger":"calc-score","ts":"2026-09-16T14:17:08Z"}
+{"delta":"+0.0","event":"confidence","score":4.1,"trigger":"calc-score","ts":"2026-09-16T14:17:19Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-16T14:31:46Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-16T14:32:52Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-16T14:48:06Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-16T14:55:58Z"}
+{"event":"review","result":"passed","ts":"2026-09-16T14:55:58Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-16T15:02:45Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-09-16T15:05:12Z"}
+{"cmd":"git-pr-review","event":"command","ts":"2026-09-16T15:07:03Z"}
+{"event":"review","result":"passed","ts":"2026-09-16T15:16:22Z"}

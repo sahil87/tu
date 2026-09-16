@@ -1,6 +1,6 @@
 ---
 type: memory
-description: The Go port's input layer — internal/fact (Record/Totals, the one fact type), internal/source (typed Error plus the WriteWarnings edge writer), internal/source/ccusage (ordered six-tool registry, exec, normalize, Fetch/FetchAll), and internal/source/cache (hash-keyed on-disk JSON, 60 s TTL), tested against the _placeholder corpus; unshipped, unwired into cmd/tu
+description: The Go port's input layer — internal/fact (Record/Totals, the one fact type), internal/source (typed Error plus the WriteWarnings edge writer), internal/source/ccusage (ordered six-tool registry, exec, normalize, Fetch/FetchAll), and internal/source/cache (hash-keyed on-disk JSON, 60 s TTL), tested against the _placeholder corpus; consumed by internal/command and cmd/tu, unshipped until cutover
 ---
 # Fact Type and ccusage Sources (Go port)
 
@@ -8,7 +8,7 @@ description: The Go port's input layer — internal/fact (Record/Totals, the one
 
 ## Overview
 
-The Go port's input layer is four packages under `src/go/internal/`: `fact` is pure — the one record type every downstream stage consumes; `source` holds the typed per-source `Error` and `WriteWarnings`, the single edge writer; `source/ccusage` is the one impure adapter (registry, exec, JSON normalize, fetch); `source/cache` is the on-disk JSON store behind it. This is plan row V1 of `fab/plans/sahil/26-09-15-go-port.md`: the packages are built and tested but nothing is wired into `cmd/tu` (that wiring is V2). The corpus these packages are tested against lives in [differential-harness](/harness/differential-harness.md); the shipped TypeScript data model they mirror is in [data-pipeline](/cli/data-pipeline.md); build/test wiring is in [toolchain](/build/toolchain.md).
+The Go port's input layer is four packages under `src/go/internal/`: `fact` is pure — the one record type every downstream stage consumes; `source` holds the typed per-source `Error` and `WriteWarnings`, the single edge writer; `source/ccusage` is the one impure adapter (registry, exec, JSON normalize, fetch); `source/cache` is the on-disk JSON store behind it. The command edge consumes this layer: `command.Run` fetches through the `command.Fetcher` interface that `*ccusage.Source` satisfies, applies `ccusage.DefaultTimeout` once per invocation, builds its source with `cache.Default()`, and `cmd/tu` writes the result's warnings with `source.WriteWarnings` (see [command-edge](/go-port/command-edge.md)). The corpus these packages are tested against lives in [differential-harness](/harness/differential-harness.md); the shipped TypeScript data model they mirror is in [data-pipeline](/cli/data-pipeline.md); build/test wiring is in [toolchain](/build/toolchain.md).
 
 ## Requirements
 
