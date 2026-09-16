@@ -37,6 +37,7 @@ stage_metrics:
     review-pr: {started_at: "2026-09-16T12:12:01Z", driver: git-pr, iterations: 1}
 prs:
     - ""
+    - https://github.com/sahil87/tu/pull/83
 change_type_source: explicit
 base_branch: main
 true_impact:
@@ -56,4 +57,4 @@ true_impact:
 summary: 'feat: placeholder confirmation ledger (confirmed.json merged into manifest.json by tudiff placeholder; corpus test asserts agreement; claude/codex/gemini/kimi confirmed)'
 # base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-09-16T12:12:01Z
+last_updated: 2026-09-16T12:12:50Z
