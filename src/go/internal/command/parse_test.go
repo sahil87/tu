@@ -2,6 +2,7 @@ package command
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/sahil87/tu/internal/query"
@@ -190,5 +191,21 @@ func TestShortUsageBytes(t *testing.T) {
 	want := "Usage: tu [source] [period] [display]\n\n  tu                Today's cost, all tools\n  tu cc             Today's cost, Claude Code\n  tu mh             Monthly cost history, all tools\n  tu -h             Show full help\n\nRun 'tu help' for all commands."
 	if ShortUsage != want {
 		t.Errorf("ShortUsage = %q", ShortUsage)
+	}
+}
+
+// TestFullHelpShape pins the structural facts of the byte-exact TS FULL_HELP
+// (the harness help/help-cmd cases pin the bytes): the Usage-line head, the
+// --skip-brew-update flag the `update` standard's discovery probe greps for,
+// and the hidden help-dump command's absence.
+func TestFullHelpShape(t *testing.T) {
+	if !strings.HasPrefix(FullHelp, "Usage: tu [source] [period] [display]") {
+		t.Errorf("FullHelp does not start with the Usage line: %.40q", FullHelp)
+	}
+	if !strings.Contains(FullHelp, "--skip-brew-update") {
+		t.Error("FullHelp does not contain --skip-brew-update")
+	}
+	if strings.Contains(FullHelp, "help-dump") {
+		t.Error("FullHelp must not mention the hidden help-dump command")
 	}
 }

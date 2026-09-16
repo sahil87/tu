@@ -80,3 +80,57 @@ type UsageError struct {
 
 // ShortUsage is the byte-exact TS SHORT_USAGE constant.
 const ShortUsage = "Usage: tu [source] [period] [display]\n\n  tu                Today's cost, all tools\n  tu cc             Today's cost, Claude Code\n  tu mh             Monthly cost history, all tools\n  tu -h             Show full help\n\nRun 'tu help' for all commands."
+
+// FullHelp is the byte-exact TS FULL_HELP constant (src/node/core/cli.ts) —
+// the full help text `tu help`/`tu -h`/`tu --help` print. `help-dump` is
+// hidden and appears nowhere in it. cmd/tu prints it with Fprintln (the TS
+// console.log appends exactly one newline).
+const FullHelp = `Usage: tu [source] [period] [display]
+
+Sources: cc (Claude Code), codex/co (Codex), oc (OpenCode), gemini/gem (Gemini), copilot/cop (Copilot), kimi/ki (Kimi), all (default)
+Periods: d/daily (default), w/weekly, m/monthly
+Display: (bare) = snapshot, h/history = history, lb = leaderboard, lbh = leaderboard history
+Combined: dh (daily history), wh (weekly history), mh (monthly history)
+
+Examples:
+  tu                   Today's cost, all tools (snapshot)
+  tu cc                Today's cost, Claude Code
+  tu h                 Daily cost history, all tools (pivot)
+  tu cc mh             Monthly cost history, Claude Code
+  tu wh                Weekly cost history, all tools
+  tu m                 This month's cost, all tools
+  tu m lb              This month's leaderboard — users ranked by cost (multi mode)
+  tu lbh               Daily leaderboard history — rows x user columns (multi mode)
+
+Setup:
+  tu init-conf         Scaffold ~/.config/tu/tu.conf
+  tu init-metrics [url] Clone metrics repo (url also sets metrics_repo)
+  tu sync              Push/pull metrics manually
+  tu status            Show config and sync state
+  tu update            Update tu to latest version
+  tu shell-init <sh>   Emit shell init script (bash/zsh/fish)
+  tu skill             Print agent usage bundle (markdown)
+
+Help: tu help | tu -h | tu --help
+
+Flags:
+  --json / -j          Output data as JSON (data commands only)
+  --csv                Output data as CSV (data commands only)
+  --md                 Output data as Markdown (data commands only)
+  --since / -s <date>  Only include entries on/after date (YYYY-MM-DD or YYYYMMDD, history display)
+  --until <date>       Only include entries on/before date (YYYY-MM-DD or YYYYMMDD, history display)
+  --full               Show full history (default: last 3 months for daily/weekly history)
+  --metric <m>         Show 'cost' (default) or 'tokens' in table cells, bars and footer stats (snapshot keeps its Cost column in dollars)
+  -t                   Shorthand for --metric tokens
+  --top <n>            Show only the top N rows/columns on the lb/lbh leaderboard
+  --sync               Sync metrics before fetching (multi mode)
+  --dry-run            Preview sync without writing (tu sync only)
+  --fresh / -f         Bypass cache, fetch fresh data (data commands only)
+  --watch / -w         Persistent polling mode with live display (data commands only)
+  --interval / -i <s>  Poll interval in seconds (default: 10, range: 5-3600)
+  --user / -u <user>   Show usage for a specific user, or 'all' for every user
+                       in the metrics repo (multi mode only; repo data — sync for today)
+  --by-machine         Show per-machine cost breakdown (data commands only)
+  --skip-brew-update   Skip 'brew update' tap refresh during 'tu update'
+  --no-color           Disable ANSI color output
+  --no-rain            Disable matrix rain animation in watch mode`

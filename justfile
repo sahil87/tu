@@ -33,8 +33,13 @@ release-notes tag="":
 go_version := `node -p 'require("./package.json").version'`
 
 # Build the Go binary into bin/tu (gitignored; not dist/, which is the shipped Node artifact).
+# The cmp guard is the build-time drift guard for the embedded skill bundle —
+# it fails the build before `go build` when the committed copy drifts from the
+# canonical docs/site/skill.md (mirrors scripts/build.sh's post-build guard for
+# the Node bundle).
 go-build:
     mkdir -p bin
+    cmp -s docs/site/skill.md src/go/internal/toolkit/skill.md || { echo "error: src/go/internal/toolkit/skill.md drifted from docs/site/skill.md — run scripts/sync-skill.sh" >&2; exit 1; }
     cd src/go && go build -ldflags "-X main.version=v{{go_version}}" -o ../../bin/tu ./cmd/tu
 
 # Run the Go test suite under src/go/.

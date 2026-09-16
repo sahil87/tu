@@ -1,0 +1,11 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-16T18:42:24Z"}
+{"args":"Context: fab/plans/sahil/26-09-15-go-port.md, row B8. Read the Decisions and Target architecture sections before writing the intake. Do not change any external surface listed under Goal. Build help-dump (flat, commands: [], byte-identical --help), update (brew gate, HOMEBREW_NO_ASK, no timeout on upgrade, --skip-brew-update), shell-init, skill via go:embed plus a build drift guard, and completions for bash/zsh/fish. Audit each against shll standards \u003cname\u003e and record the shll version audited.","cmd":"fab-new","event":"command","ts":"2026-09-16T18:42:24Z"}
+{"delta":"+4.9","event":"confidence","score":4.9,"trigger":"calc-score","ts":"2026-09-16T18:48:21Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-16T18:49:53Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-16T18:50:17Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-16T19:07:13Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-16T19:10:19Z"}
+{"event":"review","result":"passed","ts":"2026-09-16T19:10:19Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-16T19:15:28Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-09-16T19:17:58Z"}
+{"event":"review","result":"passed","ts":"2026-09-16T19:27:27Z"}
