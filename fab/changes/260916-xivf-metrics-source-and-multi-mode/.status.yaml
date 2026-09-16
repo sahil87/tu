@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 9
@@ -33,25 +33,27 @@ stage_metrics:
     apply: {started_at: "2026-09-16T19:43:41Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T19:59:35Z"}
     review: {started_at: "2026-09-16T19:59:35Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T20:06:54Z"}
     hydrate: {started_at: "2026-09-16T20:06:54Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T20:16:05Z"}
-    ship: {started_at: "2026-09-16T20:16:05Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-09-16T20:16:05Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T20:18:14Z"}
+    review-pr: {started_at: "2026-09-16T20:18:14Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/tu/pull/90
 change_type_source: explicit
 base_branch: main
 true_impact:
-    added: 0
-    deleted: 0
-    net: 0
+    added: 2485
+    deleted: 151
+    net: 2334
     excluding:
-        added: 0
-        deleted: 0
-        net: 0
+        added: 1679
+        deleted: 116
+        net: 1563
     tests:
-        added: 0
-        deleted: 0
-        net: 0
-    computed_at: "2026-09-16T20:16:05Z"
-    computed_at_stage: hydrate
+        added: 1209
+        deleted: 75
+        net: 1134
+    computed_at: "2026-09-16T20:18:14Z"
+    computed_at_stage: ship
 summary: created go-port/multi-mode.md (guard → gather paths → MaxMerge/Collapse → tail, label rule, read-only-until-B6 + spec-over-TS-quirk DDs); updated fact-and-sources, query-view-render, config-and-setup, command-edge; 302/368 gate recorded
 # base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-09-16T20:16:05Z
+last_updated: 2026-09-16T20:18:14Z
