@@ -5,16 +5,30 @@
 // formula (constitution v1.2.0 § Go Transition). Plan and decision log:
 // fab/plans/sahil/26-09-15-go-port.md.
 //
-// This scaffold implements only the toolkit `version` contract. Every other
-// invocation is a deliberate not-implemented placeholder that the differential
-// harness (plan row P4) starts from; the real command surface lands in later
-// rows.
+// The binary answers the single-mode snapshot grammar (tu, tu cc, tu m, --json,
+// --no-color, --fresh, …) for real; everything else prints the deliberate
+// not-implemented placeholder the differential harness diffs against.
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"time"
+
+	// TZ data for hosts without /usr/share/zoneinfo: the harness's tz:alt axis
+	// (TZ=Asia/Kolkata) must resolve everywhere Node's bundled ICU does. Go
+	// consults the embed only when the system database is missing.
+	_ "time/tzdata"
+
+	"github.com/sahil87/tu/internal/command"
+	"github.com/sahil87/tu/internal/config"
+	"github.com/sahil87/tu/internal/render/ansi"
+	"github.com/sahil87/tu/internal/source"
+	"github.com/sahil87/tu/internal/source/cache"
+	"github.com/sahil87/tu/internal/source/ccusage"
 )
 
 // version is the binary version, overridden via -ldflags "-X main.version=..." at build time.
@@ -31,27 +45,61 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-// run is the testable entry point: it dispatches on args and writes to the given
-// streams, returning the process exit code instead of exiting.
+// run is the testable entry point: it dispatches on args and writes to the
+// given streams, returning the process exit code instead of exiting. It is the
+// ONLY writer: nothing below cmd/tu touches stdout/stderr or calls os.Exit.
+//
+// The order mirrors the TS main(): grammar parse (usage errors, exit 2) →
+// version (after validation) → non-data command placeholder → $HOME config
+// check → mode detection → fetch/render via command.Run → warnings → lines.
 func run(args []string, stdout, stderr io.Writer) int {
-	if hasVersionFlag(args) {
+	req, uerr := command.Parse(args)
+	if uerr != nil {
+		fmt.Fprintln(stderr, uerr.Message)
+		if uerr.ShowUsage {
+			fmt.Fprintln(stderr, command.ShortUsage)
+		}
+		return 2
+	}
+	if req.Version {
 		fmt.Fprintln(stdout, versionLine(version))
 		return 0
 	}
-	fmt.Fprintln(stderr, notImplementedMsg)
-	return 1
-}
-
-// hasVersionFlag mirrors the TypeScript CLI's `rawArgs.includes(...)` check: any of
-// the three version flags anywhere in args selects the version path.
-func hasVersionFlag(args []string) bool {
-	for _, a := range args {
-		switch a {
-		case "--version", "-V", "-v":
-			return true
-		}
+	if req.Command != "" {
+		fmt.Fprintln(stderr, notImplementedMsg)
+		return 1
 	}
-	return false
+
+	paths, err := config.ResolvePaths(os.Getenv("HOME"))
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	mode := config.DetectMode(paths, os.Getenv)
+
+	// Unreachable after the HOME check above; a nil store means no caching.
+	store, _ := cache.Default()
+	src := &ccusage.Source{Cache: store}
+	deps := command.Deps{
+		Source: src,
+		Now:    time.Now,
+		Colors: ansi.Colors{Enabled: !req.Flags.NoColor && os.Getenv("NO_COLOR") == ""},
+	}
+
+	res, err := command.Run(context.Background(), req, mode, deps)
+	if errors.Is(err, command.ErrUnported) {
+		fmt.Fprintln(stderr, notImplementedMsg)
+		return 1
+	}
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	source.WriteWarnings(stderr, res.Warnings)
+	for _, l := range res.Lines {
+		fmt.Fprintln(stdout, l)
+	}
+	return 0
 }
 
 // versionLine renders the toolkit version standard's recommended shape,

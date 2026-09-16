@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"regexp"
 	"testing"
+
+	"github.com/sahil87/tu/internal/command"
 )
 
 // Same shape the TypeScript pinning test enforces (src/node/core/__tests__/cli-version.test.ts)
@@ -64,8 +66,12 @@ func TestRunDevFallback(t *testing.T) {
 	}
 }
 
+// TestRunNotImplemented covers the recognized-but-unported surface: non-data
+// commands, unported displays, and unported formats keep the scaffold's
+// placeholder (stderr, exit 1). {} and {"cc"} left this list in V2 — they now
+// fetch and render (covered end-to-end in e2e_test.go).
 func TestRunNotImplemented(t *testing.T) {
-	for _, args := range [][]string{{}, {"cc"}, {"--help"}, {"m", "dh", "--json"}} {
+	for _, args := range [][]string{{"--help"}, {"m", "dh", "--json"}, {"--csv"}} {
 		var stdout, stderr bytes.Buffer
 		code := run(args, &stdout, &stderr)
 		if code != 1 {
@@ -77,6 +83,50 @@ func TestRunNotImplemented(t *testing.T) {
 		if got := stderr.String(); got != notImplementedMsg+"\n" {
 			t.Errorf("run(%q) stderr = %q, want %q", args, got, notImplementedMsg+"\n")
 		}
+	}
+}
+
+// TestRunVersionAfterValidation pins the TS order: flag validation runs
+// before the version check, so a conflicting argv is a usage error, not a
+// version line.
+func TestRunVersionAfterValidation(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--json", "--csv", "--version"}, &stdout, &stderr)
+	if code != 2 {
+		t.Errorf("exit = %d, want 2", code)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want empty", stdout.String())
+	}
+	if got := stderr.String(); got != "Error: --json and --csv are incompatible\n" {
+		t.Errorf("stderr = %q", got)
+	}
+}
+
+// TestRunNoHome pins the config-home failure: exit 1 with the byte-exact
+// message, but only after a successful parse — a usage error with HOME unset
+// still exits 2.
+func TestRunNoHome(t *testing.T) {
+	t.Setenv("HOME", "")
+
+	var stdout, stderr bytes.Buffer
+	if code := run(nil, &stdout, &stderr); code != 1 {
+		t.Errorf("run(nil) exit = %d, want 1", code)
+	}
+	if got := stderr.String(); got != "tu: $HOME is not set; cannot locate config\n" {
+		t.Errorf("run(nil) stderr = %q", got)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("run(nil) stdout = %q, want empty", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"bogus"}, &stdout, &stderr); code != 2 {
+		t.Errorf("run(bogus) exit = %d, want 2 (parse precedes the HOME check)", code)
+	}
+	if got := stderr.String(); got != "Unknown argument: bogus\n"+command.ShortUsage+"\n" {
+		t.Errorf("run(bogus) stderr = %q", got)
 	}
 }
 
