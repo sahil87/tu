@@ -1,6 +1,7 @@
 package command
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/sahil87/tu/internal/query"
@@ -56,7 +57,6 @@ func TestParseValid(t *testing.T) {
 		{"--no-color", []string{"--no-color"}, Request{Flags: Flags{NoColor: true, Interval: 10}}},
 		{"--sync", []string{"--sync"}, Request{Flags: Flags{Sync: true, Interval: 10}}},
 		{"cc --sync", []string{"cc", "--sync"}, Request{Source: "cc", Flags: Flags{Sync: true, Interval: 10}}},
-		{"--dry-run", []string{"--dry-run"}, Request{Flags: Flags{DryRun: true, Interval: 10}}},
 		{"sync --dry-run", []string{"sync", "--dry-run"}, Request{Command: "sync", Flags: Flags{DryRun: true, Interval: 10}}},
 		{"--full history", []string{"h", "--full"}, Request{Display: History, Flags: Flags{Full: true, Interval: 10}}},
 		{"window", []string{"h", "--since", "2026-01-01", "--until", "2026-01-31"}, Request{Display: History, Flags: Flags{Interval: 10, Since: "2026-01-01", Until: "2026-01-31"}}},
@@ -73,19 +73,24 @@ func TestParseValid(t *testing.T) {
 		{"help", []string{"help"}, Request{Command: "help"}},
 		{"-h", []string{"-h"}, Request{Command: "-h"}},
 		{"--help", []string{"--help"}, Request{Command: "--help"}},
+		{"help --dry-run", []string{"help", "--dry-run"}, Request{Command: "help", Flags: Flags{DryRun: true, Interval: 10}}},
 		{"help-dump", []string{"help-dump"}, Request{Command: "help-dump"}},
 		{"skill", []string{"skill"}, Request{Command: "skill"}},
-		{"shell-init bash", []string{"shell-init", "bash"}, Request{Command: "shell-init"}},
+		{"shell-init bash", []string{"shell-init", "bash"}, Request{Command: "shell-init", Args: []string{"bash"}}},
 		{"shell-init missing", []string{"shell-init"}, Request{Command: "shell-init"}},
 		{"status", []string{"status"}, Request{Command: "status"}},
+		// Data flags on setup commands parse without a usage error (DC-02).
+		{"status --json", []string{"status", "--json"}, Request{Command: "status", Format: JSON}},
 		{"init-conf", []string{"init-conf"}, Request{Command: "init-conf"}},
-		{"init-metrics url", []string{"init-metrics", "git@example.invalid:harness/tu-metrics.git"}, Request{Command: "init-metrics"}},
+		{"init-metrics url", []string{"init-metrics", "git@example.invalid:harness/tu-metrics.git"}, Request{Command: "init-metrics", Args: []string{"git@example.invalid:harness/tu-metrics.git"}}},
+		{"init-metrics a", []string{"init-metrics", "a"}, Request{Command: "init-metrics", Args: []string{"a"}}},
 		{"sync", []string{"sync"}, Request{Command: "sync"}},
 		{"update", []string{"update"}, Request{Command: "update"}},
 		{"version", []string{"--version"}, Request{Version: true}},
 		{"-V", []string{"-V"}, Request{Version: true}},
 		{"-v", []string{"-v"}, Request{Version: true}},
 		{"cc --version", []string{"cc", "--version"}, Request{Version: true}},
+		{"--dry-run --version", []string{"--dry-run", "--version"}, Request{Version: true, Flags: Flags{DryRun: true, Interval: 10}}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -97,7 +102,7 @@ func TestParseValid(t *testing.T) {
 			if uerr != nil {
 				t.Fatalf("Parse(%q) error = %v, want success", c.args, uerr.Message)
 			}
-			if got != want {
+			if !reflect.DeepEqual(got, want) {
 				t.Errorf("Parse(%q) = %+v, want %+v", c.args, got, want)
 			}
 		})
@@ -143,6 +148,12 @@ func TestParseUsageErrors(t *testing.T) {
 		{"interval nonnumeric without watch", []string{"--interval", "abc"}, "Unknown argument: abc", true},
 		{"watch interval min", []string{"--watch", "--interval", "3"}, "Error: --interval minimum is 5 seconds", false},
 		{"watch interval max", []string{"--watch", "--interval", "3601"}, "Error: --interval maximum is 3600 seconds", false},
+		// The --dry-run misuse guard (moved from B6 to B1): exact message, no
+		// usage block.
+		{"dry-run bare", []string{"--dry-run"}, "Error: --dry-run is supported only with 'tu sync' — run 'tu sync --dry-run' to preview a sync.", false},
+		{"dry-run data command", []string{"cc", "--dry-run"}, "Error: --dry-run is supported only with 'tu sync' — run 'tu sync --dry-run' to preview a sync.", false},
+		{"dry-run setup command", []string{"status", "--dry-run"}, "Error: --dry-run is supported only with 'tu sync' — run 'tu sync --dry-run' to preview a sync.", false},
+		{"init-metrics arity", []string{"init-metrics", "a", "b"}, "Error: init-metrics takes at most one argument (repo-url)", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

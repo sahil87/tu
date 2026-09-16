@@ -103,9 +103,49 @@ func TestRunVersionAfterValidation(t *testing.T) {
 	}
 }
 
+// TestRunDryRunMisuse pins the --dry-run misuse guard (B1's row of the
+// exit-code table): byte-exact message, no usage block, exit 2 — and it fires
+// before $HOME is consulted.
+func TestRunDryRunMisuse(t *testing.T) {
+	t.Setenv("HOME", "")
+	for _, args := range [][]string{{"--dry-run"}, {"cc", "--dry-run"}, {"status", "--dry-run"}} {
+		var stdout, stderr bytes.Buffer
+		code := run(args, &stdout, &stderr)
+		if code != 2 {
+			t.Errorf("run(%q) exit = %d, want 2", args, code)
+		}
+		if stdout.Len() != 0 {
+			t.Errorf("run(%q) stdout = %q, want empty", args, stdout.String())
+		}
+		want := "Error: --dry-run is supported only with 'tu sync' — run 'tu sync --dry-run' to preview a sync.\n"
+		if got := stderr.String(); got != want {
+			t.Errorf("run(%q) stderr = %q, want %q", args, got, want)
+		}
+	}
+}
+
+// TestRunInitMetricsArity pins the arity usage error: the message, then
+// ShortUsage, exit 2 — before $HOME is consulted (the TS checks arity at
+// dispatch).
+func TestRunInitMetricsArity(t *testing.T) {
+	t.Setenv("HOME", "")
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"init-metrics", "a", "b"}, &stdout, &stderr)
+	if code != 2 {
+		t.Errorf("exit = %d, want 2", code)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want empty", stdout.String())
+	}
+	want := "Error: init-metrics takes at most one argument (repo-url)\n" + command.ShortUsage + "\n"
+	if got := stderr.String(); got != want {
+		t.Errorf("stderr = %q, want %q", got, want)
+	}
+}
+
 // TestRunNoHome pins the config-home failure: exit 1 with the byte-exact
 // message, but only after a successful parse — a usage error with HOME unset
-// still exits 2.
+// still exits 2. The setup commands hit the same error (arity precedes it).
 func TestRunNoHome(t *testing.T) {
 	t.Setenv("HOME", "")
 

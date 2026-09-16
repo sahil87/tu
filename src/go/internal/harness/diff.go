@@ -44,7 +44,9 @@ const (
 
 // SideCapture is one side's recorded behavior for a case. Stdout/Stderr apply
 // to pipe cases, TTY to tty cases. Err carries harness-level problems with
-// the capture itself (e.g. a missing exit sentinel).
+// the capture itself (e.g. a missing exit sentinel). Home is the side's
+// staged $HOME — Compare normalizes it out of the byte channels before
+// comparing (NormalizeHome).
 type SideCapture struct {
 	Stdout   []byte
 	Stderr   []byte
@@ -53,6 +55,19 @@ type SideCapture struct {
 	TimedOut bool
 	Duration time.Duration
 	Err      string
+	Home     string
+}
+
+// NormalizeHome replaces every occurrence of the side's staged home path in b
+// with the literal "$HOME" (bytes, no regexp), so paths that legitimately
+// embed $HOME compare equal across the two staged homes. An empty home is a
+// no-op. Distinct from Redact (fixture capture), which anonymizes the
+// developer's real home for the committed corpus.
+func NormalizeHome(b []byte, home string) []byte {
+	if home == "" {
+		return b
+	}
+	return bytes.ReplaceAll(b, []byte(home), []byte("$HOME"))
 }
 
 // Result is the comparison outcome of one case, plus the informational
@@ -273,10 +288,14 @@ type byteChannel struct {
 
 // Compare byte-diffs one case's two captures, stopping at the first differing
 // channel: pipe cases compare exit, stdout, stderr; tty cases compare exit,
-// tty. A timeout on either side is a timeout verdict regardless of bytes. A
-// capture-level error on either side (Err non-empty — a failed exec or a
-// missing exit sentinel) is a red verdict: errored captures are not
-// comparable, so identical failures must never read as green.
+// tty. Each side's byte channels are home-normalized (NormalizeHome with that
+// side's staged Home) before comparing — the two staged $HOMEs differ only in
+// the side segment, so paths that legitimately embed $HOME (the setup-command
+// messages) would otherwise diverge. A timeout on either side is a timeout
+// verdict regardless of bytes. A capture-level error on either side (Err
+// non-empty — a failed exec or a missing exit sentinel) is a red verdict:
+// errored captures are not comparable, so identical failures must never read
+// as green.
 func Compare(c Case, node, goCap SideCapture) Result {
 	r := Result{
 		Case:     c,
@@ -307,11 +326,11 @@ func Compare(c Case, node, goCap SideCapture) Result {
 	}
 	var channels []byteChannel
 	if c.IO == IOTTY {
-		channels = []byteChannel{{"tty", node.TTY, goCap.TTY}}
+		channels = []byteChannel{{"tty", NormalizeHome(node.TTY, node.Home), NormalizeHome(goCap.TTY, goCap.Home)}}
 	} else {
 		channels = []byteChannel{
-			{"stdout", node.Stdout, goCap.Stdout},
-			{"stderr", node.Stderr, goCap.Stderr},
+			{"stdout", NormalizeHome(node.Stdout, node.Home), NormalizeHome(goCap.Stdout, goCap.Home)},
+			{"stderr", NormalizeHome(node.Stderr, node.Home), NormalizeHome(goCap.Stderr, goCap.Home)},
 		}
 	}
 	for _, ch := range channels {
@@ -355,14 +374,16 @@ func excerpt(b []byte, offset int) string {
 
 // CompareCallLogs parses both sides' call logs and compares them as sorted
 // sets of tool+argv pairs (cwd differs by side by construction; matched is
-// alias metadata). Missing logs count as empty. The result is informational
-// — it must never redden a case.
-func CompareCallLogs(nodePath, goPath string) (nodeN, goN int, differ bool, err error) {
-	nodeSet, err := callSet(nodePath)
+// alias metadata). Each side's argv entries are home-normalized with that
+// side's staged home, so `-C <dir>` and `clone <url> <dir>` shapes carrying
+// $HOME compare equal. Missing logs count as empty. The result is
+// informational — it must never redden a case.
+func CompareCallLogs(nodePath, goPath, nodeHome, goHome string) (nodeN, goN int, differ bool, err error) {
+	nodeSet, err := callSet(nodePath, nodeHome)
 	if err != nil {
 		return 0, 0, false, err
 	}
-	goSet, err := callSet(goPath)
+	goSet, err := callSet(goPath, goHome)
 	if err != nil {
 		return 0, 0, false, err
 	}
@@ -370,11 +391,16 @@ func CompareCallLogs(nodePath, goPath string) (nodeN, goN int, differ bool, err 
 	return len(nodeList), len(goList), !equalStrings(nodeList, goList), nil
 }
 
-// callSet reads a JSON-lines call log into a multiset of canonical call keys.
-func callSet(path string) (map[string]int, error) {
+// callSet reads a JSON-lines call log into a multiset of canonical call keys,
+// home-normalizing each argv entry first.
+func callSet(path, home string) (map[string]int, error) {
 	set := map[string]int{}
 	err := readCallLog(path, func(cl callLogLine) error {
-		set[cl.Tool+"\x00"+strings.Join(cl.Argv, "\x00")]++
+		argv := make([]string, len(cl.Argv))
+		for i, a := range cl.Argv {
+			argv[i] = string(NormalizeHome([]byte(a), home))
+		}
+		set[cl.Tool+"\x00"+strings.Join(argv, "\x00")]++
 		return nil
 	})
 	return set, err

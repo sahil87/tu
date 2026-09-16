@@ -8,4 +8,4 @@
 
 | File | Description |
 |------|-------------|
-| [differential-harness](differential-harness.md) | Differential harness for the Go port — harness/fixtures/<alias>/<source>/<period>.json corpus with per-alias manifest.json (schema v1), home-path redaction, fake ccusage/git replayers via TUDIFF_* env vars and TUDIFF_CALL_LOG, confirmed.json confirmation ledger, corpus validation test; tudiff capture/placeholder/run — run byte-diffs node dist/tu.mjs against bin/tu over harness/matrix.json case groups (conf/env/io/tz axes, staged $HOME + seeded metrics repo, TTY capture, divergence report) |
+| [differential-harness](differential-harness.md) | Differential harness for the Go port — harness/fixtures/<alias>/<source>/<period>.json corpus with per-alias manifest.json, home-path redaction, fake ccusage/git replayers (TUDIFF_* env, TUDIFF_CALL_LOG), confirmed.json ledger, corpus validation test; tudiff capture/placeholder/run — run byte-diffs node dist/tu.mjs against bin/tu over harness/matrix.json case groups (conf/env/io/tz axes, staged $HOME + seeded metrics repo, compare-side home normalization, TTY capture, divergence report) |

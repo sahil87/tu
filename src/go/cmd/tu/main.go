@@ -6,8 +6,9 @@
 // fab/plans/sahil/26-09-15-go-port.md.
 //
 // The binary answers the single-mode snapshot grammar (tu, tu cc, tu m, --json,
-// --no-color, --fresh, …) for real; everything else prints the deliberate
-// not-implemented placeholder the differential harness diffs against.
+// --no-color, --fresh, …) and the setup commands (init-conf, init-metrics,
+// status) for real; everything else prints the deliberate not-implemented
+// placeholder the differential harness diffs against.
 package main
 
 import (
@@ -16,6 +17,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"os/user"
 	"time"
 
 	// TZ data for hosts without /usr/share/zoneinfo: the harness's tz:alt axis
@@ -29,6 +32,7 @@ import (
 	"github.com/sahil87/tu/internal/source"
 	"github.com/sahil87/tu/internal/source/cache"
 	"github.com/sahil87/tu/internal/source/ccusage"
+	metricsync "github.com/sahil87/tu/internal/sync"
 )
 
 // version is the binary version, overridden via -ldflags "-X main.version=..." at build time.
@@ -45,13 +49,24 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
+// currentUsername is the edge's Env.Username: os/user Current().Username (the
+// TS safeUsername source; Load substitutes "unknown" on error).
+func currentUsername() (string, error) {
+	u, err := user.Current()
+	if err != nil {
+		return "", err
+	}
+	return u.Username, nil
+}
+
 // run is the testable entry point: it dispatches on args and writes to the
 // given streams, returning the process exit code instead of exiting. It is the
 // ONLY writer: nothing below cmd/tu touches stdout/stderr or calls os.Exit.
 //
 // The order mirrors the TS main(): grammar parse (usage errors, exit 2) →
-// version (after validation) → non-data command placeholder → $HOME config
-// check → mode detection → fetch/render via command.Run → warnings → lines.
+// version (after validation) → non-data command dispatch → $HOME config check →
+// config.Load cascade (warnings, reserved-user guard) → fetch/render via
+// command.Run → warnings → lines.
 func run(args []string, stdout, stderr io.Writer) int {
 	req, uerr := command.Parse(args)
 	if uerr != nil {
@@ -59,23 +74,36 @@ func run(args []string, stdout, stderr io.Writer) int {
 		if uerr.ShowUsage {
 			fmt.Fprintln(stderr, command.ShortUsage)
 		}
-		return 2
+		return command.ExitUsage
 	}
 	if req.Version {
 		fmt.Fprintln(stdout, versionLine(version))
-		return 0
+		return command.ExitOK
 	}
+
+	env := config.Env{Getenv: os.Getenv, Hostname: os.Hostname, Username: currentUsername}
+
 	if req.Command != "" {
-		fmt.Fprintln(stderr, notImplementedMsg)
-		return 1
+		return runCommand(req, env, stdout, stderr)
 	}
 
 	paths, err := config.ResolvePaths(os.Getenv("HOME"))
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())
-		return 1
+		return command.ExitOperational
 	}
-	mode := config.DetectMode(paths, os.Getenv)
+	cfg, warnings := config.Load(paths, env, config.Overrides{})
+	for _, w := range warnings {
+		fmt.Fprintln(stderr, w)
+	}
+	// The reserved-user guard (the TS assertUserNotReserved) runs right after
+	// readConfig: a bad config value is invocation-fixable, so it exits with
+	// the usage code. (B3's metrics-dir guard slots between Load and this
+	// check when it lands.)
+	if cfg.User == "all" {
+		fmt.Fprintln(stderr, `Error: config user "all" is reserved (used by -u all)`)
+		return command.ExitUsage
+	}
 
 	// Unreachable after the HOME check above; a nil store means no caching.
 	store, _ := cache.Default()
@@ -86,20 +114,96 @@ func run(args []string, stdout, stderr io.Writer) int {
 		Colors: ansi.Colors{Enabled: !req.Flags.NoColor && os.Getenv("NO_COLOR") == ""},
 	}
 
-	res, err := command.Run(context.Background(), req, mode, deps)
+	res, err := command.Run(context.Background(), req, cfg.Mode, deps)
 	if errors.Is(err, command.ErrUnported) {
 		fmt.Fprintln(stderr, notImplementedMsg)
-		return 1
+		return command.ExitOperational
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())
-		return 1
+		return command.ExitOperational
 	}
 	source.WriteWarnings(stderr, res.Warnings)
 	for _, l := range res.Lines {
 		fmt.Fprintln(stdout, l)
 	}
-	return 0
+	return command.ExitOK
+}
+
+// runCommand dispatches a non-data command: init-conf, init-metrics, and
+// status are answered for real; every other command stays on the scaffold's
+// placeholder. Data flags on a setup command are ignored (DC-02) — Parse sets
+// Command regardless of flags and the handlers never look at Format/Flags.
+func runCommand(req command.Request, env config.Env, stdout, stderr io.Writer) int {
+	switch req.Command {
+	case "init-conf", "init-metrics", "status":
+		// handled below
+	default:
+		fmt.Fprintln(stderr, notImplementedMsg)
+		return command.ExitOperational
+	}
+
+	paths, err := config.ResolvePaths(os.Getenv("HOME"))
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return command.ExitOperational
+	}
+
+	switch req.Command {
+	case "init-conf":
+		lines, err := config.InitConf(paths)
+		if err != nil {
+			fmt.Fprintln(stderr, err.Error())
+			return command.ExitOperational
+		}
+		writeLines(stdout, lines)
+		return command.ExitOK
+	case "status":
+		data, warnings := config.Status(paths, env, time.Now())
+		writeLines(stderr, warnings)
+		writeLines(stdout, data.Lines())
+		return command.ExitOK
+	default: // init-metrics
+		var url *string
+		if len(req.Args) > 0 {
+			url = &req.Args[0]
+		}
+		res, err := config.InitMetrics(paths, env, url, metricsync.Exec{})
+		writeLines(stderr, res.Warnings)
+		writeLines(stdout, res.Lines)
+		if err != nil {
+			fmt.Fprintln(stderr, err.Error())
+			return command.ExitOperational
+		}
+		if res.Clone != nil {
+			// The clone runs at the edge with the process streams passed
+			// through (the TS stdio "inherit": git's "Cloning into …" chatter
+			// reaches the user's stderr).
+			if cerr := (metricsync.Exec{}).Clone(context.Background(), res.Clone.URL, res.Clone.Dir, stdout, stderr); cerr != nil {
+				fmt.Fprintf(stderr, "Error: git clone failed (exit %d).\n", cloneExitCode(cerr))
+				return command.ExitOperational
+			}
+			config.RemoveCloneMarker(config.StateDir(paths.Home))
+			fmt.Fprintln(stdout, config.ClonedLine(res.Clone.URL, res.Clone.Dir))
+		}
+		return command.ExitOK
+	}
+}
+
+// cloneExitCode extracts the child's exit code; a non-exit failure (e.g. git
+// not found) reports 1, the TS uncaught-exception exit.
+func cloneExitCode(err error) int {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode()
+	}
+	return 1
+}
+
+func writeLines(w io.Writer, lines []string) {
+	for _, l := range lines {
+		fmt.Fprintln(w, l)
+	}
 }
 
 // versionLine renders the toolkit version standard's recommended shape,

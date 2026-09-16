@@ -354,10 +354,11 @@ func runCase(c harness.Case, cfg runConfig) (harness.Result, error) {
 		nodeCap = execSide(c, cfg, true, node)
 		goCap = execSide(c, cfg, false, goSide)
 	}
+	nodeCap.Home, goCap.Home = node.home, goSide.home
 
 	res = harness.Compare(c, nodeCap, goCap)
 	res.Rerun = rerun
-	if err := annotateCalls(&res, node.callLog, goSide.callLog, cfg.fixtures); err != nil {
+	if err := annotateCalls(&res, node, goSide, cfg.fixtures); err != nil {
 		return res, err
 	}
 	if err := harness.WriteCaseCaptures(cfg.reportDir, res, nodeCap, goCap); err != nil {
@@ -412,18 +413,19 @@ func execSide(c harness.Case, cfg runConfig, node bool, side caseSide) harness.S
 }
 
 // annotateCalls fills the informational call-log comparison and the
-// unconfirmed-replay flag from the two sides' call logs.
-func annotateCalls(res *harness.Result, nodeLog, goLog string, fixtures []string) error {
-	nodeN, goN, differ, err := harness.CompareCallLogs(nodeLog, goLog)
+// unconfirmed-replay flag from the two sides' call logs. Each side's argv is
+// home-normalized with that side's staged home before comparison.
+func annotateCalls(res *harness.Result, node, goSide caseSide, fixtures []string) error {
+	nodeN, goN, differ, err := harness.CompareCallLogs(node.callLog, goSide.callLog, node.home, goSide.home)
 	if err != nil {
 		return err
 	}
 	res.NodeCalls, res.GoCalls, res.CallsDiffer = nodeN, goN, differ
-	nodeUnc, err := harness.UnconfirmedReplays(nodeLog, fixtures)
+	nodeUnc, err := harness.UnconfirmedReplays(node.callLog, fixtures)
 	if err != nil {
 		return err
 	}
-	goUnc, err := harness.UnconfirmedReplays(goLog, fixtures)
+	goUnc, err := harness.UnconfirmedReplays(goSide.callLog, fixtures)
 	if err != nil {
 		return err
 	}

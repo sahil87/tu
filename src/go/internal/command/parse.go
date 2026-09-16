@@ -39,12 +39,15 @@ var knownSources = map[string]bool{
 }
 
 // nonDataCommands are the first-positional non-data tokens (dispatched before
-// grammar parsing in the TS; all placeholder in V2).
+// grammar parsing in the TS).
 var nonDataCommands = map[string]bool{
-	"help": true, "-h": true, "--help": true,
 	"init-conf": true, "init-metrics": true, "sync": true, "status": true,
 	"update": true, "shell-init": true, "help-dump": true, "skill": true,
 }
+
+// helpCommands are the help tokens; the TS checks them before the --dry-run
+// guard, so they are dispatched first.
+var helpCommands = map[string]bool{"help": true, "-h": true, "--help": true}
 
 // flagScan is the raw result of the flag pass: booleans by raw-argv
 // membership, value flags by presence + raw value, everything else positional.
@@ -121,10 +124,39 @@ func Parse(args []string) (Request, *UsageError) {
 		}
 	}
 
-	// Non-data commands: dispatched before grammar parsing; extra positionals
-	// are ignored (the TS dispatches on filteredArgs[0]).
+	// Help first (the TS help check precedes the --dry-run guard):
+	// `tu help --dry-run` prints help.
+	if len(scan.positionals) > 0 && helpCommands[scan.positionals[0]] {
+		req.Command = scan.positionals[0]
+		return req, nil
+	}
+
+	// The --dry-run misuse guard (TS main(), after help): honored only by
+	// `tu sync`; anything else carrying it is a usage error, exit 2, no usage
+	// block. `tu sync --dry-run` parses to Command "sync" with DryRun set and
+	// stays on the placeholder (B6).
+	if req.Flags.DryRun && (len(scan.positionals) == 0 || scan.positionals[0] != "sync") {
+		return Request{}, &UsageError{
+			Message:   "Error: --dry-run is supported only with 'tu sync' — run 'tu sync --dry-run' to preview a sync.",
+			ShowUsage: false,
+		}
+	}
+
+	// Non-data commands: dispatched before grammar parsing; the positionals
+	// after the command become Args (the TS dispatches on filteredArgs[0]).
+	// The init-metrics arity check fires here — before $HOME is consulted,
+	// matching the TS.
 	if len(scan.positionals) > 0 && nonDataCommands[scan.positionals[0]] {
 		req.Command = scan.positionals[0]
+		if len(scan.positionals) > 1 {
+			req.Args = scan.positionals[1:]
+		}
+		if req.Command == "init-metrics" && len(req.Args) > 1 {
+			return Request{}, &UsageError{
+				Message:   "Error: init-metrics takes at most one argument (repo-url)",
+				ShowUsage: true,
+			}
+		}
 		return req, nil
 	}
 
