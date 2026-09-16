@@ -5,10 +5,10 @@
 package csv
 
 import (
-	"math/big"
 	"strconv"
 	"strings"
 
+	"github.com/sahil87/tu/internal/render"
 	"github.com/sahil87/tu/internal/view"
 )
 
@@ -142,38 +142,68 @@ func num(n int64) string {
 	return strconv.FormatInt(n, 10)
 }
 
+// csvShare is the leaderboard's share/delta fraction field (the TS csvShare):
+// String(Math.round(n × 1000) / 1000) — JSRound (half toward +∞), then the
+// shortest round-trip form with trailing zeros dropped: 0.69, -0.3, 17.309, 0
+// (DC-11).
+func csvShare(n float64) string {
+	return strconv.FormatFloat(render.JSRound(n*1000)/1000, 'f', -1, 64)
+}
+
+// Leaderboard renders the lb CSV (the TS emitCsvLeaderboard): header
+// rank,user[,machine],cost,total_tokens,share,delta — machine after user when
+// byMachine (the explicit flag, so an empty result keeps the schema); one row
+// per SLICED row (delta empty for a "new" row); a Total row over the FULL set
+// (so --top 1 on two users still emits it) when len(all) > 1: Total,,{cost},
+// {tokens},, — one more empty field under byMachine. Header alone when empty.
+func Leaderboard(rows, all []view.LeaderboardRow, byMachine bool) []string {
+	header := []string{"rank", "user"}
+	if byMachine {
+		header = append(header, "machine")
+	}
+	header = append(header, "cost", "total_tokens", "share", "delta")
+	lines := []string{row(header)}
+
+	for _, r := range rows {
+		cells := []string{num(int64(r.Rank)), r.User}
+		if byMachine {
+			cells = append(cells, r.Machine)
+		}
+		delta := ""
+		if r.Delta != nil {
+			delta = csvShare(*r.Delta)
+		}
+		cells = append(cells, Cost(r.TotalCost), num(r.TotalTokens), csvShare(r.Share), delta)
+		lines = append(lines, row(cells))
+	}
+
+	if len(all) > 1 {
+		var grandCost float64
+		var grandTokens int64
+		for _, r := range all {
+			grandCost += r.TotalCost
+			grandTokens += r.TotalTokens
+		}
+		cells := []string{"Total", ""}
+		if byMachine {
+			cells = append(cells, "")
+		}
+		cells = append(cells, Cost(grandCost), num(grandTokens), "", "")
+		lines = append(lines, row(cells))
+	}
+	return lines
+}
+
 // Cost formats the EXACT binary value of x rounded half-up to two decimals —
-// the TS csvCost, toFixed(2). This is NOT strconv.FormatFloat(x, 'f', 2, 64)
+// the TS csvCost, toFixed(2), shared with the leaderboard's toFixed(1) share
+// cell as render.FixedHalfUp. This is NOT strconv.FormatFloat(x, 'f', 2, 64)
 // (half-even on the exact value: 0.125 → "0.12") and NOT render.FormatCost
-// (ICU shortest-repr half away from zero: 1.005 → "$1.01"). big.Rat holds the
-// exact value; scale by 100, floor, round up when the remainder ≥ 1/2. -0 and
-// 0 render "0.00".
+// (ICU shortest-repr half away from zero: 1.005 → "$1.01").
 //
 // Node-verified (v24, 2026-09-16): 1.005 → 1.00, 0.125 → 0.13, 2.675 → 2.67,
 // 0.015 → 0.01, 1.045 → 1.04, 0.045 → 0.04, 999999.995 → 999999.99.
 func Cost(x float64) string {
-	// exact = the binary value as a rational; scaled = exact × 100.
-	r := new(big.Rat).SetFloat64(x)
-	if x < 0 {
-		r.Neg(r) // round the magnitude; re-add the sign at the end
-	}
-	scaled := new(big.Rat).Mul(r, big.NewRat(100, 1))
-	intPart := new(big.Int)
-	remainder := new(big.Rat)
-	intPart.Quo(scaled.Num(), scaled.Denom()) // truncated; scaled ≥ 0 so == floor
-	remainder.Sub(scaled, new(big.Rat).SetInt(intPart))
-	if remainder.Cmp(big.NewRat(1, 2)) >= 0 {
-		intPart.Add(intPart, big.NewInt(1))
-	}
-	cents := intPart.String()
-	if len(cents) < 3 {
-		cents = strings.Repeat("0", 3-len(cents)) + cents
-	}
-	out := cents[:len(cents)-2] + "." + cents[len(cents)-2:]
-	if x < 0 && intPart.Sign() != 0 {
-		return "-" + out
-	}
-	return out
+	return render.FixedHalfUp(x, 2)
 }
 
 // quote applies RFC 4180 quoting: wrap in " and double inner " when the field

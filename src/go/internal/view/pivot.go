@@ -28,15 +28,24 @@ func negligibleAbs(m Metric) float64 {
 const pivotDateWidth = 10
 
 // TotalHistory builds the cross-tool history pivot (the TS
-// renderTotalHistory with the tool defaults — the lbh hooks are B5):
+// renderTotalHistory), plus the lbh hooks on HistoryOptions:
 //
 //   - Title "📊 Combined Cost History ({period}[, last 3 months])", or "Token"
-//     under tokens.
+//     under tokens — or o.Title verbatim when set (lbh).
 //   - Labels are the sorted union of every series' labels; none →
 //     Empty = "  No data".
 //   - Visible tools by the significance rule (≥ negligibleAbs AND ≥ 0.001 ×
-//     grand, boundary kept), falling back to nonzero, then to all; rowValue
-//     and grandTotal sum over ALL series (an omitted column still counts).
+//     grand, boundary kept), falling back to nonzero, then to all; with
+//     KeepAllColumns every series is a column, all-zero ones included.
+//     rowValue and grandTotal sum over ALL series (an omitted column still
+//     counts).
+//   - With RankColumns the visible columns (and each row's values) are
+//     reordered by descending window total in the metric, stable on ties,
+//     AFTER pivotData computes toolSums over the input order; widths, header,
+//     cells, bar segments, legend swatches and the Total row follow the
+//     reorder.
+//   - With HighlightLeader each Data row's max cell (strict >, first wins;
+//     index 0 when all equal) gets Cell.Leader.
 //   - Widths: Date 10; per tool max(len(Name), 9, its cells, its Total);
 //     last column data-sized floor 9.
 //   - barWidth = min(Width − tableWidth − 3 − costWidth − 1 −
@@ -51,7 +60,12 @@ func TotalHistory(series []Series, o HistoryOptions) Table {
 	if m == Tokens {
 		title = "📊 Combined Token History"
 	}
-	t := Table{Title: title + " (" + PeriodLabel(o.Period, o.CapActive) + ")"}
+	if o.Title != "" {
+		title = o.Title
+	} else {
+		title += " (" + PeriodLabel(o.Period, o.CapActive) + ")"
+	}
+	t := Table{Title: title}
 
 	labels := LabelUnion(series)
 	if len(labels) == 0 {
@@ -61,7 +75,16 @@ func TotalHistory(series []Series, o HistoryOptions) Table {
 
 	valueMap := pivotValues(series, m)
 	visible := significant(series, valueMap, labels, m)
+	if o.KeepAllColumns {
+		visible = make([]int, len(series))
+		for i := range series {
+			visible[i] = i
+		}
+	}
 	rows, toolSums, grandTotal := pivotData(series, valueMap, visible, labels)
+	if o.RankColumns {
+		visible, toolSums = rankColumns(visible, toolSums, rows)
+	}
 	toolWidths, rowValues, costWidth := pivotWidths(series, visible, rows, toolSums, grandTotal, m)
 
 	indicatorReserve := 0
@@ -79,6 +102,33 @@ func TotalHistory(series []Series, o HistoryOptions) Table {
 		pivotTotals(&t, labels, rowValues, toolSums, grandTotal, series, visible, o, m, showBars)
 	}
 	return t
+}
+
+// rankColumns reorders the visible columns by descending window total (ties
+// keep first-seen order — the TS columnOrder "total-desc" sort with the
+// first-seen index as tie-break) and permutes each row's values to match.
+func rankColumns(visible []int, toolSums []float64, rows []pivotRow) ([]int, []float64) {
+	order := make([]int, len(visible)) // positions into the current visible set
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		return toolSums[order[a]] > toolSums[order[b]]
+	})
+	newVisible := make([]int, len(visible))
+	newSums := make([]float64, len(toolSums))
+	for ni, oi := range order {
+		newVisible[ni] = visible[oi]
+		newSums[ni] = toolSums[oi]
+	}
+	for ri := range rows {
+		values := make([]float64, len(order))
+		for ni, oi := range order {
+			values[ni] = rows[ri].values[oi]
+		}
+		rows[ri].values = values
+	}
+	return newVisible, newSums
 }
 
 // pivotValues builds one lookup per series: label → the displayed metric
@@ -191,6 +241,18 @@ func pivotRows(rows []pivotRow, visible []int, columns []Column, o HistoryOption
 			row.Cells = append(row.Cells, metricCell(v, m))
 		}
 		row.Cells = append(row.Cells, metricCell(r.rowValue, m))
+		// The lbh per-row leader: the first strict maximum over the visible
+		// columns (index 0 when all equal — a zero-only row highlights its
+		// first column as BoldWhite(Dim(…))).
+		if o.HighlightLeader && len(r.values) > 0 {
+			leader := 0
+			for i := 1; i < len(r.values); i++ {
+				if r.values[i] > r.values[leader] {
+					leader = i
+				}
+			}
+			row.Cells[1+leader].Leader = true
+		}
 		if showBars {
 			row.Bar = rowBar(r.rowValue, scale, r.values)
 		}

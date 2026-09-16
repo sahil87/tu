@@ -209,3 +209,124 @@ func TestNormalizeByMachineNoticeOrder(t *testing.T) {
 		t.Errorf("flags = %+v, want both cleared", req.Flags)
 	}
 }
+
+// ── B5: leaderboard exemptions and the --top guard ──────────────────────────
+
+// R2: the -u single-mode guard skips lb/lbh (the exit-1 gate fires without a
+// notice); -u all on a leaderboard clears silently in any mode; -u <name> is
+// kept (it pins, never filters).
+func TestNormalizeLeaderboardUserExemptions(t *testing.T) {
+	cases := []struct {
+		name      string
+		req       Request
+		mode      config.Mode
+		wantUser  string
+		wantNotes []string
+	}{
+		{"single lb -u name", Request{Display: Leaderboard, Flags: Flags{User: "other"}}, config.Single, "other", nil},
+		{"single lbh -u name", Request{Display: LeaderboardHistory, Flags: Flags{User: "other"}}, config.Single, "other", nil},
+		{"multi lb -u all", Request{Display: Leaderboard, Flags: Flags{User: "all"}}, config.Multi, "", nil},
+		{"multi lbh -u all", Request{Display: LeaderboardHistory, Flags: Flags{User: "all"}}, config.Multi, "", nil},
+		{"multi lb -u name kept", Request{Display: Leaderboard, Flags: Flags{User: "other"}}, config.Multi, "other", nil},
+		{"multi h -u all kept", Request{Display: History, Flags: Flags{User: "all"}}, config.Multi, "all", nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			req, notices, _ := Normalize(c.req, c.mode, guardsNow)
+			if req.Flags.User != c.wantUser {
+				t.Errorf("User = %q, want %q", req.Flags.User, c.wantUser)
+			}
+			if len(notices) != len(c.wantNotes) {
+				t.Fatalf("notices = %v, want %v", notices, c.wantNotes)
+			}
+			for i, n := range c.wantNotes {
+				if notices[i] != n {
+					t.Errorf("notices[%d] = %q, want %q", i, notices[i], n)
+				}
+			}
+		})
+	}
+}
+
+// R2: --since/--until are kept on lb and lbh (an explicit window replaces the
+// period window on lb); the snapshot still warns and clears.
+func TestNormalizeLeaderboardKeepsWindow(t *testing.T) {
+	for _, d := range []Display{Leaderboard, LeaderboardHistory} {
+		req, notices, _ := Normalize(Request{
+			Display: d,
+			Flags:   Flags{Since: "2026-01-01", Until: "2026-01-31"},
+		}, config.Multi, guardsNow)
+		if req.Flags.Since != "2026-01-01" || req.Flags.Until != "2026-01-31" {
+			t.Errorf("display %v: bounds = %q/%q, want kept", d, req.Flags.Since, req.Flags.Until)
+		}
+		if len(notices) != 0 {
+			t.Errorf("display %v: notices = %v, want none", d, notices)
+		}
+	}
+}
+
+// R2: --full warns on lb (like a snapshot) but not on lbh.
+func TestNormalizeLeaderboardFullGuard(t *testing.T) {
+	_, notices, _ := Normalize(Request{Display: Leaderboard, Flags: Flags{Full: true}}, config.Multi, guardsNow)
+	if len(notices) != 1 || notices[0] != fullNotice {
+		t.Errorf("lb --full notices = %v, want the --full notice", notices)
+	}
+	_, notices, _ = Normalize(Request{Display: LeaderboardHistory, Flags: Flags{Full: true}}, config.Multi, guardsNow)
+	if len(notices) != 0 {
+		t.Errorf("lbh --full notices = %v, want none", notices)
+	}
+}
+
+// R2: --top off the leaderboards warns (byte-exact) and clears, positioned
+// after the --full notice; on lb/lbh it passes through.
+func TestNormalizeTopGuard(t *testing.T) {
+	req, notices, _ := Normalize(Request{Flags: Flags{Top: 3}}, config.Single, guardsNow)
+	if len(notices) != 1 || notices[0] != topNotice {
+		t.Errorf("notices = %v, want the --top notice", notices)
+	}
+	if req.Flags.Top != 0 {
+		t.Errorf("Top = %d, want cleared", req.Flags.Top)
+	}
+
+	// The full ordering case: -u line, --full line, --top line.
+	_, notices, _ = Normalize(Request{
+		Flags: Flags{User: "other", Top: 2, Full: true},
+	}, config.Single, guardsNow)
+	want := []string{userNotice, fullNotice, topNotice}
+	if len(notices) != 3 {
+		t.Fatalf("notices = %v, want %v", notices, want)
+	}
+	for i, n := range want {
+		if notices[i] != n {
+			t.Errorf("notices[%d] = %q, want %q", i, notices[i], n)
+		}
+	}
+
+	for _, d := range []Display{Leaderboard, LeaderboardHistory} {
+		req, notices, _ := Normalize(Request{Display: d, Flags: Flags{Top: 2}}, config.Multi, guardsNow)
+		if req.Flags.Top != 2 || len(notices) != 0 {
+			t.Errorf("display %v: Top = %d, notices = %v, want kept and silent", d, req.Flags.Top, notices)
+		}
+	}
+}
+
+// R2: the cap applies to lbh (like h) but never to lb.
+func TestNormalizeLeaderboardCap(t *testing.T) {
+	req, _, capActive := Normalize(Request{Display: LeaderboardHistory, Period: query.Daily}, config.Multi, guardsNow)
+	if !capActive || req.Flags.Since != "2026-07-01" {
+		t.Errorf("lbh daily: Since = %q capActive = %v, want 2026-07-01 true", req.Flags.Since, capActive)
+	}
+	_, _, capActive = Normalize(Request{Display: Leaderboard, Period: query.Daily}, config.Multi, guardsNow)
+	if capActive {
+		t.Error("lb must never be capped")
+	}
+	// lbh monthly is exempt; an explicit bound disables the cap.
+	_, _, capActive = Normalize(Request{Display: LeaderboardHistory, Period: query.Monthly}, config.Multi, guardsNow)
+	if capActive {
+		t.Error("m lbh must not be capped")
+	}
+	_, _, capActive = Normalize(Request{Display: LeaderboardHistory, Flags: Flags{Since: "2026-01-01"}}, config.Multi, guardsNow)
+	if capActive {
+		t.Error("an explicit --since disables the lbh cap")
+	}
+}

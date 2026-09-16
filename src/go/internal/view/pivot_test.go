@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/sahil87/tu/internal/fact"
+	"github.com/sahil87/tu/internal/query"
 )
 
 var toolNames = []string{"Claude Code", "Codex", "OpenCode", "Gemini", "Copilot", "Kimi"}
@@ -290,5 +291,126 @@ func TestTotalHistorySortedLabelUnion(t *testing.T) {
 	// Codex is $0.00 on the two days it has no entries.
 	if c := tab.Rows[2].Cells[2]; !c.Dim || c.Text != "$0.00" {
 		t.Errorf("missing-day cell = %+v, want dim $0.00", c)
+	}
+}
+
+// ── B5: the lbh hooks ───────────────────────────────────────────────────────
+
+// lbhSeries mirrors the R8 scenario: four users (input order eunice, bob,
+// alice, sahil), window totals 767.50 / 615.70 / 389.05 / 0 for
+// sahil/alice/bob/eunice, plus an all-zero first row.
+func lbhSeries() []Series {
+	cost := func(c float64) fact.Totals { return fact.Totals{TotalCost: c, TotalTokens: 1} }
+	return []Series{
+		{Name: "eunice", Entries: []Entry{{Label: "2026-06", Totals: cost(0)}, {Label: "2026-07", Totals: cost(0)}, {Label: "2026-08", Totals: cost(0)}}},
+		{Name: "bob", Entries: []Entry{{Label: "2026-06", Totals: cost(0)}, {Label: "2026-07", Totals: cost(169.05)}, {Label: "2026-08", Totals: cost(220.00)}}},
+		{Name: "alice", Entries: []Entry{{Label: "2026-06", Totals: cost(0)}, {Label: "2026-07", Totals: cost(314.60)}, {Label: "2026-08", Totals: cost(301.10)}}},
+		{Name: "sahil", Entries: []Entry{{Label: "2026-06", Totals: cost(0)}, {Label: "2026-07", Totals: cost(355.20)}, {Label: "2026-08", Totals: cost(412.30)}}},
+	}
+}
+
+func lbhOpts(width int) HistoryOptions {
+	o := HistoryOptions{Period: query.Monthly, Now: historyNow, Width: width}
+	o.Title = "📊 Leaderboard History (monthly)"
+	o.RankColumns = true
+	o.HighlightLeader = true
+	o.KeepAllColumns = true
+	return o
+}
+
+// R8: columns rank by descending window total (ties keep first-seen order),
+// an all-zero column stays and dims, and each row's max cell gets Leader.
+func TestTotalHistoryLbhHooks(t *testing.T) {
+	tab := TotalHistory(lbhSeries(), lbhOpts(80))
+
+	if tab.Title != "📊 Leaderboard History (monthly)" {
+		t.Errorf("Title = %q", tab.Title)
+	}
+	wantCols := []string{"Date", "sahil", "alice", "bob", "eunice", "Cost"}
+	if len(tab.Columns) != len(wantCols) {
+		t.Fatalf("columns = %+v", tab.Columns)
+	}
+	for i, w := range wantCols {
+		if tab.Columns[i].Title != w {
+			t.Errorf("column %d = %q, want %q (ranked, all kept)", i, tab.Columns[i].Title, w)
+		}
+	}
+
+	// Rows: header, divider, 3 data, divider, total.
+	if !equalKinds(kinds(tab.Rows), Header, Divider, Data, Data, Data, Divider, Total) {
+		t.Errorf("row kinds = %v", kinds(tab.Rows))
+	}
+	// The all-zero first row highlights its FIRST post-reorder column
+	// (sahil) as Leader, and the cell stays dim.
+	first := tab.Rows[2]
+	for i, c := range first.Cells {
+		leader := i == 1
+		if c.Leader != leader {
+			t.Errorf("all-zero row cell %d Leader = %v, want %v", i, c.Leader, leader)
+		}
+		if i >= 1 && i <= 4 && !c.Dim {
+			t.Errorf("all-zero row cell %d = %+v, want dim", i, c)
+		}
+	}
+	// Row 2026-07: sahil 355.20 leads; eunice is dim $0.00.
+	jul := tab.Rows[3]
+	if jul.Cells[1].Text != "$355.20" || !jul.Cells[1].Leader {
+		t.Errorf("leader cell = %+v, want $355.20 Leader", jul.Cells[1])
+	}
+	for i := 2; i <= 4; i++ {
+		if jul.Cells[i].Leader {
+			t.Errorf("cell %d unexpectedly Leader: %+v", i, jul.Cells[i])
+		}
+	}
+	if jul.Cells[4].Text != "$0.00" || !jul.Cells[4].Dim {
+		t.Errorf("eunice cell = %+v, want dim $0.00", jul.Cells[4])
+	}
+	// The Total row follows the reordered columns; the row total sums all.
+	total := tab.Rows[6]
+	for i, w := range []string{"Total", "$767.50", "$615.70", "$389.05", "$0.00", "$1,772.25"} {
+		if total.Cells[i].Text != w {
+			t.Errorf("total cell %d = %q, want %q", i, total.Cells[i].Text, w)
+		}
+	}
+}
+
+// R8: ties on the window total keep first-seen order.
+func TestTotalHistoryRankColumnsTies(t *testing.T) {
+	cost := func(c float64) fact.Totals { return fact.Totals{TotalCost: c, TotalTokens: 1} }
+	series := []Series{
+		{Name: "zeta", Entries: []Entry{{Label: "2026-01-05", Totals: cost(2)}}},
+		{Name: "alpha", Entries: []Entry{{Label: "2026-01-05", Totals: cost(3)}}},
+		{Name: "mid", Entries: []Entry{{Label: "2026-01-05", Totals: cost(2)}}},
+	}
+	tab := TotalHistory(series, lbhOpts(80))
+	want := []string{"Date", "alpha", "zeta", "mid", "Cost"}
+	for i, w := range want {
+		if tab.Columns[i].Title != w {
+			t.Errorf("column %d = %q, want %q", i, tab.Columns[i].Title, w)
+		}
+	}
+}
+
+// R8: the zero-value hooks reproduce the tool pivot's defaults.
+func TestTotalHistoryHookDefaultsUnchanged(t *testing.T) {
+	a := TotalHistory(sixPlaceholderSeries(), dailyOpts(80))
+	b := TotalHistory(sixPlaceholderSeries(), HistoryOptions{
+		Period: dailyOpts(80).Period, Now: dailyOpts(80).Now, Width: 80, Metric: Cost,
+	})
+	// Column titles and every cell must match today's output.
+	for i := range a.Columns {
+		if a.Columns[i] != b.Columns[i] {
+			t.Errorf("column %d differs: %+v vs %+v", i, a.Columns[i], b.Columns[i])
+		}
+	}
+	for i := range a.Rows {
+		if a.Rows[i].Kind != b.Rows[i].Kind || len(a.Rows[i].Cells) != len(b.Rows[i].Cells) {
+			t.Fatalf("row %d shape differs", i)
+		}
+		for j := range a.Rows[i].Cells {
+			if a.Rows[i].Cells[j] != b.Rows[i].Cells[j] {
+				t.Errorf("row %d cell %d differs: %+v vs %+v", i, j, a.Rows[i].Cells[j], b.Rows[i].Cells[j])
+			}
+		}
 	}
 }

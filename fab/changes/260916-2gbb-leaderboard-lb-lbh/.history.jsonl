@@ -1,0 +1,10 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-16T22:05:55Z"}
+{"args":"Context: fab/plans/sahil/26-09-15-go-port.md, row B5. Read the Decisions and Target architecture sections before writing the intake. Do not change any external surface listed under Goal. Build lb/lbh, user ranking, previous-period deltas, leaderboard JSON/CSV/Markdown. Harness gate: leaderboard cases.","cmd":"fab-new","event":"command","ts":"2026-09-16T22:05:55Z"}
+{"delta":"+4.2","event":"confidence","score":4.2,"trigger":"calc-score","ts":"2026-09-16T22:10:15Z"}
+{"delta":"+0.0","event":"confidence","score":4.2,"trigger":"calc-score","ts":"2026-09-16T22:10:45Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-16T22:12:33Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-16T22:17:47Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-16T22:47:52Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-16T22:52:36Z"}
+{"event":"review","result":"passed","ts":"2026-09-16T22:52:36Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-16T23:03:00Z"}

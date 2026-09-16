@@ -1,0 +1,57 @@
+id: 2gbb
+name: 260916-2gbb-leaderboard-lb-lbh
+created: 2026-09-16T22:05:55Z
+created_by: sahil-noon
+change_type: feat
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
+    review-pr: pending
+plan:
+    generated: true
+    task_count: 15
+    acceptance_count: 31
+    acceptance_completed: 31
+confidence:
+    certain: 8
+    confident: 7
+    tentative: 0
+    unresolved: 0
+    score: 4.2
+    fuzzy: true
+    dimensions:
+        signal: 69.3
+        reversibility: 82.3
+        competence: 84.7
+        disambiguation: 76.0
+stage_metrics:
+    intake: {started_at: "2026-09-16T22:05:55Z", driver: fab-new, iterations: 1, completed_at: "2026-09-16T22:17:47Z"}
+    apply: {started_at: "2026-09-16T22:17:47Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T22:47:52Z"}
+    review: {started_at: "2026-09-16T22:47:52Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T22:52:36Z"}
+    hydrate: {started_at: "2026-09-16T22:52:36Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T23:03:00Z"}
+    ship: {started_at: "2026-09-16T23:03:00Z", driver: fab-fff, iterations: 1}
+prs: []
+change_type_source: explicit
+base_branch: main
+true_impact:
+    added: 0
+    deleted: 0
+    net: 0
+    excluding:
+        added: 0
+        deleted: 0
+        net: 0
+    tests:
+        added: 0
+        deleted: 0
+        net: 0
+    computed_at: "2026-09-16T23:03:00Z"
+    computed_at_stage: hydrate
+summary: Ported the leaderboards lb/lbh in the Go tree (multi-mode gate, ranking windows/deltas, --top, --by-machine on lb, all four formats), extended view/render with the leaderboard model + JS rounding twins, added 28 harness groups (420 cases, 408 green)
+# base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-09-16T23:03:00Z

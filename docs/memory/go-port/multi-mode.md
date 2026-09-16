@@ -1,6 +1,6 @@
 ---
 type: memory
-description: The Go port's multi mode end to end — the metrics-dir auto-clone guard at the edge, command.gather's four record paths (live fetch; the own-user MaxMerge + other-machine sum; the repo-only -u <other>/-u all paths, no ccusage calls) returning un-collapsed records the callers Collapse(Tool, Date) before the unchanged tail, float summation order pinned to the TS (main table and by-machine breakdown alike), the mode-keyed snapshot label rule, the 3-month cap, and the read-only-until-B6 stance
+description: The Go port's multi mode — the metrics-dir auto-clone guard at the edge, command.gather's four record paths (live fetch, the own-user MaxMerge + other-machine sum, the repo-only -u paths — no ccusage calls) returning un-collapsed records the callers Collapse before the tail, the repo-only leaderboards lb/lbh over gatherAllUsers (ranking, lbh's tool-major left fold), float summation order pinned to the TS, the mode-keyed snapshot label rule, the 3-month cap, the read-only-until-B6 stance
 ---
 # Multi Mode (Go port)
 
@@ -43,7 +43,7 @@ Per key `(Date, Tool, User, Machine)` the own-user path keeps whichever WHOLE re
 The cap (`Normalize` step 3: history ∧ period ≠ monthly ∧ no explicit bound ∧ not `--full` → `Since = ThreeMonthFloor(now)`) defaults the floor before `gather` runs, and `Window` applies to the collapsed daily records after the merge — so repo-sourced records are windowed by the same floor as live ones: a stored day-file older than the floor does not appear in `h` and does appear in `h --full`.
 
 ### Requirement: Seams the later rows build on
-`gather` returns the un-collapsed per-machine/per-user records and the callers run the daily collapse for the main table; `--by-machine` groups the same raw records on `Machine` (or `User` under multi-mode `-u all`) — one `GroupBy(Tool, Date, dim)` pass per table ([command-edge](/go-port/command-edge.md), [query-view-render](/go-port/query-view-render.md)). The leaderboards (B5) pivot over `Repo.Users()` with `GroupBy(User)`; the sync row (B6) adds the never-shrink day-file writer call in the own-user path before the `Read`, completing the TS write-then-read shape.
+`gather` returns the un-collapsed per-machine/per-user records and the callers run the daily collapse for the main table; `--by-machine` groups the same raw records on `Machine` (or `User` under multi-mode `-u all`) — one `GroupBy(Tool, Date, dim)` pass per table ([command-edge](/go-port/command-edge.md), [query-view-render](/go-port/query-view-render.md)). The leaderboards are the fifth consumer of the repo records (2gbb): both `lb` and `lbh` read `gatherAllUsers(deps.Repo, tools)` directly — repo-only, no live fetch, no ccusage call, no source warnings, no writes — and rank/pivot over `Repo.Users()` with one `GroupBy` per window ([command-edge](/go-port/command-edge.md) owns the gate, windows and run paths). The `lbh` value per user and period label is a left fold in record input order over the windowed, relabelled records (tool-major, walk order within a tool) — DISTINCT from the main table's collapse-then-roll-up association (see the Design Decision below). The sync row (B6) adds the never-shrink day-file writer call in the own-user path before the `Read`, completing the TS write-then-read shape — the only multi-mode seam still open.
 
 ## Design Decisions
 
@@ -58,6 +58,12 @@ The cap (`Normalize` step 3: history ∧ period ≠ monthly ∧ no explicit boun
 **Why**: The port plan assigns the writer, the never-shrink guard and the day-file layout to B6 under D11 (port faithfully, gate on live-sync parity). The harness compares stdout/stderr/exit and the call multiset, none of which the write touches, and write-then-max-merge is arithmetically identical to max-merge alone for the rendered bytes — a stored file only ever holds a value the never-shrink guard let through, and the guard lets through exactly the values that would win the max. It is a temporary, documented divergence from the spec sentence "a plain `tu` in multi mode is a write", closed by B6.
 **Rejected**: A minimal writer ahead of B6 (splits D11's guarded surface across two rows and two reviews).
 *Introduced by*: 260916-xivf-metrics-source-and-multi-mode
+
+### lbh values as a tool-major left fold
+**Decision**: Per user, the `lbh` series is `GroupBy(Relabel(Window(ByUser(raw, u))), Date)` over the gather-ordered records — one left fold in record input order (tool-major, walk order within a tool) — not `Collapse(Tool, Date)` then `RollUp`.
+**Why**: The TS `aggregateMachineMap` aggregates each tool's unmerged machine-major entries into the period and `sumLeaderboardToolMaps` then adds tools in registry order — one left fold over the same ordered sequence. The main history's collapse-then-roll-up association is a different fold and would differ in the last bit, and the `lbh --json` doubles are byte surfaces (DC-10).
+**Rejected**: Reusing `runHistory`'s tail — byte drift in `lbh --json`.
+*Introduced by*: 260916-2gbb-leaderboard-lb-lbh
 
 ### Spec per-label sums on the `-u <other>` path, not the TS quirk
 **Decision**: `Collapse(Tool, Date)` runs on every path, including `-u <other>`, so an other user with the same tool and date on two machines gets plain per-label sums — the spec contract (`docs/specs/usage.md` § Own-machine max-merge: "`-u <other user>` and `-u all` read repo entries only (plain per-label sums)").

@@ -220,22 +220,15 @@ func TestRunUnported(t *testing.T) {
 		req  Request
 		cfg  config.Config
 	}{
-		{"leaderboard", Request{Display: Leaderboard, Flags: base}, singleCfg},
-		{"lbh", Request{Display: LeaderboardHistory, Flags: base}, singleCfg},
-		// R2: --by-machine is in scope, but the leaderboard displays stay out.
-		{"lb by-machine", Request{Display: Leaderboard, Flags: Flags{ByMachine: true, Interval: 10}}, singleCfg},
 		{"watch", Request{Flags: Flags{Watch: true, Interval: 10}}, singleCfg},
 		{"sync", Request{Flags: Flags{Sync: true, Interval: 10}}, singleCfg},
 		{"dry-run", Request{Flags: Flags{DryRun: true, Interval: 10}}, singleCfg},
 		{"no-rain", Request{Flags: Flags{NoRain: true, Interval: 10}}, singleCfg},
 		{"skip-brew-update", Request{Flags: Flags{SkipBrewUpdate: true, Interval: 10}}, singleCfg},
-		{"top", Request{Flags: Flags{Top: 3, Interval: 10}}, singleCfg},
 		{"command", Request{Command: "help", Flags: base}, singleCfg},
 		{"version", Request{Version: true, Flags: base}, singleCfg},
-		// R12: the B5 surfaces stay unported in multi mode too.
-		{"multi lb", Request{Display: Leaderboard, Flags: base}, multiCfg},
-		{"multi lbh", Request{Display: LeaderboardHistory, Flags: base}, multiCfg},
-		{"multi top", Request{Flags: Flags{Top: 3, Interval: 10}}, multiCfg},
+		{"lb watch", Request{Display: Leaderboard, Flags: Flags{Watch: true, Interval: 10}}, multiCfg},
+		{"lb sync", Request{Display: Leaderboard, Flags: Flags{Sync: true, Interval: 10}}, multiCfg},
 		{"multi watch", Request{Flags: Flags{Watch: true, Interval: 10}}, multiCfg},
 		{"multi sync", Request{Flags: Flags{Sync: true, Interval: 10}}, multiCfg},
 		{"multi dry-run", Request{Flags: Flags{DryRun: true, Interval: 10}}, multiCfg},
@@ -251,6 +244,52 @@ func TestRunUnported(t *testing.T) {
 				t.Errorf("unported request must not fetch; calls = %+v", f.calls)
 			}
 		})
+	}
+}
+
+// R1: the multi-mode gate — lb/lbh in single mode return ErrLeaderboardMode
+// before Normalize (no notices, no lines, no fetch); the message names lb for
+// lbh (DC-14).
+func TestRunLeaderboardSingleModeGate(t *testing.T) {
+	cases := []struct {
+		name string
+		req  Request
+	}{
+		{"lb", Request{Display: Leaderboard, Flags: Flags{Interval: 10}}},
+		{"lbh", Request{Display: LeaderboardHistory, Flags: Flags{Interval: 10}}},
+		{"lb -u name (no notice precedes the gate)", Request{Display: Leaderboard, Flags: Flags{User: "other-user", Interval: 10}}},
+		{"lbh by-machine", Request{Display: LeaderboardHistory, Flags: Flags{ByMachine: true, Interval: 10}}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := &fakeFetcher{}
+			res, err := Run(context.Background(), c.req, singleCfg, fakeDeps(f))
+			if !errors.Is(err, ErrLeaderboardMode) {
+				t.Fatalf("err = %v, want ErrLeaderboardMode", err)
+			}
+			if err.Error() != "Error: lb requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo" {
+				t.Errorf("message = %q", err.Error())
+			}
+			if len(res.Notices) != 0 || len(res.Lines) != 0 {
+				t.Errorf("Result = %+v, want empty (no notices, no lines)", res)
+			}
+			if len(f.calls) != 0 {
+				t.Errorf("the gate must precede any fetch; calls = %+v", f.calls)
+			}
+		})
+	}
+}
+
+// R3: the leaderboard displays and --top are in scope in multi mode; watch
+// and friends stay out even on lb.
+func TestRunLeaderboardScope(t *testing.T) {
+	f := &fakeFetcher{}
+	deps := multiDeps(f, seedRepo())
+	if _, err := Run(context.Background(), Request{
+		Display: Leaderboard,
+		Flags:   Flags{Top: 3, Since: "2026-01-01", Until: "2026-01-31", Interval: 10},
+	}, multiCfg, deps); err != nil {
+		t.Errorf("lb --top in multi mode: err = %v, want nil", err)
 	}
 }
 

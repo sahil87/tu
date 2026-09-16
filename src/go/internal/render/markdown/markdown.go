@@ -9,6 +9,7 @@
 package markdown
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/sahil87/tu/internal/query"
@@ -29,6 +30,12 @@ func alignRow(n int) string {
 		marks[i] = "---:"
 	}
 	marks[0] = ":---"
+	return row(marks)
+}
+
+// alignRowOf is the alignment line for an explicit marker list (the
+// leaderboard's right-aligned rank column).
+func alignRowOf(marks []string) string {
 	return row(marks)
 }
 
@@ -145,14 +152,16 @@ func History(s view.Series, period query.Period, capActive bool, bd *view.Breakd
 	return append(lines, "")
 }
 
-// TotalHistory renders the cross-tool pivot. The title is ALWAYS
-// "Combined Cost History" and the cells always cost — the Markdown pivot
-// ignores --metric (the TS emitMarkdownTotalHistory reads totalCost). Columns
-// drop exact-zero tools over all labels (the ANSI significance rule does not
-// apply here); when every tool is exact-zero all stay. A bold Total follows
-// when more than one label exists. An empty window is heading, blank, header,
-// alignment row, blank — no data rows.
-func TotalHistory(series []view.Series, period query.Period, capActive bool) []string {
+// TotalHistory renders the cross-tool pivot. The cells are always cost — the
+// Markdown pivot ignores --metric (the TS emitMarkdownTotalHistory reads
+// totalCost); title is the heading text ("Combined Cost History" from the
+// tool pivot's caller, "Leaderboard History" / "Leaderboard Token History"
+// from lbh — the TS mdTitle). Columns drop exact-zero tools over all labels
+// (the ANSI significance rule does not apply here); when every tool is
+// exact-zero all stay. A bold Total follows when more than one label exists.
+// An empty window is heading, blank, header, alignment row, blank — no data
+// rows.
+func TotalHistory(series []view.Series, period query.Period, capActive bool, title string) []string {
 	labels := view.LabelUnion(series)
 
 	// Cost map: tool → label → totalCost; columns = nonzeroTools over all
@@ -183,7 +192,7 @@ func TotalHistory(series []view.Series, period query.Period, capActive bool) []s
 	}
 	header = append(header, "Cost")
 	lines := []string{
-		"## Combined Cost History (" + view.PeriodLabel(period, capActive) + ")",
+		"## " + title + " (" + view.PeriodLabel(period, capActive) + ")",
 		"",
 		row(header),
 		alignRow(len(header)),
@@ -216,6 +225,66 @@ func TotalHistory(series []view.Series, period query.Period, capActive bool) []s
 			cells = append(cells, "**"+render.FormatCost(sum)+"**")
 		}
 		cells = append(cells, "**"+render.FormatCost(grandTotal)+"**")
+		lines = append(lines, row(cells))
+	}
+	return append(lines, "")
+}
+
+// Leaderboard renders the lb table (the TS emitMarkdownLeaderboard):
+// "## Leaderboard ({period})" (the period word only — no window, no metric),
+// blank, the header (#, User, [Machine,] Cost, Tokens, Share, Δ vs
+// {deltaLabel}) with alignment ---:, :---, [:---,] ---:, ---:, ---:, ---:,
+// data rows (FormatCost, FormatInt, the toFixed(1) share cell, view.DeltaCell
+// — "new" for a nil delta), a **Total** row (blank User/Share/Δ cells) over
+// the FULL set when len(all) > 1 (also under --top), trailing blank. No bars,
+// no arrows, no staleness footer.
+func Leaderboard(rows, all []view.LeaderboardRow, period query.Period, deltaLabel string, byMachine bool) []string {
+	header := []string{"#", "User"}
+	aligns := []string{"---:", ":---"}
+	if byMachine {
+		header = append(header, "Machine")
+		aligns = append(aligns, ":---")
+	}
+	header = append(header, "Cost", "Tokens", "Share", "Δ vs "+deltaLabel)
+	aligns = append(aligns, "---:", "---:", "---:", "---:")
+
+	lines := []string{
+		"## Leaderboard (" + period.String() + ")",
+		"",
+		row(header),
+		alignRowOf(aligns),
+	}
+
+	for _, r := range rows {
+		cells := []string{strconv.Itoa(r.Rank), r.User}
+		if byMachine {
+			cells = append(cells, r.Machine)
+		}
+		cells = append(cells,
+			render.FormatCost(r.TotalCost),
+			render.FormatInt(r.TotalTokens),
+			render.FixedHalfUp(r.Share*100, 1)+"%",
+			view.DeltaCell(r.Delta),
+		)
+		lines = append(lines, row(cells))
+	}
+
+	if len(all) > 1 {
+		var grandCost float64
+		var grandTokens int64
+		for _, r := range all {
+			grandCost += r.TotalCost
+			grandTokens += r.TotalTokens
+		}
+		cells := []string{"**Total**", ""}
+		if byMachine {
+			cells = append(cells, "")
+		}
+		cells = append(cells,
+			"**"+render.FormatCost(grandCost)+"**",
+			"**"+render.FormatInt(grandTokens)+"**",
+			"", "",
+		)
 		lines = append(lines, row(cells))
 	}
 	return append(lines, "")
