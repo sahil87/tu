@@ -26,7 +26,8 @@ func Parse(raw []byte, tool Tool) ([]fact.Record, *source.Error) {
 		return nil, parseError(tool, `stdout has no "daily" array`, nil)
 	}
 	var entries []map[string]json.RawMessage
-	if err := json.Unmarshal(doc.Daily, &entries); err != nil {
+	if err := json.Unmarshal(doc.Daily, &entries); err != nil || entries == nil {
+		// entries stays nil for {"daily":null} — null is not an array.
 		return nil, parseError(tool, `"daily" is not an array`, err)
 	}
 

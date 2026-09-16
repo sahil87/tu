@@ -155,6 +155,7 @@ func TestParseEmptyAndGarbage(t *testing.T) {
 		`{"totals":{}}`,
 		`{"daily":{}}`,
 		`{"daily":"daily"}`,
+		`{"daily":null}`,
 	}
 	for _, raw := range garbage {
 		t.Run("garbage "+raw, func(t *testing.T) {
