@@ -17,15 +17,25 @@ import (
 )
 
 // Fetcher is what command needs from a source. *ccusage.Source satisfies it
-// (asserted where cmd/tu assigns it); B3's *metrics.Source will too.
+// (asserted where cmd/tu assigns it).
 type Fetcher interface {
 	Fetch(ctx context.Context, tool fact.Tool, period string, extraArgs []string, fresh bool) ([]fact.Record, *source.Error)
 	FetchAll(ctx context.Context, period string, extraArgs []string, fresh bool) ([]fact.Record, []*source.Error)
 }
 
+// Repo is what command needs from the metrics repo: the profile list and one
+// user's records for one tool. metrics.Source satisfies it (asserted where
+// cmd/tu assigns it). Distinct from Fetcher on purpose — a repo read has no
+// context, no period, no cache, no fresh flag and no error channel.
+type Repo interface {
+	Users() []string
+	Read(user string, tool fact.Tool) []fact.Record
+}
+
 // Deps are Run's external inputs.
 type Deps struct {
 	Source Fetcher
+	Repo   Repo             // the metrics clone; consulted only in multi mode
 	Now    func() time.Time // time.Now at the edge; fixed in tests
 	Colors ansi.Colors
 	Width  int // stdout TTY width, probed at the edge (80 when piped)
@@ -47,11 +57,12 @@ var ErrUnported = errors.New("not implemented")
 
 // inScope reports whether the (normalized) request is in the ported grammar
 // (intake §2): snapshot or history display, any of the four formats, single
-// mode, no non-data command, no version; Since/Until/Full are history flags
-// (the guards clear them on snapshots). Still out: multi mode, -u,
-// --by-machine, --top, watch, sync, dry-run, no-rain, skip-brew-update.
-func inScope(req Request, mode config.Mode) bool {
-	if mode != config.Single || req.Command != "" || req.Version {
+// or multi mode, -u in any mode (Normalize already cleared it for single), no
+// non-data command, no version; Since/Until/Full are history flags (the
+// guards clear them on snapshots). Still out: --by-machine, --top, watch,
+// sync, dry-run, no-rain, skip-brew-update.
+func inScope(req Request) bool {
+	if req.Command != "" || req.Version {
 		return false
 	}
 	if req.Display != Snapshot && req.Display != History {
@@ -61,44 +72,131 @@ func inScope(req Request, mode config.Mode) bool {
 	if f.Watch || f.Sync || f.DryRun || f.ByMachine || f.NoRain || f.SkipBrewUpdate {
 		return false
 	}
-	return f.User == "" && f.Top == 0
+	return f.Top == 0
 }
 
 // Run composes source → query → view → render for an in-scope request and
 // returns the lines plus stats; anything else yields ErrUnported (without the
 // guard notices — the TS prints them and then does the unported thing; no
-// harness case combines them).
-func Run(ctx context.Context, req Request, mode config.Mode, deps Deps) (Result, error) {
-	req, notices, capActive := Normalize(req, deps.Now())
-	if !inScope(req, mode) {
+// harness case combines them). cfg is the post-guard config: the mode selects
+// the record path and the snapshot label rule.
+func Run(ctx context.Context, req Request, cfg config.Config, deps Deps) (Result, error) {
+	req, notices, capActive := Normalize(req, cfg.Mode, deps.Now())
+	if !inScope(req) {
 		return Result{}, ErrUnported
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, source.DefaultTimeout)
 	defer cancel()
 
-	// Fetch daily only — the TS only ever calls daily; roll-up is client-side.
-	var recs []fact.Record
-	var errs []*source.Error
-	tool, _ := fact.Lookup(req.Source)
-	if req.Source == "" {
-		recs, errs = deps.Source.FetchAll(ctx, source.PeriodDaily, nil, req.Flags.Fresh)
-	} else {
-		var serr *source.Error
-		recs, serr = deps.Source.Fetch(ctx, tool, source.PeriodDaily, nil, req.Flags.Fresh)
-		if serr != nil {
-			errs = []*source.Error{serr}
-		}
-	}
+	recs, errs := gather(ctx, req, cfg, deps)
 
 	if req.Display == History {
 		return runHistory(req, recs, errs, notices, capActive, deps), nil
 	}
-	return runSnapshot(req, recs, errs, notices, deps), nil
+	return runSnapshot(req, cfg.Mode, recs, errs, notices, deps), nil
+}
+
+// gather returns the daily records the pipeline consumes plus the source
+// errors, choosing the TS path by mode and -u (intake §7.3):
+//
+//	single                           live fetch (as today)
+//	multi, -u "" or -u == cfg.User   live fetch → stored := Read(cfg.User, tool)
+//	                                 per tool → own/others split on Machine ==
+//	                                 cfg.Machine → MaxMerge(live, own) ++ others
+//	multi, -u all                    for u in Repo.Users(): Read(u, tool) per
+//	                                 tool — no live fetch, no source errors
+//	multi, -u <other>                Read(user, tool) per tool — no live fetch,
+//	                                 no source errors
+//
+// Every path ends in Collapse(recs, Tool, Date) — the daily cross-machine/
+// cross-user sum that precedes the caller's Window/RollUp/GroupBy tail
+// (unchanged from B2); in single mode it is the identity on unique keys. The
+// summation order is load-bearing for --json float bytes: own machine first,
+// then other machines in walk order; for -u all, users ascending then walk
+// order.
+func gather(ctx context.Context, req Request, cfg config.Config, deps Deps) ([]fact.Record, []*source.Error) {
+	tools := fact.Tools
+	if req.Source != "" {
+		tool, _ := fact.Lookup(req.Source)
+		tools = []fact.Tool{tool}
+	}
+	if cfg.Mode == config.Multi {
+		if req.Flags.User == "all" {
+			return gatherAllUsers(deps.Repo, tools), nil
+		}
+		if req.Flags.User != "" && req.Flags.User != cfg.User {
+			return gatherUser(deps.Repo, req.Flags.User, tools), nil
+		}
+		return gatherOwn(ctx, req, cfg, deps, tools)
+	}
+	recs, errs := fetchLive(ctx, req, deps, tools)
+	return query.Collapse(recs, query.Tool, query.Date), errs
+}
+
+// fetchLive is the B2 live fetch: daily only (roll-up is client-side),
+// FetchAll for all tools or Fetch for one, Fresh honored, errors collected.
+func fetchLive(ctx context.Context, req Request, deps Deps, tools []fact.Tool) ([]fact.Record, []*source.Error) {
+	if req.Source == "" {
+		return deps.Source.FetchAll(ctx, source.PeriodDaily, nil, req.Flags.Fresh)
+	}
+	recs, serr := deps.Source.Fetch(ctx, tools[0], source.PeriodDaily, nil, req.Flags.Fresh)
+	if serr != nil {
+		return recs, []*source.Error{serr}
+	}
+	return recs, nil
+}
+
+// gatherOwn is the multi-mode own-user path: the live fetch reconciled with
+// the machine's own stored day-files by whole-record max (never summed — a
+// stored file only ever holds the fullest snapshot), then the other machines'
+// records summed on in walk order.
+func gatherOwn(ctx context.Context, req Request, cfg config.Config, deps Deps, tools []fact.Tool) ([]fact.Record, []*source.Error) {
+	live, errs := fetchLive(ctx, req, deps, tools)
+	byTool := make(map[string][]fact.Record, len(tools))
+	for _, r := range live {
+		byTool[r.Tool] = append(byTool[r.Tool], r)
+	}
+	var recs []fact.Record
+	for _, tool := range tools {
+		var own, others []fact.Record
+		for _, r := range deps.Repo.Read(cfg.User, tool) {
+			if r.Machine == cfg.Machine {
+				own = append(own, r)
+			} else {
+				others = append(others, r)
+			}
+		}
+		recs = append(recs, query.MaxMerge(byTool[tool.Key], own)...)
+		recs = append(recs, others...)
+	}
+	return query.Collapse(recs, query.Tool, query.Date), errs
+}
+
+// gatherUser is the repo-only -u <other> path: the user's records per tool in
+// walk order, no live fetch, no source errors.
+func gatherUser(repo Repo, user string, tools []fact.Tool) []fact.Record {
+	var recs []fact.Record
+	for _, tool := range tools {
+		recs = append(recs, repo.Read(user, tool)...)
+	}
+	return query.Collapse(recs, query.Tool, query.Date)
+}
+
+// gatherAllUsers is the repo-only -u all path: every profile's records per
+// tool, users ascending then walk order (the TS readAllUsersByUser flattened).
+func gatherAllUsers(repo Repo, tools []fact.Tool) []fact.Record {
+	var recs []fact.Record
+	for _, u := range repo.Users() {
+		for _, tool := range tools {
+			recs = append(recs, repo.Read(u, tool)...)
+		}
+	}
+	return query.Collapse(recs, query.Tool, query.Date)
 }
 
 // runSnapshot is V2's snapshot path, extended with the CSV/Markdown branches.
-func runSnapshot(req Request, recs []fact.Record, errs []*source.Error, notices []string, deps Deps) Result {
+func runSnapshot(req Request, mode config.Mode, recs []fact.Record, errs []*source.Error, notices []string, deps Deps) Result {
 	cur := query.CurrentLabel(req.Period, deps.Now())
 	groups := query.GroupBy(query.Window(query.RollUp(recs, req.Period), cur, cur), query.Tool)
 	byTool := make(map[string]fact.Totals, len(groups))
@@ -120,9 +218,11 @@ func runSnapshot(req Request, recs []fact.Record, errs []*source.Error, notices 
 		}
 		rows = append(rows, row)
 	}
-	// The TS single-mode daily-all path goes through fetchAllTotals, which
-	// returns bare totals without a label — `tu --json` never carries "label".
-	if req.Source == "" && req.Period == query.Daily {
+	// The label clear is a SINGLE-MODE artifact of the TS fetchAllTotals (bare
+	// totals without a label): `tu --json` never carries "label" in single
+	// mode. In multi mode every snapshot builds from fetchToolMerged entries,
+	// so a tool with a record on the current label carries "label".
+	if mode == config.Single && req.Source == "" && req.Period == query.Daily {
 		for i := range rows {
 			rows[i].Label = ""
 		}

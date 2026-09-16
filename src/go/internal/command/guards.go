@@ -3,11 +3,13 @@ package command
 import (
 	"time"
 
+	"github.com/sahil87/tu/internal/config"
 	"github.com/sahil87/tu/internal/query"
 )
 
 // The warn-and-clear guard notices (byte-exact TS stderr lines; intake §9.1).
 const (
+	userNotice       = "Warning: -u flag requires multi mode — ignoring."
 	sinceUntilNotice = "Warning: --since/--until apply to history display — ignoring."
 	fullNotice       = "Warning: --full applies to daily/weekly history — ignoring."
 )
@@ -17,6 +19,8 @@ const (
 // BEFORE any fetch warning. Pure — nothing below cmd/tu writes. (B4 inserts
 // its --by-machine pivot guard before step 1; B5 inserts --top after step 2.)
 //
+//  0. User set in single mode → notice; cleared. Applies to -u all exactly as
+//     to any name (the TS excludes only lb/lbh, which are placeholder here).
 //  1. since/until set on a non-history display → notice; both cleared (so the
 //     snapshot is in scope after the clear and a well-shaped impossible date
 //     like 2026-13-01 warns-and-renders, exit 0).
@@ -26,9 +30,13 @@ const (
 //     ThreeMonthFloor(now), capActive = true. An explicit bound on either
 //     side disables the cap entirely (no intersection); mh --full is a silent
 //     no-op.
-func Normalize(req Request, now time.Time) (Request, []string, bool) {
+func Normalize(req Request, mode config.Mode, now time.Time) (Request, []string, bool) {
 	var notices []string
 	f := &req.Flags
+	if f.User != "" && mode == config.Single {
+		notices = append(notices, userNotice)
+		f.User = ""
+	}
 	if (f.Since != "" || f.Until != "") && req.Display != History {
 		notices = append(notices, sinceUntilNotice)
 		f.Since, f.Until = "", ""

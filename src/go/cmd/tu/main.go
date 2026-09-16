@@ -5,9 +5,11 @@
 // formula (constitution v1.2.0 § Go Transition). Plan and decision log:
 // fab/plans/sahil/26-09-15-go-port.md.
 //
-// The binary answers the single-mode snapshot and history grammars (tu,
-// tu cc, tu m, tu h, tu cc mh --since/--until/--full, --json/--csv/--md,
-// --no-color, --fresh, …), the setup commands (init-conf, init-metrics,
+// The binary answers the snapshot and history grammars in single AND multi
+// mode (tu, tu cc, tu m, tu h, tu cc mh --since/--until/--full,
+// --json/--csv/--md, --no-color, --fresh, -u <user> / -u all against the
+// metrics repo, the single-mode -u notice, and the metrics-dir auto-clone
+// guard's stderr lines), the setup commands (init-conf, init-metrics,
 // status), and the toolkit surfaces (help/-h/--help, help-dump, skill,
 // shell-init, update) for real; everything else prints the deliberate
 // not-implemented placeholder the differential harness diffs against.
@@ -37,6 +39,7 @@ import (
 	"github.com/sahil87/tu/internal/source"
 	"github.com/sahil87/tu/internal/source/cache"
 	"github.com/sahil87/tu/internal/source/ccusage"
+	"github.com/sahil87/tu/internal/source/metrics"
 	metricsync "github.com/sahil87/tu/internal/sync"
 	"github.com/sahil87/tu/internal/toolkit"
 )
@@ -47,6 +50,13 @@ import (
 var version = "dev"
 
 const notImplementedMsg = "tu: not implemented (Go port in progress)"
+
+// Interface satisfaction at the edge, where the adapters are assigned:
+// *ccusage.Source is the live Fetcher, metrics.Source the metrics-repo Repo.
+var (
+	_ command.Fetcher = (*ccusage.Source)(nil)
+	_ command.Repo    = metrics.Source{}
+)
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -119,10 +129,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 	for _, w := range warnings {
 		fmt.Fprintln(stderr, w)
 	}
+	// The metrics-dir auto-clone guard (the TS checkMetricsDirGuard) runs
+	// between Load and the reserved-user check on the data path only — setup
+	// commands never clone here (init-metrics has its own interactive clone;
+	// status only reads). Its lines go to stderr in order.
+	cfg, guardLines := config.MetricsDirGuard(cfg, config.StateDir(paths.Home), time.Now(), metricsync.Exec{})
+	writeLines(stderr, guardLines)
 	// The reserved-user guard (the TS assertUserNotReserved) runs right after
-	// readConfig: a bad config value is invocation-fixable, so it exits with
-	// the usage code. (B3's metrics-dir guard slots between Load and this
-	// check when it lands.)
+	// the guard: a bad config value is invocation-fixable, so it exits with
+	// the usage code.
 	if cfg.User == "all" {
 		fmt.Fprintln(stderr, `Error: config user "all" is reserved (used by -u all)`)
 		return command.ExitUsage
@@ -130,15 +145,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	// Unreachable after the HOME check above; a nil store means no caching.
 	store, _ := cache.Default()
-	src := &ccusage.Source{Cache: store}
+	src := &ccusage.Source{Cache: store, User: cfg.User, Machine: cfg.Machine}
 	deps := command.Deps{
 		Source: src,
+		Repo:   metrics.Source{Dir: cfg.MetricsDir},
 		Now:    time.Now,
 		Colors: ansi.Colors{Enabled: !req.Flags.NoColor && os.Getenv("NO_COLOR") == ""},
 		Width:  terminalWidth(stdout),
 	}
 
-	res, err := command.Run(context.Background(), req, cfg.Mode, deps)
+	res, err := command.Run(context.Background(), req, cfg, deps)
 	if errors.Is(err, command.ErrUnported) {
 		fmt.Fprintln(stderr, notImplementedMsg)
 		return command.ExitOperational

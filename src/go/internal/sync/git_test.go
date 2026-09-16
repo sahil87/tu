@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -119,5 +120,75 @@ func TestCloneFailure(t *testing.T) {
 	}
 	if stderr.String() != "boom" {
 		t.Errorf("stderr = %q, want %q", stderr.String(), "boom")
+	}
+}
+
+// captureProcessStreams swaps os.Stdout/os.Stderr for pipes while fn runs and
+// returns whatever was written to them — CloneQuiet must leave both empty.
+func captureProcessStreams(t *testing.T, fn func()) (stdout, stderr string) {
+	t.Helper()
+	outR, outW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	errR, errW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	origOut, origErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = outW, errW
+	defer func() { os.Stdout, os.Stderr = origOut, origErr }()
+	fn()
+	outW.Close()
+	errW.Close()
+	var outBuf, errBuf bytes.Buffer
+	if _, err := io.Copy(&outBuf, outR); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(&errBuf, errR); err != nil {
+		t.Fatal(err)
+	}
+	return outBuf.String(), errBuf.String()
+}
+
+// R5: CloneQuiet issues exactly `clone <url> <dir>`, captures the child's
+// streams (nothing reaches the process's stdout/stderr), and reports exit 0
+// as a nil error with the captured stderr.
+func TestCloneQuietCapturesStreams(t *testing.T) {
+	log := stageFakeGit(t)
+	t.Setenv("FAKEGIT_STDOUT", "clone-out")
+	t.Setenv("FAKEGIT_STDERR", "clone-err")
+	var stderr string
+	var err error
+	out, errOut := captureProcessStreams(t, func() {
+		stderr, err = (Exec{}).CloneQuiet(context.Background(), "u", "/y")
+	})
+	if err != nil {
+		t.Fatalf("CloneQuiet err = %v", err)
+	}
+	if stderr != "clone-err" {
+		t.Errorf("captured stderr = %q, want %q", stderr, "clone-err")
+	}
+	if out != "" || errOut != "" {
+		t.Errorf("process streams = %q / %q, want both empty", out, errOut)
+	}
+	calls := readGitLog(t, log)
+	if len(calls) != 1 || strings.Join(calls[0], " ") != "clone u /y" {
+		t.Errorf("calls = %v, want [[clone u /y]]", calls)
+	}
+}
+
+// R5: a non-zero exit returns the *exec.ExitError and the captured stderr.
+func TestCloneQuietFailure(t *testing.T) {
+	stageFakeGit(t)
+	t.Setenv("FAKEGIT_EXIT", "128")
+	t.Setenv("FAKEGIT_STDERR", "fatal: repository not found")
+	stderr, err := (Exec{}).CloneQuiet(context.Background(), "u", "/y")
+	var exitErr *exec.ExitError
+	if err == nil || !errors.As(err, &exitErr) {
+		t.Fatalf("err = %v, want *exec.ExitError", err)
+	}
+	if stderr != "fatal: repository not found" {
+		t.Errorf("captured stderr = %q", stderr)
 	}
 }

@@ -1,6 +1,6 @@
 ---
 type: memory
-description: The Go port's input layer — internal/fact (Record/Totals plus the Tool/Tools/Lookup six-tool registry), internal/source (typed Error, the WriteWarnings edge writer, the fetch-contract constants PeriodDaily/DefaultTimeout), internal/source/ccusage (adapter-private invocations map, exec, normalize, Fetch/FetchAll), and internal/source/cache (hash-keyed on-disk JSON, 60 s TTL), tested against the _placeholder corpus; consumed by internal/command and cmd/tu, unshipped until cutover
+description: The Go port's input layer — internal/fact (Record/Totals, the six-tool registry), internal/source (typed Error, WriteWarnings, PeriodDaily/DefaultTimeout), internal/source/ccusage (invocations map, exec, normalize, Fetch/FetchAll, User/Machine stamped at the edge), internal/source/metrics (the read-only metrics-repo reader), and internal/source/cache (hash-keyed JSON, 60 s TTL) — tested against the _placeholder corpus and the seed; consumed by internal/command and cmd/tu, unshipped until cutover
 ---
 # Fact Type and ccusage Sources (Go port)
 
@@ -8,7 +8,7 @@ description: The Go port's input layer — internal/fact (Record/Totals plus the
 
 ## Overview
 
-The Go port's input layer is four packages under `src/go/internal/`: `fact` is pure — the one record type every downstream stage consumes plus the tool registry; `source` holds the typed per-source `Error`, `WriteWarnings` (the single edge writer), and the fetch-contract constants `PeriodDaily`/`DefaultTimeout`; `source/ccusage` is the one impure adapter (an adapter-private invocation map, exec, JSON normalize, fetch); `source/cache` is the on-disk JSON store behind it. The command edge consumes this layer: `command.Run` fetches through the `command.Fetcher` interface (`Fetch` takes `fact.Tool`), which `*ccusage.Source` satisfies at the `cmd/tu` assignment, applies `source.DefaultTimeout` once per invocation, builds its source with `cache.Default()`, and `cmd/tu` writes the result's warnings with `source.WriteWarnings` (see [command-edge](/go-port/command-edge.md)). The corpus these packages are tested against lives in [differential-harness](/harness/differential-harness.md); the shipped TypeScript data model they mirror is in [data-pipeline](/cli/data-pipeline.md); build/test wiring is in [toolchain](/build/toolchain.md).
+The Go port's input layer is five packages under `src/go/internal/`: `fact` is pure — the one record type every downstream stage consumes plus the tool registry; `source` holds the typed per-source `Error`, `WriteWarnings` (the single edge writer), and the fetch-contract constants `PeriodDaily`/`DefaultTimeout`; `source/ccusage` is the live adapter (an adapter-private invocation map, exec, JSON normalize, fetch); `source/metrics` is the second adapter — a read-only, silent reader of the metrics-repo clone; `source/cache` is the on-disk JSON store behind the live adapter. The command edge consumes this layer: `command.Run` fetches through the `command.Fetcher` interface (`Fetch` takes `fact.Tool`), which `*ccusage.Source` satisfies at the `cmd/tu` assignment, and reads the repo through the `command.Repo` interface, which `metrics.Source` satisfies there; the edge stamps the ccusage `Source` with `cfg.User`/`cfg.Machine` from the loaded config, applies `source.DefaultTimeout` once per invocation, builds its source with `cache.Default()`, and `cmd/tu` writes the result's warnings with `source.WriteWarnings` (see [command-edge](/go-port/command-edge.md); the multi-mode composition over these adapters is [multi-mode](/go-port/multi-mode.md)). The corpus these packages are tested against lives in [differential-harness](/harness/differential-harness.md); the shipped TypeScript data model they mirror is in [data-pipeline](/cli/data-pipeline.md); build/test wiring is in [toolchain](/build/toolchain.md).
 
 ## Requirements
 
@@ -121,6 +121,14 @@ The adapter SHALL run the binary with `exec.CommandContext(ctx, binary, argv...)
 - **WHEN** `FetchAll` runs for period `daily`
 - **THEN** 18 records ordered cc×3, codex×3, oc×3, gemini×3, copilot×3, kimi×3 and zero errors; for period `weekly` (no fixtures), six `KindExec` errors in registry order and zero records
 
+### Requirement: metrics.Source reads the metrics repo clone
+`package metrics` defines `Source{Dir string}` — the second adapter under `source`, the only other package that touches the filesystem. `Users()` returns the profile directories: direct children of `Dir` that are directories, excluding dot-prefixed names (`.git`) and the `nonUserDirs` set (`{"docs"}`, the TS NON_USER_DIRS), sorted ascending in byte order (the TS `Array.sort` on ASCII names); a missing or unreadable `Dir` yields nil. `Read(user string, tool fact.Tool)` returns the user's records for the tool across every machine in walk order — year directories ascending, machine directories ascending, files ascending — reading only files whose name has prefix `{tool.Key}-` and suffix `.jsonl` (so `ccx-…` never matches `cc`). Per file: read, trim, skip when empty, decode the single JSON object, skip silently on any read or decode error. The record's `Date` is the JSON `label` (never the filename date); `Tool` is `tool.Key`; `User`/`Machine` are the directory names; `Totals` are the six pinned keys, a missing key decoding as `0` (the TS would propagate NaN through `+= undefined`, but only a hand-corrupted file can lack a key — the never-shrink writer always emits all six). A missing user directory, an unreadable level, or a non-directory at the year or machine level is skipped silently. The package never writes, never prints, never execs, and never returns an error — a missing or unreadable directory or file is simply absent data, exactly as the TS readers swallow every fs error (the repo's absence is reported once, by the metrics-dir guard). The TS `excludeMachine` parameter is not ported — every production call site passed `null`, and 260610-srmi flagged it for deletion. Its tests build temp-dir trees, including a copy of the committed seed `harness/metrics-repo/` located by the walk-up-to-`package.json` helper (the `internal/config/defaults_test.go` convention).
+
+#### Scenario: Walk order over the committed seed
+- **GIVEN** the seed `harness/metrics-repo/` copied to `Dir`
+- **WHEN** `Read("harness-user", cc)` runs
+- **THEN** it returns, in order, `harness-machine/cc-2026-01-05` (`$0.25`), `harness-machine/cc-2026-01-06` (`$0.75`), `other-box/cc-2026-01-06` (`$0.40`), each stamped `User: harness-user` and `Machine:` the directory name, with `Date` from the JSON label; `Read("nobody", cc)` returns nil
+
 ### Requirement: Cache filename, hash, envelope, TTL
 `package cache`: `const TTL = 60 * time.Second`. `Key{Tool, Period string; Args []string}`. `Filename()` MUST be `{tool}-{period}-{h}.json` where `h` is the first 16 hex characters of `sha256(tool + "\x00" + period + "\x00" + strings.Join(args, "\x00"))`; the hash alone is the key. `Store{Dir string; TTL time.Duration; Now func() time.Time}` — a zero `TTL` means the package `TTL`, a nil `Now` means `time.Now` (tests inject both). `Default()` MUST return `Dir = $HOME/.tu/cache` with the defaults, or an error when `$HOME` is empty. `Put` MUST `MkdirAll(Dir, 0o755)` and write the envelope `{"v":1,"tool":…,"period":…,"args":[…],"records":[…]}` (empty `args` encodes as `[]`, not `null`); records are stored unstamped (empty `User`/`Machine`). `Get` MUST miss when the file is absent, when `Now() − mtime > TTL` (TTL by file mtime), when the file does not decode, or when the envelope's `v`/`tool`/`period`/`args` differ from the key — a hash collision or stale schema is a miss, never a wrong answer.
 
@@ -153,7 +161,7 @@ Adapter tests SHALL read fixtures via the relative walk `../../../../../harness/
 
 ### Registry lives in `fact`, not a new package
 **Decision**: `fact.Tool{Key, Name}`, `fact.Tools`, `fact.Lookup` own the registry; adapters hold their own per-key data.
-**Why**: the registry (key, display name, column order) is a property of the fact model — `fact.Record.Tool` already carries the key — and `fact` is the package every stage imports; B3's `source/metrics` and `command` need it without touching an adapter.
+**Why**: the registry (key, display name, column order) is a property of the fact model — `fact.Record.Tool` already carries the key — and `fact` is the package every stage imports; `source/metrics` and `command` need it without touching an adapter.
 **Rejected**: a tiny `internal/tools` package (a fourth import for ~30 lines, no isolation gain); a type alias in `ccusage` (keeps the weld).
 *Introduced by*: 260916-m9of-g1-rework-1
 
@@ -212,7 +220,7 @@ Adapter tests SHALL read fixtures via the relative walk `../../../../../harness/
 *Introduced by*: 260916-v0as-fact-source-ccusage
 
 ### User/Machine are caller-supplied fields, stamped after the cache
-**Decision**: `Source{User, Machine}` are plain fields the caller supplies; `Fetch` stamps them on every record on every return path, after the cache write.
-**Why**: `config` is a later row (B1), so identity arrives as plain fields; stamping after the cache means a config change inside the TTL window is never served a stale user or hostname.
-**Rejected**: Deriving identity inside the adapter (pulls the config dependency forward into V1); stamping before the cache write (a stale identity would be served from disk).
+**Decision**: `Source{User, Machine}` are plain fields the caller supplies — the edge stamps them from the loaded config (`cfg.User`/`cfg.Machine`); `Fetch` stamps them on every record on every return path, after the cache write.
+**Why**: Identity arrives as plain fields, keeping the adapter config-free; stamping after the cache means a config change inside the TTL window is never served a stale user or hostname, and the stamp is what lets `MaxMerge` and the later machine columns key on identity.
+**Rejected**: Deriving identity inside the adapter (pulls a config dependency into the input layer); stamping before the cache write (a stale identity would be served from disk).
 *Introduced by*: 260916-v0as-fact-source-ccusage

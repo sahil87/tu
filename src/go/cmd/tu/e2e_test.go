@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sahil87/tu/internal/command"
 	"github.com/sahil87/tu/internal/config"
@@ -212,27 +213,7 @@ type callLogEntry struct {
 // gitCalls returns the argv of every git invocation logged at path.
 func gitCalls(t *testing.T, path string) [][]string {
 	t.Helper()
-	raw, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	var calls [][]string
-	for _, line := range strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n") {
-		if line == "" {
-			continue
-		}
-		var e callLogEntry
-		if err := json.Unmarshal([]byte(line), &e); err != nil {
-			t.Fatalf("decode call log line %q: %v", line, err)
-		}
-		if e.Tool == "git" {
-			calls = append(calls, e.Argv)
-		}
-	}
-	return calls
+	return loggedCalls(t, path, "git")
 }
 
 // R11: `tu status` byte-exact in each of the four staged conf variants (the
@@ -483,4 +464,166 @@ func TestE2ESinceInvalidWarnsAndRenders(t *testing.T) {
 func TestE2EHistoryByMachinePlaceholder(t *testing.T) {
 	assertRun(t, []string{"h", "--by-machine"}, 1, "", notImplementedMsg+"\n")
 	assertRun(t, []string{"cc", "h", "--by-machine"}, 1, "", notImplementedMsg+"\n")
+}
+
+// ── B3: metrics-repo source and multi-mode merge ───────────────────────────
+//
+// Byte references: intake §9 (node v24, placeholder corpus + committed seed,
+// TZ=UTC, piped). The e2e binary writes to a bytes.Buffer, so width is 80 and
+// color is on (NO_COLOR unset).
+
+// The populated multi-mode single-tool window (`cc h --since --until` against
+// the seeded repo: live 0.50 wins 01-05, stored 0.75 wins 01-06 plus the
+// other-box 0.40, codex untouched).
+const e2eMultiCCHWindow = "\n\x1b[1;37m📊 Claude Code (daily)\x1b[0m\n\n\x1b[1;36mDate        \x1b[0m | \x1b[1;36m         Input\x1b[0m | \x1b[1;36m        Output\x1b[0m | \x1b[1;36m   Cache Write\x1b[0m | \x1b[1;36m    Cache Read\x1b[0m | \x1b[1;36m         Total\x1b[0m | \x1b[1;36m     Cost\x1b[0m\n\x1b[2m─────────────|────────────────|────────────────|────────────────|────────────────|────────────────|──────────\x1b[0m\n2026-01-05   |          3,000 |            400 |          1,000 |         20,000 |         24,400 |     $0.50\n2026-01-06   |          6,000 |            800 |          2,000 |         40,000 |         48,800 |     $1.15\n2026-01-07   |          3,000 |            400 |          1,000 |         20,000 |         24,400 |     $0.50\n\x1b[2m─────────────|────────────────|────────────────|────────────────|────────────────|────────────────|──────────\x1b[0m\n\x1b[1;37mTotal       \x1b[0m | \x1b[1;37m        12,000\x1b[0m | \x1b[1;37m         1,600\x1b[0m | \x1b[1;37m         4,000\x1b[0m | \x1b[1;37m        80,000\x1b[0m | \x1b[1;37m        97,600\x1b[0m | \x1b[1;37m    $2.15\x1b[0m\n\x1b[2mavg $0.72/day · peak $1.15 (2026-01-06)\x1b[0m\n\n"
+
+// The populated multi-mode all-tools window (`h --since --until` against the
+// seed): the merged cc column, codex's other-box 01-07 sum, and the $9.95
+// grand total.
+const e2eMultiHWindow = "\n\x1b[1;37m📊 Combined Cost History (daily)\x1b[0m\n\n\x1b[1;36mDate      \x1b[0m | \x1b[1;36mClaude Code\x1b[0m | \x1b[1;36m    Codex\x1b[0m | \x1b[1;36m OpenCode\x1b[0m | \x1b[1;36m   Gemini\x1b[0m | \x1b[1;36m  Copilot\x1b[0m | \x1b[1;36m     Kimi\x1b[0m | \x1b[1;36m     Cost\x1b[0m\n\x1b[2m───────────|─────────────|───────────|───────────|───────────|───────────|───────────|──────────\x1b[0m\n2026-01-05 |       $0.50 |     $0.50 |     $0.50 |     $0.50 |     $0.50 |     $0.50 |     $3.00\n2026-01-06 |       $1.15 |     $0.50 |     $0.50 |     $0.50 |     $0.50 |     $0.50 |     $3.65\n2026-01-07 |       $0.50 |     $0.80 |     $0.50 |     $0.50 |     $0.50 |     $0.50 |     $3.30\n\x1b[2m───────────|─────────────|───────────|───────────|───────────|───────────|───────────|──────────\x1b[0m\n\x1b[1;37mTotal     \x1b[0m | \x1b[1;37m      $2.15\x1b[0m | \x1b[1;37m    $1.80\x1b[0m | \x1b[1;37m    $1.50\x1b[0m | \x1b[1;37m    $1.50\x1b[0m | \x1b[1;37m    $1.50\x1b[0m | \x1b[1;37m    $1.50\x1b[0m | \x1b[1;37m    $9.95\x1b[0m\n\x1b[2mavg $3.32/day · peak $3.65 (2026-01-06)\x1b[0m\n\n"
+
+// loggedCalls returns the argv of every invocation of tool logged at path.
+func loggedCalls(t *testing.T, path, tool string) [][]string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls [][]string
+	for _, line := range strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		var e callLogEntry
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			t.Fatalf("decode call log line %q: %v", line, err)
+		}
+		if e.Tool == tool {
+			calls = append(calls, e.Argv)
+		}
+	}
+	return calls
+}
+
+// R13/R9: the seeded multi variants render the merged window bytes; the
+// legacy variant prefixes its deprecation line.
+func TestE2EMultiHistoryWindow(t *testing.T) {
+	for _, variant := range []string{"multi", "org", "legacy"} {
+		t.Run(variant, func(t *testing.T) {
+			stageVariant(t, variant)
+			stderr := ""
+			if variant == "legacy" {
+				stderr = "tu: ~/.tu.conf is deprecated; move it to ~/.config/tu/tu.conf\n"
+			}
+			assertRun(t, []string{"cc", "h", "--since", "2026-01-01", "--until", "2026-01-31"}, 0, e2eMultiCCHWindow, stderr)
+			assertRun(t, []string{"h", "--since", "2026-01-01", "--until", "2026-01-31"}, 0, e2eMultiHWindow, stderr)
+		})
+	}
+}
+
+// R10/A-015: the monthly JSON carries 2.15 (not 2.1500000000000004) — the
+// daily collapse reproduces the TS summation order.
+func TestE2EMultiMonthlyJSON(t *testing.T) {
+	stageVariant(t, "multi")
+	assertRun(t, []string{"cc", "mh", "--json"}, 0,
+		"[\n  {\n    \"label\": \"2026-01\",\n    \"totalCost\": 2.15,\n    \"inputTokens\": 12000,\n    \"outputTokens\": 1600,\n    \"cacheCreationTokens\": 4000,\n    \"cacheReadTokens\": 80000,\n    \"totalTokens\": 97600\n  }\n]\n", "")
+}
+
+// R9/A-019: -u <other> and -u all in multi mode render the (empty) snapshot
+// from the repo alone — no ccusage call, no git call, empty stderr.
+func TestE2EMultiUserPaths(t *testing.T) {
+	emptySnapshot := "\n\x1b[1;37m📊 Combined Usage (daily)\x1b[0m\n\n  No usage\n\n"
+	for _, args := range [][]string{{"-u", "other-user"}, {"-u", "all"}} {
+		stageVariant(t, "multi")
+		log := filepath.Join(t.TempDir(), "calls.jsonl")
+		t.Setenv("TUDIFF_CALL_LOG", log)
+		assertRun(t, args, 0, emptySnapshot, "")
+		if calls := loggedCalls(t, log, "ccusage"); len(calls) != 0 {
+			t.Errorf("run(%q) ccusage calls = %v, want none (repo-only path)", args, calls)
+		}
+		if calls := loggedCalls(t, log, "git"); len(calls) != 0 {
+			t.Errorf("run(%q) git calls = %v, want none", args, calls)
+		}
+	}
+}
+
+// R8: -u in single mode warns and ignores, then renders the live snapshot
+// (six ccusage calls), exit 0.
+func TestE2ESingleUserWarnsAndRenders(t *testing.T) {
+	stageVariant(t, "single")
+	log := filepath.Join(t.TempDir(), "calls.jsonl")
+	t.Setenv("TUDIFF_CALL_LOG", log)
+	assertRun(t, []string{"-u", "other-user"}, 0,
+		"\n\x1b[1;37m📊 Combined Usage (daily)\x1b[0m\n\n  No usage\n\n",
+		"Warning: -u flag requires multi mode — ignoring.\n")
+	if calls := loggedCalls(t, log, "ccusage"); len(calls) != 6 {
+		t.Errorf("ccusage calls = %v, want six (one per tool)", calls)
+	}
+}
+
+// R13/A-019: the envrepo axis — TU_METRICS_REPO set on a single home, metrics
+// dir absent: one `git clone <url> <abs dir>`, the Cloned line on stderr, then
+// the live-only render (the fake git creates no directory).
+func TestE2EEnvRepoAutoClone(t *testing.T) {
+	home := stageVariant(t, "single")
+	t.Setenv("TU_METRICS_REPO", harness.MetricsRepoURL)
+	log := filepath.Join(t.TempDir(), "calls.jsonl")
+	t.Setenv("TUDIFF_CALL_LOG", log)
+	dir := filepath.Join(home, ".tu", "metrics_repo")
+	assertRun(t, nil, 0,
+		"\n\x1b[1;37m📊 Combined Usage (daily)\x1b[0m\n\n  No usage\n\n",
+		"Cloned metrics repo → "+dir+"\n")
+	calls := loggedCalls(t, log, "git")
+	if want := [][]string{{"clone", harness.MetricsRepoURL, dir}}; !reflect.DeepEqual(calls, want) {
+		t.Errorf("git calls = %v, want %v", calls, want)
+	}
+	if calls := loggedCalls(t, log, "ccusage"); len(calls) != 6 {
+		t.Errorf("ccusage calls = %v, want six", calls)
+	}
+	// A successful clone clears the marker and leaves the config multi.
+	if _, err := os.Stat(filepath.Join(home, ".tu", ".clone-failed")); !os.IsNotExist(err) {
+		t.Error(".clone-failed present after a successful clone")
+	}
+}
+
+// R6: a fresh .clone-failed marker suppresses the clone — the not-available
+// warning, no git call, the single-mode live render, exit 0.
+func TestE2ECloneMarkerFreshFallback(t *testing.T) {
+	home := stageVariant(t, "single")
+	t.Setenv("TU_METRICS_REPO", harness.MetricsRepoURL)
+	log := filepath.Join(t.TempDir(), "calls.jsonl")
+	t.Setenv("TUDIFF_CALL_LOG", log)
+	stateDir := filepath.Join(home, ".tu")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	marker := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	if err := os.WriteFile(filepath.Join(stateDir, ".clone-failed"), []byte(marker), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	assertRun(t, nil, 0,
+		"\n\x1b[1;37m📊 Combined Usage (daily)\x1b[0m\n\n  No usage\n\n",
+		"Warning: metrics repo not available — falling back to single mode.\n")
+	if calls := loggedCalls(t, log, "git"); len(calls) != 0 {
+		t.Errorf("git calls = %v, want none (fresh marker)", calls)
+	}
+}
+
+// R13: setup commands never run the auto-clone guard — `tu status` in an
+// envrepo home records no git call.
+func TestE2EStatusNeverClones(t *testing.T) {
+	stageVariant(t, "single")
+	t.Setenv("TU_METRICS_REPO", harness.MetricsRepoURL)
+	log := filepath.Join(t.TempDir(), "calls.jsonl")
+	t.Setenv("TUDIFF_CALL_LOG", log)
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"status"}, &stdout, &stderr); code != 0 {
+		t.Errorf("status exit = %d, want 0", code)
+	}
+	if calls := loggedCalls(t, log, "git"); len(calls) != 0 {
+		t.Errorf("git calls = %v, want none for status", calls)
+	}
 }

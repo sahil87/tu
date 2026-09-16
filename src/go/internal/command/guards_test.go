@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sahil87/tu/internal/config"
 	"github.com/sahil87/tu/internal/query"
 )
 
@@ -14,7 +15,7 @@ func TestNormalizeSinceUntilGuard(t *testing.T) {
 	req, notices, capActive := Normalize(Request{
 		Display: Snapshot,
 		Flags:   Flags{Since: "2026-13-01", Until: "2026-01-31"},
-	}, guardsNow)
+	}, config.Single, guardsNow)
 	if len(notices) != 1 || notices[0] != sinceUntilNotice {
 		t.Errorf("notices = %v, want the since/until notice", notices)
 	}
@@ -29,7 +30,7 @@ func TestNormalizeSinceUntilGuard(t *testing.T) {
 	req, notices, capActive = Normalize(Request{
 		Display: History,
 		Flags:   Flags{Since: "2026-01-01"},
-	}, guardsNow)
+	}, config.Single, guardsNow)
 	if len(notices) != 0 || capActive || req.Flags.Since != "2026-01-01" {
 		t.Errorf("history+since: notices = %v, capActive = %v, since = %q", notices, capActive, req.Flags.Since)
 	}
@@ -37,7 +38,7 @@ func TestNormalizeSinceUntilGuard(t *testing.T) {
 
 func TestNormalizeFullGuard(t *testing.T) {
 	// Full on a snapshot: notice; the flag is left set (nothing reads it).
-	req, notices, _ := Normalize(Request{Flags: Flags{Full: true}}, guardsNow)
+	req, notices, _ := Normalize(Request{Flags: Flags{Full: true}}, config.Single, guardsNow)
 	if len(notices) != 1 || notices[0] != fullNotice {
 		t.Errorf("notices = %v, want the --full notice", notices)
 	}
@@ -46,13 +47,13 @@ func TestNormalizeFullGuard(t *testing.T) {
 	}
 
 	// mh --full: silent no-op (monthly is never capped).
-	_, notices, capActive := Normalize(Request{Display: History, Period: query.Monthly, Flags: Flags{Full: true}}, guardsNow)
+	_, notices, capActive := Normalize(Request{Display: History, Period: query.Monthly, Flags: Flags{Full: true}}, config.Single, guardsNow)
 	if len(notices) != 0 || capActive {
 		t.Errorf("mh --full: notices = %v, capActive = %v, want silent no-op", notices, capActive)
 	}
 
 	// --full with an explicit window: silently accepted, no cap.
-	req, _, capActive = Normalize(Request{Display: History, Flags: Flags{Full: true, Since: "2026-01-01"}}, guardsNow)
+	req, _, capActive = Normalize(Request{Display: History, Flags: Flags{Full: true, Since: "2026-01-01"}}, config.Single, guardsNow)
 	if capActive || req.Flags.Since != "2026-01-01" {
 		t.Errorf("h --full --since: capActive = %v, since = %q", capActive, req.Flags.Since)
 	}
@@ -84,7 +85,7 @@ func TestNormalizeCap(t *testing.T) {
 				Display: History,
 				Period:  c.period,
 				Flags:   Flags{Since: c.since, Until: c.until, Full: c.full},
-			}, guardsNow)
+			}, config.Single, guardsNow)
 			if capActive != c.wantCap {
 				t.Errorf("capActive = %v, want %v", capActive, c.wantCap)
 			}
@@ -100,7 +101,7 @@ func TestNormalizeCap(t *testing.T) {
 
 func TestNormalizeCapFloorThreadedFromNow(t *testing.T) {
 	jan := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
-	req, _, capActive := Normalize(Request{Display: History}, jan)
+	req, _, capActive := Normalize(Request{Display: History}, config.Single, jan)
 	if !capActive || req.Flags.Since != "2025-11-01" {
 		t.Errorf("Since = %q capActive = %v, want 2025-11-01 true (year rollover)", req.Flags.Since, capActive)
 	}
@@ -108,8 +109,53 @@ func TestNormalizeCapFloorThreadedFromNow(t *testing.T) {
 
 func TestNormalizeNoticeOrder(t *testing.T) {
 	// Both guards fire in TS order on a snapshot carrying both flag kinds.
-	_, notices, _ := Normalize(Request{Flags: Flags{Since: "2026-01-01", Full: true}}, guardsNow)
+	_, notices, _ := Normalize(Request{Flags: Flags{Since: "2026-01-01", Full: true}}, config.Single, guardsNow)
 	if len(notices) != 2 || notices[0] != sinceUntilNotice || notices[1] != fullNotice {
 		t.Errorf("notices = %v, want since/until then full", notices)
+	}
+}
+
+// R8: the single-mode -u guard fires first and clears the flag, for -u all as
+// for any name; in multi mode the flag passes through untouched.
+func TestNormalizeUserGuard(t *testing.T) {
+	cases := []struct {
+		name      string
+		req       Request
+		mode      config.Mode
+		wantUser  string
+		wantNotes []string
+	}{
+		{"single -u name", Request{Flags: Flags{User: "other-user"}}, config.Single, "", []string{userNotice}},
+		{"single -u all", Request{Flags: Flags{User: "all"}}, config.Single, "", []string{userNotice}},
+		{"multi -u name", Request{Flags: Flags{User: "other-user"}}, config.Multi, "other-user", nil},
+		{"multi -u all", Request{Flags: Flags{User: "all"}}, config.Multi, "all", nil},
+		{"no -u", Request{}, config.Single, "", nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			req, notices, _ := Normalize(c.req, c.mode, guardsNow)
+			if req.Flags.User != c.wantUser {
+				t.Errorf("User = %q, want %q", req.Flags.User, c.wantUser)
+			}
+			if len(notices) != len(c.wantNotes) {
+				t.Fatalf("notices = %v, want %v", notices, c.wantNotes)
+			}
+			for i, n := range c.wantNotes {
+				if notices[i] != n {
+					t.Errorf("notices[%d] = %q, want %q", i, notices[i], n)
+				}
+			}
+		})
+	}
+}
+
+// R8/A-017: on a snapshot carrying both -u and --since, the -u notice
+// precedes the since/until notice (the TS main() guard order).
+func TestNormalizeUserNoticeFirst(t *testing.T) {
+	_, notices, _ := Normalize(Request{
+		Flags: Flags{User: "other-user", Since: "2026-01-01"},
+	}, config.Single, guardsNow)
+	if len(notices) != 2 || notices[0] != userNotice || notices[1] != sinceUntilNotice {
+		t.Errorf("notices = %v, want -u then since/until", notices)
 	}
 }
