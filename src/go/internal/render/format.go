@@ -13,7 +13,8 @@ import (
 // integers): 24400 → "24,400".
 func FormatInt(n int64) string {
 	if n < 0 {
-		return "-" + group(strconv.FormatInt(-n, 10))
+		// Magnitude through unsigned arithmetic: -n overflows on MinInt64.
+		return "-" + group(strconv.FormatUint(uint64(-(n+1))+1, 10))
 	}
 	return group(strconv.FormatInt(n, 10))
 }

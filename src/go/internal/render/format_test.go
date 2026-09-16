@@ -17,6 +17,7 @@ func TestFormatInt(t *testing.T) {
 		{999999, "999,999"},
 		{1234567890123, "1,234,567,890,123"},
 		{-24400, "-24,400"},
+		{math.MinInt64, "-9,223,372,036,854,775,808"}, // -MinInt64 overflows int64
 	}
 	for _, c := range cases {
 		if got := FormatInt(c.in); got != c.want {
