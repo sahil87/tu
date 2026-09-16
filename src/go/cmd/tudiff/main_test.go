@@ -9,21 +9,6 @@ import (
 	"testing"
 )
 
-// R4: the P4 stub exits 1 with the exact stderr line.
-func TestRunStub(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	code := run([]string{"run"}, &stdout, &stderr)
-	if code != 1 {
-		t.Errorf("exit = %d, want 1", code)
-	}
-	if got := stderr.String(); got != "tudiff: run is not implemented (plan row P4)\n" {
-		t.Errorf("stderr = %q", got)
-	}
-	if stdout.Len() != 0 {
-		t.Errorf("stdout = %q, want empty", stdout.String())
-	}
-}
-
 // R4: no argument and an unknown subcommand exit 2 with usage on stderr.
 func TestRunUsageErrors(t *testing.T) {
 	for _, args := range [][]string{{}, {"bogus"}} {

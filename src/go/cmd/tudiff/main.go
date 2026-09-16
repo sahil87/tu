@@ -1,11 +1,10 @@
 // Command tudiff is the differential-harness driver for the Go port (plan
 // rows P3a and P4 in fab/plans/sahil/26-09-15-go-port.md; constitution v1.2.0
-// § Go Transition). This change implements `capture` (record real ccusage
-// output into harness/fixtures/<machine-alias>/) and `placeholder`
-// (the schema-derived, committed placeholder corpus — real captures carry
-// spend data and stay local); `run` — the
-// byte-diff matrix against the two tu binaries — is plan row P4 and exists
-// here only as a stub.
+// § Go Transition): `capture` records real ccusage output into
+// harness/fixtures/<machine-alias>/, `placeholder` writes the schema-derived,
+// committed placeholder corpus (real captures carry spend data and stay
+// local), and `run` byte-diffs node dist/tu.mjs against the Go binary over
+// harness/matrix.json.
 package main
 
 import (
@@ -21,7 +20,7 @@ import (
 const usageText = `usage: tudiff <capture|placeholder|run> [flags]
   capture      record real ccusage output into harness/fixtures/<machine-alias>/
   placeholder  write the schema-derived placeholder corpus (all six sources by default)
-  run          byte-diff node dist/tu.mjs against the Go binary (plan row P4)
+  run          byte-diff node dist/tu.mjs against the Go binary over harness/matrix.json
 `
 
 func main() {
@@ -41,8 +40,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "placeholder":
 		return runPlaceholder(args[1:], stdout, stderr)
 	case "run":
-		fmt.Fprintln(stderr, "tudiff: run is not implemented (plan row P4)")
-		return 1
+		return runRun(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "tudiff: unknown subcommand %q\n%s", args[0], usageText)
 		return 2

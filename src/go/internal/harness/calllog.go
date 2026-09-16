@@ -1,8 +1,11 @@
 package harness
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
+	"strings"
 )
 
 // CallLogEnv names the environment variable both fakes append their
@@ -44,4 +47,33 @@ func LogCall(tool string, argv []string, matched string) {
 	}
 	defer f.Close()
 	_, _ = f.Write(append(raw, '\n'))
+}
+
+// readCallLog invokes fn for every parsed line of the JSON-lines call log at
+// path (blank lines skipped). A missing file is an empty log, not an error.
+func readCallLog(path string, fn func(callLogLine) error) error {
+	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		var cl callLogLine
+		if err := json.Unmarshal([]byte(line), &cl); err != nil {
+			return fmt.Errorf("tudiff: call log %s: %w", path, err)
+		}
+		if err := fn(cl); err != nil {
+			return err
+		}
+	}
+	return sc.Err()
 }

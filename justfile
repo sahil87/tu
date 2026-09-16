@@ -66,3 +66,8 @@ harness-build:
 # Record real ccusage output for this machine into harness/fixtures/<alias>/ (default alias: hostname).
 harness-capture *ARGS: harness-build
     bin/harness/tudiff capture {{ARGS}}
+
+# Byte-diff node dist/tu.mjs against bin/tu over harness/matrix.json (plan row P4).
+# Exit 1 while any case is red — the count is the port's burndown, not a gate yet.
+go-diff *ARGS: build go-build harness-build
+    bin/harness/tudiff run {{ARGS}}
