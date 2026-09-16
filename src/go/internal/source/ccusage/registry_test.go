@@ -21,8 +21,29 @@ func TestInvocationsMatchRegistry(t *testing.T) {
 			t.Errorf("invocations has orphan key %q (not in fact.Tools)", key)
 		}
 	}
-	if invocations["cc"].prefixArgs[0] != "claude" {
-		t.Errorf(`invocations["cc"].prefixArgs[0] = %q, want "claude"`, invocations["cc"].prefixArgs[0])
+}
+
+func TestInvocationMetadata(t *testing.T) {
+	want := map[string]invocation{
+		"cc":      {prefixArgs: []string{"claude"}, labelKey: "date"},
+		"codex":   {prefixArgs: []string{"codex"}, labelKey: "date"},
+		"oc":      {prefixArgs: []string{"opencode"}, labelKey: "date"},
+		"gemini":  {prefixArgs: []string{"gemini"}, labelKey: "date"},
+		"copilot": {prefixArgs: []string{"copilot"}, labelKey: "date"},
+		"kimi":    {prefixArgs: []string{"kimi"}, labelKey: "date"},
+	}
+	for key, w := range want {
+		got, ok := invocations[key]
+		if !ok {
+			t.Errorf("invocations missing key %q", key)
+			continue
+		}
+		if !reflect.DeepEqual(got.prefixArgs, w.prefixArgs) {
+			t.Errorf("invocations[%q].prefixArgs = %v, want %v", key, got.prefixArgs, w.prefixArgs)
+		}
+		if got.labelKey != w.labelKey {
+			t.Errorf("invocations[%q].labelKey = %q, want %q", key, got.labelKey, w.labelKey)
+		}
 	}
 }
 
