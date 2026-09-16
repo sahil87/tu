@@ -32,6 +32,29 @@ func claudeWindow() view.Series {
 	}}
 }
 
+// historyMachines is the seeded two-machine split over the placeholder window:
+// harness-machine every day, other-box only on 01-06 (a dim $0.00 elsewhere).
+func historyMachines() *view.Breakdown {
+	return &view.Breakdown{Noun: "Machines", Rows: map[string][]view.Slice{
+		"2026-01-05": {{Name: "harness-machine", Totals: historyTotals}},
+		"2026-01-06": {
+			{Name: "harness-machine", Totals: fact.Totals{TotalCost: 0.75, TotalTokens: 24400}},
+			{Name: "other-box", Totals: fact.Totals{TotalCost: 0.40, TotalTokens: 24400}},
+		},
+		"2026-01-07": {{Name: "harness-machine", Totals: historyTotals}},
+	}}
+}
+
+// outlierMachines carries the two-zone window's full value on machine-a (one
+// slice per label, so the machine column mirrors the Cost column).
+func outlierMachines() *view.Breakdown {
+	rows := make(map[string][]view.Slice, 24)
+	for _, e := range outlierWindow().Entries {
+		rows[e.Label] = []view.Slice{{Name: "machine-a", Totals: e.Totals}}
+	}
+	return &view.Breakdown{Noun: "Machines", Rows: rows}
+}
+
 var pivotToolNames = []string{"Claude Code", "Codex", "OpenCode", "Gemini", "Copilot", "Kimi"}
 
 // sixToolWindow is the intake §12 pivot window (h-window bytes).
@@ -130,14 +153,17 @@ func TestHistoryGoldens(t *testing.T) {
 		golden string
 		lines  []string
 	}{
-		{"history 80col color", "history_80col_color.golden", Table(view.History(claudeWindow(), dailyAt(80)), color)},
-		{"history 80col no-color", "history_80col_nocolor.golden", Table(view.History(claudeWindow(), dailyAt(80)), Colors{})},
-		{"history wide bars", "history_wide_bars.golden", Table(view.History(claudeWindow(), dailyAt(140)), color)},
-		{"history two-zone", "history_two_zone.golden", Table(view.History(outlierWindow(), dailyAt(140)), color)},
-		{"history single row", "history_single_row.golden", Table(view.History(view.Series{Name: "Claude Code", Entries: []view.Entry{{Label: "2026-01", Totals: fact.Totals{TotalCost: 1.5, InputTokens: 9000, OutputTokens: 1200, CacheCreationTokens: 3000, CacheReadTokens: 60000, TotalTokens: 73200}}}}, view.HistoryOptions{Period: query.Monthly, Now: historyNow, Width: 80}), color)},
-		{"history empty", "history_empty.golden", Table(view.History(view.Series{Name: "Claude Code"}, view.HistoryOptions{Period: query.Daily, Now: historyNow, Width: 80, CapActive: true}), color)},
-		{"history tokens", "history_tokens.golden", Table(view.History(claudeWindow(), view.HistoryOptions{Period: query.Daily, Now: historyNow, Width: 80, Metric: view.Tokens}), color)},
-		{"history separators weekend today", "history_separators_weekend_today.golden", Table(view.History(separatorWindow(), view.HistoryOptions{Period: query.Daily, Now: monday, Width: 80}), color)},
+		{"history 80col color", "history_80col_color.golden", Table(view.History(claudeWindow(), dailyAt(80), nil), color)},
+		{"history 80col no-color", "history_80col_nocolor.golden", Table(view.History(claudeWindow(), dailyAt(80), nil), Colors{})},
+		{"history wide bars", "history_wide_bars.golden", Table(view.History(claudeWindow(), dailyAt(140), nil), color)},
+		{"history two-zone", "history_two_zone.golden", Table(view.History(outlierWindow(), dailyAt(140), nil), color)},
+		{"history single row", "history_single_row.golden", Table(view.History(view.Series{Name: "Claude Code", Entries: []view.Entry{{Label: "2026-01", Totals: fact.Totals{TotalCost: 1.5, InputTokens: 9000, OutputTokens: 1200, CacheCreationTokens: 3000, CacheReadTokens: 60000, TotalTokens: 73200}}}}, view.HistoryOptions{Period: query.Monthly, Now: historyNow, Width: 80}, nil), color)},
+		{"history empty", "history_empty.golden", Table(view.History(view.Series{Name: "Claude Code"}, view.HistoryOptions{Period: query.Daily, Now: historyNow, Width: 80, CapActive: true}, nil), color)},
+		{"history tokens", "history_tokens.golden", Table(view.History(claudeWindow(), view.HistoryOptions{Period: query.Daily, Now: historyNow, Width: 80, Metric: view.Tokens}, nil), color)},
+		{"history separators weekend today", "history_separators_weekend_today.golden", Table(view.History(separatorWindow(), view.HistoryOptions{Period: query.Daily, Now: monday, Width: 80}, nil), color)},
+		{"history machines 80col", "history_machines_80col.golden", Table(view.History(claudeWindow(), dailyAt(80), historyMachines()), color)},
+		{"history machines wide", "history_machines_wide.golden", Table(view.History(claudeWindow(), dailyAt(160), historyMachines()), color)},
+		{"history machines two-zone", "history_machines_two_zone.golden", Table(view.History(outlierWindow(), dailyAt(160), outlierMachines()), color)},
 		{"pivot 80col color", "pivot_80col_color.golden", Table(view.TotalHistory(sixToolWindow(), dailyAt(80)), color)},
 		{"pivot 80col no-color", "pivot_80col_nocolor.golden", Table(view.TotalHistory(sixToolWindow(), dailyAt(80)), Colors{})},
 		{"pivot wide stacked", "pivot_wide_stacked.golden", Table(view.TotalHistory(threeToolPivot(), dailyAt(120)), color)},
@@ -175,10 +201,13 @@ func TestHistoryGoldens(t *testing.T) {
 func TestHistoryStripANSIInvariant(t *testing.T) {
 	monday := time.Date(2026, 2, 2, 12, 0, 0, 0, time.UTC)
 	tables := []view.Table{
-		view.History(claudeWindow(), dailyAt(80)),
-		view.History(claudeWindow(), dailyAt(140)),
-		view.History(outlierWindow(), dailyAt(140)),
-		view.History(separatorWindow(), view.HistoryOptions{Period: query.Daily, Now: monday, Width: 80}),
+		view.History(claudeWindow(), dailyAt(80), nil),
+		view.History(claudeWindow(), dailyAt(140), nil),
+		view.History(outlierWindow(), dailyAt(140), nil),
+		view.History(separatorWindow(), view.HistoryOptions{Period: query.Daily, Now: monday, Width: 80}, nil),
+		view.History(claudeWindow(), dailyAt(80), historyMachines()),
+		view.History(claudeWindow(), dailyAt(160), historyMachines()),
+		view.History(outlierWindow(), dailyAt(160), outlierMachines()),
 		view.TotalHistory(sixToolWindow(), dailyAt(80)),
 		view.TotalHistory(threeToolPivot(), dailyAt(120)),
 		view.TotalHistory(omissionPivot(), dailyAt(80)),
@@ -211,7 +240,7 @@ func TestHistoryStripANSIInvariant(t *testing.T) {
 // row still wraps both empty zones in color escapes (the TS wrap() has no
 // empty guard) — pinned here independent of the golden file.
 func TestTwoZoneZeroRowBytes(t *testing.T) {
-	tab := view.History(outlierWindow(), dailyAt(140))
+	tab := view.History(outlierWindow(), dailyAt(140), nil)
 	if !tab.Scale.TwoZone {
 		t.Fatalf("outlier window must be two-zone: %+v", tab.Scale)
 	}
@@ -237,7 +266,7 @@ func TestTwoZoneZeroRowBytes(t *testing.T) {
 // The intake §12 captures pin the two 80-column history tables byte for byte.
 func TestIntakeByteReferences(t *testing.T) {
 	color := Colors{Enabled: true}
-	got := strings.Join(Table(view.History(claudeWindow(), dailyAt(80)), color), "\n") + "\n"
+	got := strings.Join(Table(view.History(claudeWindow(), dailyAt(80), nil), color), "\n") + "\n"
 	want := "\n" +
 		"\x1b[1;37m📊 Claude Code (daily)\x1b[0m\n" +
 		"\n" +

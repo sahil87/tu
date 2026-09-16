@@ -35,19 +35,36 @@ func TestSnapshotGoldens(t *testing.T) {
 		name   string
 		golden string
 		rows   []view.ToolTotals
+		bd     *view.Breakdown
 	}{
 		// tu m --json shape: labels on the populated tools.
-		{"all tools with labels", "all_tools_labeled.golden", allTools("2026-09")},
+		{"all tools with labels", "all_tools_labeled.golden", allTools("2026-09"), nil},
 		// tu --json shape: the daily-all quirk drops every label.
-		{"all tools no labels", "all_tools_unlabeled.golden", allTools("")},
+		{"all tools no labels", "all_tools_unlabeled.golden", allTools(""), nil},
 		// tu cc --json shape: one tool, label first.
-		{"single tool", "single_tool.golden", []view.ToolTotals{{Name: "Claude Code", Label: "2026-09-16", Totals: populatedTotals}}},
+		{"single tool", "single_tool.golden", []view.ToolTotals{{Name: "Claude Code", Label: "2026-09-16", Totals: populatedTotals}}, nil},
 		// The placeholder-corpus state: six zero objects, no labels.
-		{"all zero", "all_zero.golden", allToolsZero()},
+		{"all zero", "all_zero.golden", allToolsZero(), nil},
+		// R9: tu --by-machine --json — machines after totalTokens, first-seen
+		// slice order (NOT alphabetical), cost values.
+		{"machines", "snapshot_machines.golden", allTools("2026-09"), &view.Breakdown{Noun: "Machines", Rows: map[string][]view.Slice{
+			"Claude Code": {
+				{Name: "Sahils-Mac-mini.local", Totals: fact.Totals{TotalCost: 0.3}},
+				{Name: "dev-ws-sahil02", Totals: fact.Totals{TotalCost: 0.2}},
+			},
+		}}},
+		// A-020: the single-source zero-fill quirk — machines with 0 values
+		// and no label on a zero-usage day (a G0 candidate, not a spec fix).
+		{"machines zero usage", "snapshot_machines_zero_usage.golden", []view.ToolTotals{{Name: "Claude Code"}}, &view.Breakdown{Noun: "Machines", Rows: map[string][]view.Slice{
+			"Claude Code": {
+				{Name: "harness-machine"},
+				{Name: "other-box"},
+			},
+		}}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := strings.Join(Snapshot(c.rows), "\n") + "\n"
+			got := strings.Join(Snapshot(c.rows, c.bd), "\n") + "\n"
 			path := filepath.Join("testdata", c.golden)
 			if *update {
 				if err := os.MkdirAll("testdata", 0o755); err != nil {
@@ -98,7 +115,7 @@ func TestLabelFirstAndConditional(t *testing.T) {
 	lines := Snapshot([]view.ToolTotals{
 		{Name: "Claude Code", Label: "2026-09-16", Totals: populatedTotals},
 		{Name: "Codex"},
-	})
+	}, nil)
 	joined := strings.Join(lines, "\n")
 	if !strings.Contains(joined, "\"label\": \"2026-09-16\",\n    \"totalCost\"") {
 		t.Errorf("label must be the first key when present:\n%s", joined)

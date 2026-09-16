@@ -9,18 +9,25 @@ import (
 
 // The warn-and-clear guard notices (byte-exact TS stderr lines; intake §9.1).
 const (
-	userNotice       = "Warning: -u flag requires multi mode — ignoring."
-	sinceUntilNotice = "Warning: --since/--until apply to history display — ignoring."
-	fullNotice       = "Warning: --full applies to daily/weekly history — ignoring."
+	userNotice           = "Warning: -u flag requires multi mode — ignoring."
+	byMachinePivotNotice = "Warning: --by-machine is not supported with all-tools history — ignoring."
+	byMachineLbhNotice   = "Warning: --by-machine is not supported with leaderboard history — ignoring."
+	sinceUntilNotice     = "Warning: --since/--until apply to history display — ignoring."
+	fullNotice           = "Warning: --full applies to daily/weekly history — ignoring."
 )
 
 // Normalize applies the TS main() flag guards in TS order and returns the
 // request the pipeline runs plus the stderr notice lines the edge prints
-// BEFORE any fetch warning. Pure — nothing below cmd/tu writes. (B4 inserts
-// its --by-machine pivot guard before step 1; B5 inserts --top after step 2.)
+// BEFORE any fetch warning. Pure — nothing below cmd/tu writes. (B5 inserts
+// its --top guard after step 2.)
 //
 //  0. User set in single mode → notice; cleared. Applies to -u all exactly as
 //     to any name (the TS excludes only lb/lbh, which are placeholder here).
+//     0a. ByMachine on the all-tools history pivot (Source "" and History) →
+//     notice; cleared. The single-tool history and the snapshots keep it.
+//     0b. ByMachine on the leaderboard history → notice; cleared. (lbh itself
+//     stays unported until B5, so this guard emits no bytes yet — B4 owns the
+//     flag's guards, B5 owns the display.)
 //  1. since/until set on a non-history display → notice; both cleared (so the
 //     snapshot is in scope after the clear and a well-shaped impossible date
 //     like 2026-13-01 warns-and-renders, exit 0).
@@ -36,6 +43,14 @@ func Normalize(req Request, mode config.Mode, now time.Time) (Request, []string,
 	if f.User != "" && mode == config.Single {
 		notices = append(notices, userNotice)
 		f.User = ""
+	}
+	if f.ByMachine && req.Source == "" && req.Display == History {
+		notices = append(notices, byMachinePivotNotice)
+		f.ByMachine = false
+	}
+	if f.ByMachine && req.Display == LeaderboardHistory {
+		notices = append(notices, byMachineLbhNotice)
+		f.ByMachine = false
 	}
 	if (f.Since != "" || f.Until != "") && req.Display != History {
 		notices = append(notices, sinceUntilNotice)

@@ -57,10 +57,12 @@ var ErrUnported = errors.New("not implemented")
 
 // inScope reports whether the (normalized) request is in the ported grammar
 // (intake §2): snapshot or history display, any of the four formats, single
-// or multi mode, -u in any mode (Normalize already cleared it for single), no
-// non-data command, no version; Since/Until/Full are history flags (the
-// guards clear them on snapshots). Still out: --by-machine, --top, watch,
-// sync, dry-run, no-rain, skip-brew-update.
+// or multi mode, -u in any mode (Normalize already cleared it for single),
+// --by-machine on the snapshots and the single-tool history (Normalize already
+// cleared it on the all-tools pivot), no non-data command, no version;
+// Since/Until/Full are history flags (the guards clear them on snapshots).
+// Still out: --top, watch, sync, dry-run, no-rain, skip-brew-update, and the
+// leaderboard displays.
 func inScope(req Request) bool {
 	if req.Command != "" || req.Version {
 		return false
@@ -69,7 +71,7 @@ func inScope(req Request) bool {
 		return false
 	}
 	f := req.Flags
-	if f.Watch || f.Sync || f.DryRun || f.ByMachine || f.NoRain || f.SkipBrewUpdate {
+	if f.Watch || f.Sync || f.DryRun || f.NoRain || f.SkipBrewUpdate {
 		return false
 	}
 	return f.Top == 0
@@ -92,9 +94,90 @@ func Run(ctx context.Context, req Request, cfg config.Config, deps Deps) (Result
 	recs, errs := gather(ctx, req, cfg, deps)
 
 	if req.Display == History {
-		return runHistory(req, recs, errs, notices, capActive, deps), nil
+		return runHistory(req, cfg, recs, errs, notices, capActive, deps), nil
 	}
-	return runSnapshot(req, cfg.Mode, recs, errs, notices, deps), nil
+	return runSnapshot(req, cfg, recs, errs, notices, deps), nil
+}
+
+// breakdownDim selects the --by-machine breakdown dimension (R3): machines,
+// or users under multi-mode -u all (the TS usersLegend noun). Single mode
+// already cleared -u in Normalize, so -u all there warns and falls back to
+// machine columns.
+func breakdownDim(req Request, cfg config.Config) (query.Dim, string) {
+	if cfg.Mode == config.Multi && req.Flags.User == "all" {
+		return query.User, "Users"
+	}
+	return query.Machine, "Machines"
+}
+
+// dimValue is a group key's value on the breakdown dimension.
+func dimValue(key fact.Record, dim query.Dim) string {
+	if dim == query.User {
+		return key.User
+	}
+	return key.Machine
+}
+
+// buildSnapshotBreakdown builds the snapshot's machine/user column set from
+// the un-collapsed records (R6) — one GroupBy(Tool, Date, dim) pass over the
+// relabelled records, summing in record input order (the TS float
+// association):
+//   - all tools: one slice per (tool, current label, dim) group, in group
+//     order (own machine first, then walk order); a tool with no
+//     current-label group has no entry (DC-01).
+//   - single source: the key set is the first-seen order of dim values over
+//     ALL the tool's raw records (un-windowed); each slice's Totals are the
+//     current-label group's or the zero fact.Totals{} — the TS
+//     toolMachines.set(machine, match ? … : 0) zero-fill, so a zero-usage day
+//     still lists every historical machine (a G0 candidate vs the DC-01
+//     sentence; the harness byte-diff is the bar).
+func buildSnapshotBreakdown(req Request, cfg config.Config, raw []fact.Record, cur string) *view.Breakdown {
+	dim, noun := breakdownDim(req, cfg)
+	bd := &view.Breakdown{Noun: noun, Rows: make(map[string][]view.Slice)}
+	groups := query.GroupBy(query.Relabel(raw, req.Period), query.Tool, query.Date, dim)
+	if req.Source == "" {
+		for _, g := range groups {
+			if g.Key.Date != cur {
+				continue
+			}
+			t, _ := fact.Lookup(g.Key.Tool)
+			bd.Rows[t.Name] = append(bd.Rows[t.Name], view.Slice{Name: dimValue(g.Key, dim), Totals: g.Totals})
+		}
+		return bd
+	}
+	tool, _ := fact.Lookup(req.Source)
+	curTotals := make(map[string]fact.Totals)
+	for _, g := range groups {
+		if g.Key.Date == cur {
+			curTotals[dimValue(g.Key, dim)] = g.Totals
+		}
+	}
+	seen := make(map[string]bool)
+	for _, r := range raw {
+		v := dimValue(r, dim)
+		if seen[v] {
+			continue
+		}
+		seen[v] = true
+		bd.Rows[tool.Name] = append(bd.Rows[tool.Name], view.Slice{Name: v, Totals: curTotals[v]})
+	}
+	return bd
+}
+
+// buildHistoryBreakdown builds the single-tool history's column set (R6): the
+// same window the main table uses, the RollUp relabel, then ONE
+// GroupBy(Tool, Date, dim) pass — Rows[label] appends one slice per group in
+// first-seen order (GroupBy's order reproduces the TS machineMap iteration
+// order per label; summing in record input order reproduces the TS sequential
+// association, which matters under -u all for a multi-machine user).
+func buildHistoryBreakdown(req Request, cfg config.Config, raw []fact.Record) *view.Breakdown {
+	dim, noun := breakdownDim(req, cfg)
+	bd := &view.Breakdown{Noun: noun, Rows: make(map[string][]view.Slice)}
+	windowed := query.Window(raw, req.Flags.Since, req.Flags.Until)
+	for _, g := range query.GroupBy(query.Relabel(windowed, req.Period), query.Tool, query.Date, dim) {
+		bd.Rows[g.Key.Date] = append(bd.Rows[g.Key.Date], view.Slice{Name: dimValue(g.Key, dim), Totals: g.Totals})
+	}
+	return bd
 }
 
 // gather returns the daily records the pipeline consumes plus the source
@@ -109,12 +192,14 @@ func Run(ctx context.Context, req Request, cfg config.Config, deps Deps) (Result
 //	multi, -u <other>                Read(user, tool) per tool — no live fetch,
 //	                                 no source errors
 //
-// Every path ends in Collapse(recs, Tool, Date) — the daily cross-machine/
-// cross-user sum that precedes the caller's Window/RollUp/GroupBy tail
-// (unchanged from B2); in single mode it is the identity on unique keys. The
-// summation order is load-bearing for --json float bytes: own machine first,
-// then other machines in walk order; for -u all, users ascending then walk
-// order.
+// The records are the stamped, UN-COLLAPSED per-machine/per-user records: the
+// callers apply Collapse(recs, Tool, Date) for the main table (the daily
+// cross-machine/cross-user sum preceding the Window/RollUp/GroupBy tail — in
+// single mode the identity on unique keys), while the --by-machine breakdown
+// groups the same raw records on the machine/user dimension the collapse
+// would drop. Record order is unchanged and load-bearing for --json float
+// bytes: own machine first, then other machines in walk order; for -u all,
+// users ascending then walk order.
 func gather(ctx context.Context, req Request, cfg config.Config, deps Deps) ([]fact.Record, []*source.Error) {
 	tools := fact.Tools
 	if req.Source != "" {
@@ -130,8 +215,7 @@ func gather(ctx context.Context, req Request, cfg config.Config, deps Deps) ([]f
 		}
 		return gatherOwn(ctx, req, cfg, deps, tools)
 	}
-	recs, errs := fetchLive(ctx, req, deps, tools)
-	return query.Collapse(recs, query.Tool, query.Date), errs
+	return fetchLive(ctx, req, deps, tools)
 }
 
 // fetchLive is the B2 live fetch: daily only (roll-up is client-side),
@@ -150,7 +234,7 @@ func fetchLive(ctx context.Context, req Request, deps Deps, tools []fact.Tool) (
 // gatherOwn is the multi-mode own-user path: the live fetch reconciled with
 // the machine's own stored day-files by whole-record max (never summed — a
 // stored file only ever holds the fullest snapshot), then the other machines'
-// records summed on in walk order.
+// records in walk order.
 func gatherOwn(ctx context.Context, req Request, cfg config.Config, deps Deps, tools []fact.Tool) ([]fact.Record, []*source.Error) {
 	live, errs := fetchLive(ctx, req, deps, tools)
 	byTool := make(map[string][]fact.Record, len(tools))
@@ -170,7 +254,7 @@ func gatherOwn(ctx context.Context, req Request, cfg config.Config, deps Deps, t
 		recs = append(recs, query.MaxMerge(byTool[tool.Key], own)...)
 		recs = append(recs, others...)
 	}
-	return query.Collapse(recs, query.Tool, query.Date), errs
+	return recs, errs
 }
 
 // gatherUser is the repo-only -u <other> path: the user's records per tool in
@@ -180,7 +264,7 @@ func gatherUser(repo Repo, user string, tools []fact.Tool) []fact.Record {
 	for _, tool := range tools {
 		recs = append(recs, repo.Read(user, tool)...)
 	}
-	return query.Collapse(recs, query.Tool, query.Date)
+	return recs
 }
 
 // gatherAllUsers is the repo-only -u all path: every profile's records per
@@ -192,13 +276,14 @@ func gatherAllUsers(repo Repo, tools []fact.Tool) []fact.Record {
 			recs = append(recs, repo.Read(u, tool)...)
 		}
 	}
-	return query.Collapse(recs, query.Tool, query.Date)
+	return recs
 }
 
-// runSnapshot is V2's snapshot path, extended with the CSV/Markdown branches.
-func runSnapshot(req Request, mode config.Mode, recs []fact.Record, errs []*source.Error, notices []string, deps Deps) Result {
+// runSnapshot is V2's snapshot path, extended with the CSV/Markdown branches
+// and the --by-machine breakdown (B4).
+func runSnapshot(req Request, cfg config.Config, raw []fact.Record, errs []*source.Error, notices []string, deps Deps) Result {
 	cur := query.CurrentLabel(req.Period, deps.Now())
-	groups := query.GroupBy(query.Window(query.RollUp(recs, req.Period), cur, cur), query.Tool)
+	groups := query.GroupBy(query.Window(query.RollUp(query.Collapse(raw, query.Tool, query.Date), req.Period), cur, cur), query.Tool)
 	byTool := make(map[string]fact.Totals, len(groups))
 	for _, g := range groups {
 		byTool[g.Key.Tool] = g.Totals
@@ -221,11 +306,18 @@ func runSnapshot(req Request, mode config.Mode, recs []fact.Record, errs []*sour
 	// The label clear is a SINGLE-MODE artifact of the TS fetchAllTotals (bare
 	// totals without a label): `tu --json` never carries "label" in single
 	// mode. In multi mode every snapshot builds from fetchToolMerged entries,
-	// so a tool with a record on the current label carries "label".
-	if mode == config.Single && req.Source == "" && req.Period == query.Daily {
+	// so a tool with a record on the current label carries "label". Under
+	// --by-machine the TS goes through fetchToolMergedWithMachines (labelled
+	// entries) even in single mode — the clear does NOT apply (R12).
+	if cfg.Mode == config.Single && req.Source == "" && req.Period == query.Daily && !req.Flags.ByMachine {
 		for i := range rows {
 			rows[i].Label = ""
 		}
+	}
+
+	var bd *view.Breakdown
+	if req.Flags.ByMachine {
+		bd = buildSnapshotBreakdown(req, cfg, raw, cur)
 	}
 
 	res := Result{Notices: notices, Warnings: errs, CostByItem: make(map[string]float64, len(rows))}
@@ -234,26 +326,33 @@ func runSnapshot(req Request, mode config.Mode, recs []fact.Record, errs []*sour
 		res.TotalTokens += r.TotalTokens
 		res.CostByItem[r.Name] = r.TotalCost
 	}
+	metric := view.Cost
+	if req.Flags.Metric == Tokens {
+		metric = view.Tokens
+	}
 	switch req.Format {
 	case JSON:
-		res.Lines = renderjson.Snapshot(rows)
+		res.Lines = renderjson.Snapshot(rows, bd)
 	case CSV:
-		res.Lines = csv.Snapshot(rows)
+		res.Lines = csv.Snapshot(rows, bd)
 	case Markdown:
-		res.Lines = markdown.Snapshot(rows, req.Period)
+		res.Lines = markdown.Snapshot(rows, req.Period, bd)
 	default:
-		res.Lines = ansi.Table(view.Snapshot(rows, req.Period), deps.Colors)
+		res.Lines = ansi.Table(view.Snapshot(rows, req.Period, bd, metric), deps.Colors)
 	}
 	return res
 }
 
-// runHistory composes the history pipeline: the window applies to the DAILY
-// records first and the roll-up second (a partial month sums only in-window
-// days; a mid-week window yields a leading partial week labeled by its
-// Sunday), then ONE GroupBy(Tool, Date) pass builds the registry-ordered
-// series — no per-tool aggregation loop.
-func runHistory(req Request, daily []fact.Record, errs []*source.Error, notices []string, capActive bool, deps Deps) Result {
-	recs := query.RollUp(query.Window(daily, req.Flags.Since, req.Flags.Until), req.Period)
+// runHistory composes the history pipeline: the daily collapse (the TS
+// mergeEntries summation order), then the window on the DAILY records first
+// and the roll-up second (a partial month sums only in-window days; a
+// mid-week window yields a leading partial week labeled by its Sunday), then
+// ONE GroupBy(Tool, Date) pass builds the registry-ordered series — no
+// per-tool aggregation loop. The --by-machine breakdown (single source only —
+// Normalize cleared the flag on the all-tools pivot) groups the SAME raw
+// records on the machine/user dimension.
+func runHistory(req Request, cfg config.Config, raw []fact.Record, errs []*source.Error, notices []string, capActive bool, deps Deps) Result {
+	recs := query.RollUp(query.Window(query.Collapse(raw, query.Tool, query.Date), req.Flags.Since, req.Flags.Until), req.Period)
 
 	tools := fact.Tools
 	if req.Source != "" {
@@ -300,15 +399,19 @@ func runHistory(req Request, daily []fact.Record, errs []*source.Error, notices 
 	}
 
 	single := req.Source != ""
+	var bd *view.Breakdown
+	if single && req.Flags.ByMachine {
+		bd = buildHistoryBreakdown(req, cfg, raw)
+	}
 	switch {
 	case single && req.Format == JSON:
-		res.Lines = renderjson.History(series[0])
+		res.Lines = renderjson.History(series[0], bd)
 	case single && req.Format == CSV:
-		res.Lines = csv.History(series[0])
+		res.Lines = csv.History(series[0], bd)
 	case single && req.Format == Markdown:
-		res.Lines = markdown.History(series[0], req.Period, capActive)
+		res.Lines = markdown.History(series[0], req.Period, capActive, bd)
 	case single:
-		res.Lines = ansi.Table(view.History(series[0], opts), deps.Colors)
+		res.Lines = ansi.Table(view.History(series[0], opts, bd), deps.Colors)
 	case req.Format == JSON:
 		res.Lines = renderjson.TotalHistory(series)
 	case req.Format == CSV:

@@ -222,19 +222,17 @@ func TestRunUnported(t *testing.T) {
 	}{
 		{"leaderboard", Request{Display: Leaderboard, Flags: base}, singleCfg},
 		{"lbh", Request{Display: LeaderboardHistory, Flags: base}, singleCfg},
+		// R2: --by-machine is in scope, but the leaderboard displays stay out.
+		{"lb by-machine", Request{Display: Leaderboard, Flags: Flags{ByMachine: true, Interval: 10}}, singleCfg},
 		{"watch", Request{Flags: Flags{Watch: true, Interval: 10}}, singleCfg},
 		{"sync", Request{Flags: Flags{Sync: true, Interval: 10}}, singleCfg},
 		{"dry-run", Request{Flags: Flags{DryRun: true, Interval: 10}}, singleCfg},
-		{"by-machine", Request{Flags: Flags{ByMachine: true, Interval: 10}}, singleCfg},
 		{"no-rain", Request{Flags: Flags{NoRain: true, Interval: 10}}, singleCfg},
 		{"skip-brew-update", Request{Flags: Flags{SkipBrewUpdate: true, Interval: 10}}, singleCfg},
 		{"top", Request{Flags: Flags{Top: 3, Interval: 10}}, singleCfg},
 		{"command", Request{Command: "help", Flags: base}, singleCfg},
 		{"version", Request{Version: true, Flags: base}, singleCfg},
-		// History forms of the still-unported surfaces (B4).
-		{"history by-machine", Request{Display: History, Flags: Flags{ByMachine: true, Interval: 10}}, singleCfg},
-		// R12: the B4/B5 surfaces stay unported in multi mode too.
-		{"multi by-machine", Request{Display: History, Flags: Flags{ByMachine: true, Interval: 10}}, multiCfg},
+		// R12: the B5 surfaces stay unported in multi mode too.
 		{"multi lb", Request{Display: Leaderboard, Flags: base}, multiCfg},
 		{"multi lbh", Request{Display: LeaderboardHistory, Flags: base}, multiCfg},
 		{"multi top", Request{Flags: Flags{Top: 3, Interval: 10}}, multiCfg},
@@ -917,5 +915,201 @@ func TestRunMultiCapAppliesToStored(t *testing.T) {
 	}
 	if joined := strings.Join(full.Lines, "\n"); !strings.Contains(joined, "2025-10-01") {
 		t.Errorf("h --full must show the stored 2025-10-01 record:\n%s", joined)
+	}
+}
+
+// ── B4: machine columns ────────────────────────────────────────────────────
+
+// R3: the dimension switch — machines by default, users under multi-mode
+// -u all; single mode cleared -u and falls back to machines (with the -u
+// notice).
+func TestRunByMachineDimensionSwitch(t *testing.T) {
+	window := Flags{Since: "2026-01-01", Until: "2026-01-31", Interval: 10}
+
+	t.Run("multi machines", func(t *testing.T) {
+		f := &fakeFetcher{byTool: liveCorpus()}
+		flags := window
+		flags.ByMachine = true
+		res, err := Run(context.Background(), Request{Source: "cc", Display: History, Flags: flags}, multiCfg, multiDeps(f, seedRepo()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		joined := strings.Join(res.Lines, "\n")
+		for _, want := range []string{"Machines: A = harness-machine, B = other-box", "$0.75", "$0.40"} {
+			if !strings.Contains(joined, want) {
+				t.Errorf("machine history missing %q:\n%s", want, joined)
+			}
+		}
+	})
+
+	t.Run("multi -u all users", func(t *testing.T) {
+		f := &fakeFetcher{byTool: liveCorpus()}
+		flags := window
+		flags.ByMachine = true
+		flags.User = "all"
+		res, err := Run(context.Background(), Request{Source: "cc", Display: History, Flags: flags}, multiCfg, multiDeps(f, seedRepo()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(f.calls) != 0 {
+			t.Errorf("fetch calls = %+v, want none for -u all", f.calls)
+		}
+		joined := strings.Join(res.Lines, "\n")
+		if !strings.Contains(joined, "Users: A = harness-user, B = other-user") {
+			t.Errorf("user columns missing:\n%s", joined)
+		}
+		// 01-05: harness-user $0.25, other-user $1.10; the row total sums both.
+		if !strings.Contains(joined, "$1.35") {
+			t.Errorf("the collapsed row total $1.35 missing:\n%s", joined)
+		}
+	})
+
+	t.Run("single -u all falls back to machines", func(t *testing.T) {
+		f := &fakeFetcher{byTool: liveCorpus()}
+		flags := window
+		flags.ByMachine = true
+		flags.User = "all"
+		res, err := Run(context.Background(), Request{Source: "cc", Display: History, Flags: flags}, singleCfg, historyDeps(f, 80))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(res.Notices) != 1 || res.Notices[0] != userNotice {
+			t.Errorf("Notices = %v, want the -u notice", res.Notices)
+		}
+		joined := strings.Join(res.Lines, "\n")
+		if !strings.Contains(joined, "Machines: A = harness-machine") {
+			t.Errorf("single-mode machine column missing:\n%s", joined)
+		}
+	})
+}
+
+// R6/A-020: the single-source snapshot zero-fill — every historical machine
+// in first-seen order (own first) with 0 values on a zero-usage day, and no
+// "label" (no current-label group). A G0 candidate vs the DC-01 sentence.
+func TestRunByMachineSingleSourceZeroFill(t *testing.T) {
+	f := &fakeFetcher{byTool: liveCorpus()}
+	deps := multiDeps(f, seedRepo()) // Now = historyNow, outside the seed window
+	res, err := Run(context.Background(), Request{
+		Source: "cc", Format: JSON,
+		Flags: Flags{ByMachine: true, Interval: 10},
+	}, multiCfg, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "{\n" +
+		"  \"Claude Code\": {\n" +
+		"    \"totalCost\": 0,\n" +
+		"    \"inputTokens\": 0,\n" +
+		"    \"outputTokens\": 0,\n" +
+		"    \"cacheCreationTokens\": 0,\n" +
+		"    \"cacheReadTokens\": 0,\n" +
+		"    \"totalTokens\": 0,\n" +
+		"    \"machines\": {\n" +
+		"      \"harness-machine\": 0,\n" +
+		"      \"other-box\": 0\n" +
+		"    }\n" +
+		"  }\n" +
+		"}"
+	if got := strings.Join(res.Lines, "\n"); got != want {
+		t.Errorf("cc --by-machine --json on a zero-usage day =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// R6/A-015: the history machines key order is first-seen — the own machine
+// before the walk-ordered others — and the monthly values associate in record
+// input order.
+func TestRunByMachineHistoryJSON(t *testing.T) {
+	f := &fakeFetcher{byTool: liveCorpus()}
+	res, err := Run(context.Background(), Request{
+		Source: "cc", Display: History, Period: query.Monthly, Format: JSON,
+		Flags: Flags{ByMachine: true, Interval: 10},
+	}, multiCfg, multiDeps(f, seedRepo()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "[\n  {\n    \"label\": \"2026-01\",\n    \"totalCost\": 2.15,\n    \"inputTokens\": 12000,\n    \"outputTokens\": 1600,\n    \"cacheCreationTokens\": 4000,\n    \"cacheReadTokens\": 80000,\n    \"totalTokens\": 97600,\n    \"machines\": {\n      \"harness-machine\": 1.75,\n      \"other-box\": 0.4\n    }\n  }\n]"
+	if got := strings.Join(res.Lines, "\n"); got != want {
+		t.Errorf("cc mh --by-machine --json =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// R6/A-015: under -u all the user's monthly slice sums in RECORD INPUT ORDER
+// — ((a1+a2)+b1)+b2 over the flattened walk-ordered entries — never
+// per-machine-first ((a1+a2)+(b1+b2)): 1.5, not 1.5000000000000002.
+func TestRunByMachineUserAssociation(t *testing.T) {
+	a1, a2, b1, b2 := 0.1, 0.2, 0.4, 0.8
+	if ((a1+a2)+b1)+b2 == (a1+a2)+(b1+b2) {
+		t.Fatal("the test values do not distinguish the summation orders")
+	}
+	repo := &fakeRepo{
+		users: []string{"harness-user"},
+		recs: map[string]map[string][]fact.Record{
+			"harness-user": {"cc": {
+				storedRec("harness-user", "machine-a", "2026-01-05", "cc", a1),
+				storedRec("harness-user", "machine-a", "2026-01-06", "cc", a2),
+				storedRec("harness-user", "machine-b", "2026-01-05", "cc", b1),
+				storedRec("harness-user", "machine-b", "2026-01-06", "cc", b2),
+			}},
+		},
+	}
+	f := &fakeFetcher{} // -u all: repo-only, no fetch
+	res, err := Run(context.Background(), Request{
+		Source: "cc", Display: History, Period: query.Monthly, Format: JSON,
+		Flags: Flags{User: "all", ByMachine: true, Interval: 10},
+	}, multiCfg, multiDeps(f, repo))
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(res.Lines, "\n")
+	if !strings.Contains(joined, `"harness-user": 1.5`) {
+		t.Errorf("the user slice must associate in input order (1.5):\n%s", joined)
+	}
+	if strings.Contains(joined, "1.5000000000000002") {
+		t.Errorf("per-machine-first association leaked:\n%s", joined)
+	}
+}
+
+// R12: the single-mode daily-all label clear does NOT apply under
+// --by-machine — `tu --by-machine --json` carries "label".
+func TestRunByMachineKeepsLabels(t *testing.T) {
+	f := &fakeFetcher{byTool: map[string][]fact.Record{
+		"cc": {{Date: "2026-01-06", Tool: "cc", User: "u", Machine: "m1", Totals: fakeTotals}},
+	}}
+	res, err := Run(context.Background(), Request{
+		Format: JSON,
+		Flags:  Flags{ByMachine: true, Interval: 10},
+	}, singleCfg, fakeDeps(f))
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(res.Lines, "\n")
+	if !strings.Contains(joined, "\"Claude Code\": {\n    \"label\": \"2026-01-06\",") {
+		t.Errorf("by-machine daily-all JSON must carry the label:\n%s", joined)
+	}
+	if !strings.Contains(joined, "\"machines\": {\n      \"m1\": 0.5\n    }") {
+		t.Errorf("the machine slice missing:\n%s", joined)
+	}
+}
+
+// R1: the all-tools history pivot warns and renders the (empty) pivot, exit
+// 0 path — the flag is cleared before inScope, so no machine columns.
+func TestRunByMachineAllToolsHistoryWarns(t *testing.T) {
+	f := &fakeFetcher{byTool: placeholderCorpus()}
+	res, err := Run(context.Background(), Request{
+		Display: History,
+		Flags:   Flags{ByMachine: true, Interval: 10},
+	}, singleCfg, historyDeps(f, 80))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Notices) != 1 || res.Notices[0] != byMachinePivotNotice {
+		t.Errorf("Notices = %v, want the pivot notice", res.Notices)
+	}
+	joined := strings.Join(res.Lines, "\n")
+	if !strings.Contains(joined, "📊 Combined Cost History (daily, last 3 months)") || !strings.Contains(joined, "  No data") {
+		t.Errorf("the capped pivot must render after the clear:\n%s", joined)
+	}
+	if strings.Contains(joined, "Machines:") {
+		t.Errorf("no legend after the pivot clear:\n%s", joined)
 	}
 }

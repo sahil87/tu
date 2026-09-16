@@ -35,7 +35,7 @@ func TestSnapshotPopulated(t *testing.T) {
 		{Name: "Codex", Label: "2026-09-16", Totals: dayTotals},
 		{Name: "OpenCode"}, // all-zero: omitted from rows, counted in Total
 	}
-	tab := Snapshot(rows, query.Daily)
+	tab := Snapshot(rows, query.Daily, nil, Cost)
 
 	if tab.Title != "📊 Combined Usage (daily)" {
 		t.Errorf("Title = %q", tab.Title)
@@ -69,7 +69,7 @@ func TestSnapshotHiddenCostCounted(t *testing.T) {
 		{Name: "Codex", Totals: dayTotals},
 		{Name: "OpenCode", Totals: hidden},
 	}
-	tab := Snapshot(rows, query.Daily)
+	tab := Snapshot(rows, query.Daily, nil, Cost)
 	total := tab.Rows[len(tab.Rows)-1]
 	if total.Kind != Total {
 		t.Fatalf("last row kind = %v, want Total", total.Kind)
@@ -84,14 +84,14 @@ func TestSnapshotSingleRowNoTotal(t *testing.T) {
 		{Name: "Claude Code", Totals: dayTotals},
 		{Name: "Codex"},
 	}
-	tab := Snapshot(rows, query.Daily)
+	tab := Snapshot(rows, query.Daily, nil, Cost)
 	if !equalKinds(kinds(tab.Rows), Header, Divider, Data) {
 		t.Errorf("row kinds = %v, want Header Divider Data (Total only when >1 visible)", kinds(tab.Rows))
 	}
 }
 
 func TestSnapshotEmpty(t *testing.T) {
-	tab := Snapshot([]ToolTotals{{Name: "Claude Code"}, {Name: "Codex"}}, query.Daily)
+	tab := Snapshot([]ToolTotals{{Name: "Claude Code"}, {Name: "Codex"}}, query.Daily, nil, Cost)
 	if tab.Empty != "  No usage" {
 		t.Errorf("Empty = %q, want %q", tab.Empty, "  No usage")
 	}
@@ -106,7 +106,7 @@ func TestSnapshotHeadingPerPeriod(t *testing.T) {
 		query.Weekly:  "📊 Combined Usage (weekly)",
 		query.Monthly: "📊 Combined Usage (monthly)",
 	} {
-		if got := Snapshot(nil, p).Title; got != want {
+		if got := Snapshot(nil, p, nil, Cost).Title; got != want {
 			t.Errorf("Snapshot(nil, %v).Title = %q, want %q", p, got, want)
 		}
 	}
@@ -120,8 +120,95 @@ func TestSnapshotFixedWidthsOverflow(t *testing.T) {
 	}
 	// A wider value is carried verbatim — it overflows the cell at render time.
 	big := fact.Totals{TotalCost: 1, TotalTokens: 1234567890123}
-	tab := Snapshot([]ToolTotals{{Name: "Claude Code", Totals: big}}, query.Daily)
+	tab := Snapshot([]ToolTotals{{Name: "Claude Code", Totals: big}}, query.Daily, nil, Cost)
 	if got := tab.Rows[2].Cells[1].Text; got != "1,234,567,890,123" {
 		t.Errorf("overflowing cell = %q", got)
+	}
+}
+
+// ── B4: machine columns ────────────────────────────────────────────────────
+
+// snapshotBreakdown mirrors R7's given: cc with two machines under Cost.
+func snapshotBreakdown() *Breakdown {
+	return &Breakdown{Noun: "Machines", Rows: map[string][]Slice{
+		"Claude Code": {
+			{Name: "Sahils-Mac-mini.local", Totals: fact.Totals{TotalCost: 8.27}},
+			{Name: "dev-ws-sahil02", Totals: fact.Totals{TotalCost: 6288.75}},
+		},
+	}}
+}
+
+// R7: machine columns follow Cost, letter-coded with a shared width, dim zero
+// cells, per-name Total sums over visible rows, and the legend in Note.
+func TestSnapshotMachineColumns(t *testing.T) {
+	rows := []ToolTotals{
+		{Name: "Claude Code", Label: "2026-09-16", Totals: dayTotals},
+		{Name: "Codex", Label: "2026-09-16", Totals: dayTotals},
+		{Name: "OpenCode"}, // hidden: no cells, no sums
+	}
+	tab := Snapshot(rows, query.Daily, snapshotBreakdown(), Cost)
+
+	if got := tab.Columns[6].Title; got != "A" {
+		t.Errorf("column 6 = %q, want A", got)
+	}
+	if got := tab.Columns[7].Title; got != "B" {
+		t.Errorf("column 7 = %q, want B", got)
+	}
+	if tab.Columns[6].Width != 9 || tab.Columns[7].Width != 9 {
+		t.Errorf("machine widths = %d/%d, want 9 ($6,288.75 fits the floor)", tab.Columns[6].Width, tab.Columns[7].Width)
+	}
+	cc := tab.Rows[2].Cells
+	if cc[6].Text != "$8.27" || cc[7].Text != "$6,288.75" {
+		t.Errorf("cc machine cells = %q, %q", cc[6].Text, cc[7].Text)
+	}
+	codex := tab.Rows[3].Cells
+	if codex[6].Text != "$0.00" || !codex[6].Dim || codex[7].Text != "$0.00" || !codex[7].Dim {
+		t.Errorf("codex machine cells = %+v, want dim zeros", codex[6:])
+	}
+	total := tab.Rows[5].Cells
+	if total[6].Text != "$8.27" || total[7].Text != "$6,288.75" || total[6].Dim || total[7].Dim {
+		t.Errorf("total machine cells = %+v, want $8.27 / $6,288.75 never dim", total[6:])
+	}
+	if tab.Note != "Machines: A = Sahils-Mac-mini.local, B = dev-ws-sahil02" {
+		t.Errorf("Note = %q", tab.Note)
+	}
+}
+
+// R7: a nil breakdown is today's output byte-for-byte (no columns, no Note).
+func TestSnapshotNilBreakdown(t *testing.T) {
+	rows := []ToolTotals{{Name: "Claude Code", Totals: dayTotals}, {Name: "Codex", Totals: dayTotals}}
+	tab := Snapshot(rows, query.Daily, nil, Cost)
+	if len(tab.Columns) != 6 || tab.Note != "" {
+		t.Errorf("nil breakdown changed the table: %d columns, Note %q", len(tab.Columns), tab.Note)
+	}
+	// A breakdown with no slices behaves the same.
+	empty := &Breakdown{Noun: "Machines", Rows: map[string][]Slice{}}
+	tab = Snapshot(rows, query.Daily, empty, Cost)
+	if len(tab.Columns) != 6 || tab.Note != "" {
+		t.Errorf("empty breakdown changed the table: %d columns, Note %q", len(tab.Columns), tab.Note)
+	}
+}
+
+// A-018: the empty state early-returns — no machine columns, no Note.
+func TestSnapshotMachinesEmptyState(t *testing.T) {
+	tab := Snapshot([]ToolTotals{{Name: "Claude Code"}}, query.Daily, snapshotBreakdown(), Cost)
+	if tab.Empty != "  No usage" || len(tab.Columns) != 6 || tab.Note != "" {
+		t.Errorf("empty state = %q with %d columns, Note %q", tab.Empty, len(tab.Columns), tab.Note)
+	}
+}
+
+// R7: under -t the machine cells render tokens beside the $ Cost column.
+func TestSnapshotMachinesTokenMetric(t *testing.T) {
+	bd := &Breakdown{Noun: "Machines", Rows: map[string][]Slice{
+		"Claude Code": {{Name: "m1", Totals: fact.Totals{TotalCost: 8.27, TotalTokens: 12000}}},
+	}}
+	rows := []ToolTotals{{Name: "Claude Code", Totals: dayTotals}}
+	tab := Snapshot(rows, query.Daily, bd, Tokens)
+	cell := tab.Rows[2].Cells[6]
+	if cell.Text != "12,000" {
+		t.Errorf("token machine cell = %q, want 12,000", cell.Text)
+	}
+	if got := tab.Rows[2].Cells[5].Text; got != "$0.50" {
+		t.Errorf("Cost cell = %q, want unchanged $0.50", got)
 	}
 }

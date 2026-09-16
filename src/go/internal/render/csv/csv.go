@@ -22,24 +22,39 @@ var (
 // Snapshot renders the cross-tool snapshot: the header, one row per tool with
 // TotalTokens > 0 (cache = write + read combined), and a Total row — summing
 // EVERY input row, hidden ones counted, as in the table — only when more than
-// one row is visible.
-func Snapshot(rows []view.ToolTotals) []string {
-	lines := []string{row(snapshotHeader)}
+// one row is visible. A breakdown with at least one name appends
+// machine_{name}_cost columns (the TS emitCsvSnapshot: sorted names, Cost(v)
+// per name with 0.00 fill, the Total row summing visible rows only); under
+// -u all the names are user names but the header prefix stays machine_.
+func Snapshot(rows []view.ToolTotals, bd *view.Breakdown) []string {
+	names := bd.Names()
+	header := append([]string{}, snapshotHeader...)
+	for _, name := range names {
+		header = append(header, "machine_"+name+"_cost")
+	}
+	lines := []string{row(header)}
 
+	machineSums := make([]float64, len(names))
 	var grandInput, grandOutput, grandCache, grandTotal int64
 	var grandCost float64
 	visible := 0
 	for _, r := range rows {
 		if r.TotalTokens > 0 {
 			visible++
-			lines = append(lines, row([]string{
+			cells := []string{
 				r.Name,
 				num(r.TotalTokens),
 				num(r.InputTokens),
 				num(r.OutputTokens),
 				num(r.CacheCreationTokens + r.CacheReadTokens),
 				Cost(r.TotalCost),
-			}))
+			}
+			for i, name := range names {
+				v := bd.CostOf(r.Name, name)
+				machineSums[i] += v
+				cells = append(cells, Cost(v))
+			}
+			lines = append(lines, row(cells))
 		}
 		grandInput += r.InputTokens
 		grandOutput += r.OutputTokens
@@ -48,19 +63,30 @@ func Snapshot(rows []view.ToolTotals) []string {
 		grandCost += r.TotalCost
 	}
 	if visible > 1 {
-		lines = append(lines, row([]string{
+		cells := []string{
 			"Total", num(grandTotal), num(grandInput), num(grandOutput), num(grandCache), Cost(grandCost),
-		}))
+		}
+		for _, sum := range machineSums {
+			cells = append(cells, Cost(sum))
+		}
+		lines = append(lines, row(cells))
 	}
 	return lines
 }
 
 // History renders the single-tool history: the header plus one row per entry
-// in input order. NEVER a Total row. An empty window is the header alone.
-func History(s view.Series) []string {
-	lines := []string{row(historyHeader)}
+// in input order. NEVER a Total row. An empty window is the header alone. A
+// breakdown appends machine_{name}_cost columns (sorted names, Cost(v) per
+// name with 0.00 fill — the TS emitCsvHistory).
+func History(s view.Series, bd *view.Breakdown) []string {
+	names := bd.Names()
+	header := append([]string{}, historyHeader...)
+	for _, name := range names {
+		header = append(header, "machine_"+name+"_cost")
+	}
+	lines := []string{row(header)}
 	for _, e := range s.Entries {
-		lines = append(lines, row([]string{
+		cells := []string{
 			e.Label,
 			num(e.InputTokens),
 			num(e.OutputTokens),
@@ -68,7 +94,11 @@ func History(s view.Series) []string {
 			num(e.CacheReadTokens),
 			num(e.TotalTokens),
 			Cost(e.TotalCost),
-		}))
+		}
+		for _, name := range names {
+			cells = append(cells, Cost(bd.CostOf(e.Label, name)))
+		}
+		lines = append(lines, row(cells))
 	}
 	return lines
 }

@@ -46,6 +46,20 @@ func ByUser(recs []fact.Record, user string) []fact.Record {
 	return out
 }
 
+// Relabel returns a copy of recs with each Date mapped to its period bucket
+// (daily: identity; weekly: WeekLabel(Date); monthly: Date[:7]) — the relabel
+// half of RollUp, exported for the by-machine breakdown, which groups on the
+// bucketed labels but sums in record input order itself. No summing, no
+// sorting; the input is never mutated or returned.
+func Relabel(recs []fact.Record, p Period) []fact.Record {
+	out := make([]fact.Record, len(recs))
+	for i, r := range recs {
+		r.Date = relabel(r.Date, p)
+		out[i] = r
+	}
+	return out
+}
+
 // RollUp re-labels each record to its period bucket (daily: identity; weekly:
 // WeekLabel(Date); monthly: Date[:7]) and sums Totals over records sharing
 // (Date', Tool, User, Machine). Output is ascending by Date (byte order equals
@@ -57,8 +71,7 @@ func RollUp(recs []fact.Record, p Period) []fact.Record {
 	}
 	index := make(map[groupKey]int)
 	var out []fact.Record
-	for _, r := range recs {
-		r.Date = relabel(r.Date, p)
+	for _, r := range Relabel(recs, p) {
 		k := groupKey{r.Date, r.Tool, r.User, r.Machine}
 		if i, ok := index[k]; ok {
 			out[i].Totals = out[i].Totals.Add(r.Totals)
