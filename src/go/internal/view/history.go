@@ -31,7 +31,8 @@ const (
 
 // HistoryOptions are the two history tables' shared inputs. Prev is the watch
 // delta map, keyed "{Name}:{label}" / "total:{label}"; nil in B2 (B7 fills
-// it).
+// it). Title, RankColumns, HighlightLeader and KeepAllColumns are the lbh
+// hooks (B5); their zero values reproduce the tool pivot's output.
 type HistoryOptions struct {
 	Period    query.Period
 	Now       time.Time // for CurrentLabel(Period) and the footer's "this month" prefix
@@ -39,6 +40,21 @@ type HistoryOptions struct {
 	CapActive bool      // append ", last 3 months" to the heading
 	Metric    Metric
 	Prev      map[string]float64
+	// Title overrides the whole title (parenthetical included); "" = "📊
+	// Combined {Cost,Token} History ({PeriodLabel})". lbh passes "📊
+	// Leaderboard History (…)" / "📊 Leaderboard Token History (…)".
+	Title string
+	// RankColumns orders the visible columns by descending window total in
+	// the metric (ties keep first-seen order — a leaderboard is ranked, not
+	// registry-pinned).
+	RankColumns bool
+	// HighlightLeader marks each Data row's max cell (strict >, first wins;
+	// index 0 when all equal) with Cell.Leader.
+	HighlightLeader bool
+	// KeepAllColumns skips the significance/nonzero omission: every series is
+	// a column, all-zero ones included (silently hiding a low-spend user from
+	// a ranking is wrong; --top is the explicit control).
+	KeepAllColumns bool
 }
 
 // PeriodLabel builds the parenthetical that follows a history title: the

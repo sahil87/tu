@@ -124,16 +124,18 @@ func TestFilter(t *testing.T) {
 	}
 }
 
-// R5: the committed matrix loads, expands into the agreed bounds, and covers
-// every axis value at least once.
+// R5: the committed matrix loads, expands into the agreed bounds (200..600 —
+// the leaderboard row grew the matrix to 420; the rail still catches an
+// accidental axis cross-product explosion), and covers every axis value at
+// least once.
 func TestCommittedMatrix(t *testing.T) {
 	m, err := LoadMatrix("../../../../harness/matrix.json")
 	if err != nil {
 		t.Fatalf("committed matrix: %v", err)
 	}
 	cases := Expand(m)
-	if len(cases) < 200 || len(cases) > 400 {
-		t.Errorf("expanded to %d cases, want 200..400", len(cases))
+	if len(cases) < 200 || len(cases) > 600 {
+		t.Errorf("expanded to %d cases, want 200..600", len(cases))
 	}
 	present := map[string]bool{}
 	axisSeen := map[string]bool{}

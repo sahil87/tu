@@ -690,3 +690,175 @@ func TestE2EStatusNeverClones(t *testing.T) {
 		t.Errorf("git calls = %v, want none for status", calls)
 	}
 }
+
+// ── B5: leaderboards (lb / lbh) ────────────────────────────────────────────
+//
+// Byte references: the node oracle (node v24) against the committed seed with
+// the harness-staged multi home, TZ=UTC, piped (width 80), captured
+// 2026-09-16. The lb bars render at 80 columns here — the two-user table is
+// narrow enough.
+
+const e2eLbGate = "Error: lb requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo\n"
+
+// R1/A-017: in single mode lb/lbh exit 1 with the one gate line (naming lb
+// even for lbh — DC-14), empty stdout, and NO -u notice preceding it.
+func TestE2ELeaderboardSingleModeGate(t *testing.T) {
+	for _, args := range [][]string{{"lb"}, {"lbh"}, {"lb", "-u", "other-user"}} {
+		stageVariant(t, "single")
+		assertRun(t, args, 1, "", e2eLbGate)
+	}
+}
+
+// A multi-home bare lb on today's empty window: the heading carries today's
+// local (UTC) date, then the empty state and the staleness footer, exit 0.
+// -u all is a silent no-op (no notice); --full warns like a snapshot.
+func TestE2ELeaderboardTodayEmpty(t *testing.T) {
+	today := time.Now().Format("2006-01-02")
+	empty := "\n\x1b[1;37mLeaderboard (daily) · " + today + " · by cost\x1b[0m\n\n  No data\n\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
+	stageVariant(t, "multi")
+	assertRun(t, []string{"lb"}, 0, empty, "")
+	assertRun(t, []string{"lb", "-u", "all"}, 0, empty, "")
+	assertRun(t, []string{"lb", "--full"}, 0, empty,
+		"Warning: --full applies to daily/weekly history — ignoring.\n")
+}
+
+// --top on a non-leaderboard display warns (byte-exact) and is ignored: the
+// snapshot renders, exit 0.
+func TestE2ETopSnapshotGuard(t *testing.T) {
+	stageVariant(t, "single")
+	assertRun(t, []string{"--top", "3"}, 0,
+		"\n\x1b[1;37m📊 Combined Usage (daily)\x1b[0m\n\n  No usage\n\n",
+		"Warning: --top applies to leaderboard display — ignoring.\n")
+}
+
+const e2eLbWindow = "\n\x1b[1;37mLeaderboard (daily) · 2026-01-01 → 2026-01-31 · by cost\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser          \x1b[0m | \x1b[1;36m     Cost\x1b[0m                   | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n1 | harness-user ◂ |     $1.70 \x1b[32m█████████████████\x1b[0m |    97,600 | 56.7% |       new\n2 | other-user     |     $1.30 \x1b[32m█████████████\x1b[0m     |    48,800 | 43.3% |       new\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal         \x1b[0m | \x1b[1;37m    $3.00\x1b[0m                   | \x1b[1;37m  146,400\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
+
+const e2eLbWindowJSON = "[\n  {\n    \"rank\": 1,\n    \"user\": \"harness-user\",\n    \"cost\": 1.7,\n    \"totalTokens\": 97600,\n    \"share\": 0.5666666666666667,\n    \"delta\": null\n  },\n  {\n    \"rank\": 2,\n    \"user\": \"other-user\",\n    \"cost\": 1.3,\n    \"totalTokens\": 48800,\n    \"share\": 0.43333333333333335,\n    \"delta\": null\n  }\n]\n"
+
+const e2eLbWindowCSV = "rank,user,cost,total_tokens,share,delta\n1,harness-user,1.70,97600,0.567,\n2,other-user,1.30,48800,0.433,\nTotal,,3.00,146400,,\n"
+
+const e2eLbWindowMD = "## Leaderboard (daily)\n\n| # | User | Cost | Tokens | Share | Δ vs prev |\n| ---: | :--- | ---: | ---: | ---: | ---: |\n| 1 | harness-user | $1.70 | 97,600 | 56.7% | new |\n| 2 | other-user | $1.30 | 48,800 | 43.3% | new |\n| **Total** |  | **$3.00** | **146,400** |  |  |\n\n"
+
+const e2eLbWindowByMachine = "\n\x1b[1;37mLeaderboard (daily) · 2026-01-01 → 2026-01-31 · by cost\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser                          \x1b[0m | \x1b[1;36m     Cost\x1b[0m | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────────────────────|───────────|───────────|───────|──────────\x1b[0m\n1 | other-user/laptop              |     $1.30 |    48,800 | 43.3% |       new\n2 | harness-user/harness-machine ◂ |     $1.00 |    48,800 | 33.3% |       new\n3 | harness-user/other-box ◂       |     $0.70 |    48,800 | 23.3% |       new\n\x1b[2m──|────────────────────────────────|───────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal                         \x1b[0m | \x1b[1;37m    $3.00\x1b[0m | \x1b[1;37m  146,400\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
+
+const e2eLbWindowByMachineTokens = "\n\x1b[1;37mLeaderboard (daily) · 2026-01-01 → 2026-01-31 · by tokens\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser                          \x1b[0m | \x1b[1;36m     Cost\x1b[0m | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────────────────────|───────────|───────────|───────|──────────\x1b[0m\n1 | harness-user/harness-machine ◂ |     $1.00 |    48,800 | 33.3% |       new\n2 | harness-user/other-box ◂       |     $0.70 |    48,800 | 33.3% |       new\n3 | other-user/laptop              |     $1.30 |    48,800 | 33.3% |       new\n\x1b[2m──|────────────────────────────────|───────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal                         \x1b[0m | \x1b[1;37m    $3.00\x1b[0m | \x1b[1;37m  146,400\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
+
+const e2eLbWindowTop1 = "\n\x1b[1;37mLeaderboard (daily) · 2026-01-01 → 2026-01-31 · by cost\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser          \x1b[0m | \x1b[1;36m     Cost\x1b[0m                   | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n1 | harness-user ◂ |     $1.70 \x1b[32m█████████████████\x1b[0m |    97,600 | 56.7% |       new\n  | \x1b[2m… +1 others   \x1b[0m |                             |           |       |          \n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal         \x1b[0m | \x1b[1;37m    $3.00\x1b[0m                   | \x1b[1;37m  146,400\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
+
+const e2eLbWindowTokens = "\n\x1b[1;37mLeaderboard (daily) · 2026-01-01 → 2026-01-31 · by tokens\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser          \x1b[0m | \x1b[1;36m     Cost\x1b[0m                   | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n1 | harness-user ◂ |     $1.70 \x1b[32m█████████████████\x1b[0m |    97,600 | 66.7% |       new\n2 | other-user     |     $1.30 \x1b[32m████████▌\x1b[0m         |    48,800 | 33.3% |       new\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal         \x1b[0m | \x1b[1;37m    $3.00\x1b[0m                   | \x1b[1;37m  146,400\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
+
+const e2eCCLbWindow = "\n\x1b[1;37mLeaderboard (daily) · 2026-01-01 → 2026-01-31 · by cost\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser          \x1b[0m | \x1b[1;36m     Cost\x1b[0m                   | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n1 | harness-user ◂ |     $1.40 \x1b[32m█████████████████\x1b[0m |    73,200 | 56.0% |       new\n2 | other-user     |     $1.10 \x1b[32m█████████████▍\x1b[0m    |    24,400 | 44.0% |       new\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal         \x1b[0m | \x1b[1;37m    $2.50\x1b[0m                   | \x1b[1;37m   97,600\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
+
+const e2eLbUntilOnly = "\n\x1b[1;37mLeaderboard (daily) · → 2026-01-31 · by cost\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser          \x1b[0m | \x1b[1;36m     Cost\x1b[0m                   | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n1 | harness-user ◂ |     $1.70 \x1b[32m█████████████████\x1b[0m |    97,600 | 56.7% |       new\n2 | other-user     |     $1.30 \x1b[32m█████████████\x1b[0m     |    48,800 | 43.3% |       new\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal         \x1b[0m | \x1b[1;37m    $3.00\x1b[0m                   | \x1b[1;37m  146,400\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
+
+const e2eMLbh = "\n\x1b[1;37m📊 Leaderboard History (monthly)\x1b[0m\n\n\x1b[1;36mDate      \x1b[0m | \x1b[1;36mharness-user\x1b[0m | \x1b[1;36mother-user\x1b[0m | \x1b[1;36m     Cost\x1b[0m\n\x1b[2m───────────|──────────────|────────────|────────────────────────────────────────\x1b[0m\n2026-01    | \x1b[1;37m       $1.70\x1b[0m |      $1.30 |     $3.00 \x1b[32m████████████████\x1b[0m\x1b[35m█████████████\x1b[0m\n\n"
+
+const e2eMLbhJSON = "{\n  \"harness-user\": [\n    {\n      \"label\": \"2026-01\",\n      \"totalCost\": 1.7,\n      \"inputTokens\": 12000,\n      \"outputTokens\": 1600,\n      \"cacheCreationTokens\": 4000,\n      \"cacheReadTokens\": 80000,\n      \"totalTokens\": 97600\n    }\n  ],\n  \"other-user\": [\n    {\n      \"label\": \"2026-01\",\n      \"totalCost\": 1.3,\n      \"inputTokens\": 6000,\n      \"outputTokens\": 800,\n      \"cacheCreationTokens\": 2000,\n      \"cacheReadTokens\": 40000,\n      \"totalTokens\": 48800\n    }\n  ]\n}\n"
+
+const e2eMLbhCSV = "date,harness-user,other-user,total\n2026-01,1.70,1.30,3.00\n"
+
+const e2eMLbhMD = "## Leaderboard History (monthly)\n\n| Date | harness-user | other-user | Cost |\n| :--- | ---: | ---: | ---: |\n| 2026-01 | $1.70 | $1.30 | $3.00 |\n\n"
+
+const e2eMLbhTop1 = "\n\x1b[1;37m📊 Leaderboard History (monthly)\x1b[0m\n\n\x1b[1;36mDate      \x1b[0m | \x1b[1;36mharness-user\x1b[0m | \x1b[1;36m   others\x1b[0m | \x1b[1;36m     Cost\x1b[0m\n\x1b[2m───────────|──────────────|───────────|─────────────────────────────────────────\x1b[0m\n2026-01    | \x1b[1;37m       $1.70\x1b[0m |     $1.30 |     $3.00 \x1b[32m█████████████████\x1b[0m\x1b[35m█████████████\x1b[0m\n\n"
+
+const e2eMLbhTop1JSON = "{\n  \"harness-user\": [\n    {\n      \"label\": \"2026-01\",\n      \"totalCost\": 1.7,\n      \"inputTokens\": 12000,\n      \"outputTokens\": 1600,\n      \"cacheCreationTokens\": 4000,\n      \"cacheReadTokens\": 80000,\n      \"totalTokens\": 97600\n    }\n  ],\n  \"others\": [\n    {\n      \"label\": \"2026-01\",\n      \"totalCost\": 1.3,\n      \"inputTokens\": 6000,\n      \"outputTokens\": 800,\n      \"cacheCreationTokens\": 2000,\n      \"cacheReadTokens\": 40000,\n      \"totalTokens\": 48800\n    }\n  ]\n}\n"
+
+const e2eMLbhTokens = "\n\x1b[1;37m📊 Leaderboard Token History (monthly)\x1b[0m\n\n\x1b[1;36mDate      \x1b[0m | \x1b[1;36mharness-user\x1b[0m | \x1b[1;36mother-user\x1b[0m | \x1b[1;36m   Tokens\x1b[0m\n\x1b[2m───────────|──────────────|────────────|────────────────────────────────────────\x1b[0m\n2026-01    | \x1b[1;37m      97,600\x1b[0m |     48,800 |   146,400 \x1b[32m███████████████████\x1b[0m\x1b[35m██████████\x1b[0m\n\n"
+
+const e2eLbhWindow = "\n\x1b[1;37m📊 Leaderboard History (daily)\x1b[0m\n\n\x1b[1;36mDate      \x1b[0m | \x1b[1;36mharness-user\x1b[0m | \x1b[1;36mother-user\x1b[0m | \x1b[1;36m     Cost\x1b[0m\n\x1b[2m───────────|──────────────|────────────|────────────────────────────────────────\x1b[0m\n2026-01-05 |        $0.25 | \x1b[1;37m     $1.10\x1b[0m |     $1.35 \x1b[32m█████\x1b[0m\x1b[35m████████████████████████\x1b[0m\n2026-01-06 | \x1b[1;37m       $1.15\x1b[0m |      $0.20 |     $1.35 \x1b[32m█████████████████████████\x1b[0m\x1b[35m████\x1b[0m\n2026-01-07 | \x1b[1;37m       $0.30\x1b[0m | \x1b[2m     $0.00\x1b[0m |     $0.30 \x1b[32m██████▌\x1b[0m\n\x1b[2m───────────|──────────────|────────────|────────────────────────────────────────\x1b[0m\n\x1b[1;37mTotal     \x1b[0m | \x1b[1;37m       $1.70\x1b[0m | \x1b[1;37m     $1.30\x1b[0m | \x1b[1;37m    $3.00\x1b[0m\n\x1b[2mavg $1.00/day · peak $1.35 (2026-01-05)\x1b[0m\x1b[2m · \x1b[0m\x1b[32m█\x1b[0m \x1b[2mharness-user\x1b[0m \x1b[35m█\x1b[0m \x1b[2mother-user\x1b[0m\n\n"
+
+const e2eLbhByMachine = "\n\x1b[1;37m📊 Leaderboard History (daily, last 3 months)\x1b[0m\n\n  No data\n\n"
+
+// The populated January window in every format (R5/R12; A-021).
+func TestE2ELeaderboardWindow(t *testing.T) {
+	stageVariant(t, "multi")
+	window := []string{"lb", "--since", "2026-01-01", "--until", "2026-01-31"}
+	assertRun(t, window, 0, e2eLbWindow, "")
+	assertRun(t, append(append([]string{}, window...), "--json"), 0, e2eLbWindowJSON, "")
+	assertRun(t, append(append([]string{}, window...), "--csv"), 0, e2eLbWindowCSV, "")
+	assertRun(t, append(append([]string{}, window...), "--md"), 0, e2eLbWindowMD, "")
+	// -t re-ranks by tokens (97,600 vs 48,800; shares in tokens).
+	assertRun(t, append(append([]string{}, window...), "-t"), 0, e2eLbWindowTokens, "")
+	// cc lb: Claude Code only ($1.40 / $1.10).
+	assertRun(t, append([]string{"cc"}, window...), 0, e2eCCLbWindow, "")
+}
+
+// --by-machine keys rows by user/machine; every machine row of the pinned
+// user carries ◂; the wider User column eats the bar budget (no bars at 80).
+// Under -t the three keys tie at 48,800 tokens and rank by key name
+// (harness-user/harness-machine, harness-user/other-box, other-user/laptop)
+// (A-022).
+func TestE2ELeaderboardByMachine(t *testing.T) {
+	stageVariant(t, "multi")
+	window := []string{"lb", "--since", "2026-01-01", "--until", "2026-01-31", "--by-machine"}
+	assertRun(t, window, 0, e2eLbWindowByMachine, "")
+	assertRun(t, append(append([]string{}, window...), "-t"), 0, e2eLbWindowByMachineTokens, "")
+}
+
+// --top 1 collapses the second user into the dim "… +1 others" line; the
+// Total still sums the full set (A-022).
+func TestE2ELeaderboardTop(t *testing.T) {
+	stageVariant(t, "multi")
+	assertRun(t, []string{"lb", "--since", "2026-01-01", "--until", "2026-01-31", "--top", "1"}, 0, e2eLbWindowTop1, "")
+}
+
+// An --until-only window heads "→ {until}" with a nil previous window (every
+// row new, DC-13); -u <name> pins (◂) instead of filtering.
+func TestE2ELeaderboardUntilOnlyAndPin(t *testing.T) {
+	stageVariant(t, "multi")
+	assertRun(t, []string{"lb", "--until", "2026-01-31"}, 0, e2eLbUntilOnly, "")
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"lb", "--since", "2026-01-01", "--until", "2026-01-31", "-u", "other-user"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("exit = %d, want 0", code)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, "other-user ◂") || strings.Contains(got, "harness-user ◂") {
+		t.Errorf("-u other-user must pin other-user:\n%s", got)
+	}
+	if !strings.Contains(got, "harness-user") || !strings.Contains(got, "2 | other-user ◂") {
+		t.Errorf("the pin must not filter rows:\n%s", got)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+// The lbh surfaces: m lbh (ranked columns, the bold leader cell, stacked
+// bars, no Total for one label), the formats, --top 1 (the others column,
+// JSON keys with others LAST), -t, and the daily window (month separators
+// rules, weekend dimming, the legend). lbh --by-machine warns and clears,
+// then renders the capped empty state.
+func TestE2ELeaderboardHistory(t *testing.T) {
+	stageVariant(t, "multi")
+	assertRun(t, []string{"m", "lbh"}, 0, e2eMLbh, "")
+	assertRun(t, []string{"m", "lbh", "--json"}, 0, e2eMLbhJSON, "")
+	assertRun(t, []string{"m", "lbh", "--csv"}, 0, e2eMLbhCSV, "")
+	assertRun(t, []string{"m", "lbh", "--md"}, 0, e2eMLbhMD, "")
+	assertRun(t, []string{"m", "lbh", "--top", "1"}, 0, e2eMLbhTop1, "")
+	assertRun(t, []string{"m", "lbh", "--top", "1", "--json"}, 0, e2eMLbhTop1JSON, "")
+	assertRun(t, []string{"m", "lbh", "-t"}, 0, e2eMLbhTokens, "")
+	assertRun(t, []string{"lbh", "--since", "2026-01-01", "--until", "2026-01-31"}, 0, e2eLbhWindow, "")
+	// --full lifts the cap: the daily seed rows without the heading hint —
+	// byte-identical to the explicit window here (all seed days are January).
+	assertRun(t, []string{"lbh", "--full"}, 0, e2eLbhWindow, "")
+	assertRun(t, []string{"lbh", "--by-machine"}, 0, e2eLbhByMachine,
+		"Warning: --by-machine is not supported with leaderboard history — ignoring.\n")
+}
+
+// R14: a staged .last-sync file drives the staleness footer ("15m ago" with a
+// timestamp written fifteen and a half minutes before the run).
+func TestE2ELeaderboardLastSync(t *testing.T) {
+	home := stageVariant(t, "multi")
+	iso := time.Now().Add(-15*time.Minute - 30*time.Second).UTC().Format("2006-01-02T15:04:05.000Z")
+	if err := os.WriteFile(filepath.Join(home, ".tu", ".last-sync"), []byte(iso), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"lb"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("exit = %d, want 0", code)
+	}
+	want := "\x1b[2msynced 15m ago (" + iso + ") · tu sync to refresh\x1b[0m"
+	if !strings.Contains(stdout.String(), want) {
+		t.Errorf("stdout missing the synced footer %q:\n%s", want, stdout.String())
+	}
+}

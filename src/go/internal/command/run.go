@@ -39,6 +39,18 @@ type Deps struct {
 	Now    func() time.Time // time.Now at the edge; fixed in tests
 	Colors ansi.Colors
 	Width  int // stdout TTY width, probed at the edge (80 when piped)
+	// LastSync is the leaderboard footer's staleness text (config.LastSync
+	// evaluated at the edge); evaluated only on the lb path. Nil reads as
+	// "never" (tests).
+	LastSync func() string
+}
+
+// lastSync resolves the staleness text; a nil Deps.LastSync reads as "never".
+func (d Deps) lastSync() string {
+	if d.LastSync == nil {
+		return "never"
+	}
+	return d.LastSync()
 }
 
 // Result is what Run returns; cmd/tu writes it.
@@ -55,26 +67,32 @@ type Result struct {
 // scaffold's placeholder line, exit 1.
 var ErrUnported = errors.New("not implemented")
 
+// ErrLeaderboardMode is the TS exit-1 guard: the leaderboard is an all-users
+// view of the metrics repo; single mode has no repo to rank. The message
+// names lb even for lbh (DC-14). cmd/tu prints err.Error(), exit 1 — no
+// notices, no fetch, no lines (the TS exits before the later guards run).
+var ErrLeaderboardMode = errors.New("Error: lb requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo")
+
 // inScope reports whether the (normalized) request is in the ported grammar
-// (intake §2): snapshot or history display, any of the four formats, single
-// or multi mode, -u in any mode (Normalize already cleared it for single),
-// --by-machine on the snapshots and the single-tool history (Normalize already
-// cleared it on the all-tools pivot), no non-data command, no version;
-// Since/Until/Full are history flags (the guards clear them on snapshots).
-// Still out: --top, watch, sync, dry-run, no-rain, skip-brew-update, and the
-// leaderboard displays.
+// (intake §2): snapshot, history or one of the two leaderboard displays, any
+// of the four formats, single or multi mode, -u in any mode (Normalize
+// already cleared it for single and for lb/lbh), --top on the leaderboards
+// (Normalize already cleared it elsewhere), --by-machine on the snapshots,
+// the single-tool history and lb (Normalize already cleared it on the
+// all-tools pivot and on lbh), no non-data command, no version. Still out:
+// watch, sync, dry-run, no-rain, skip-brew-update.
 func inScope(req Request) bool {
 	if req.Command != "" || req.Version {
 		return false
 	}
-	if req.Display != Snapshot && req.Display != History {
+	if req.Display != Snapshot && req.Display != History && !leaderboard(req.Display) {
 		return false
 	}
 	f := req.Flags
 	if f.Watch || f.Sync || f.DryRun || f.NoRain || f.SkipBrewUpdate {
 		return false
 	}
-	return f.Top == 0
+	return true
 }
 
 // Run composes source → query → view → render for an in-scope request and
@@ -83,9 +101,29 @@ func inScope(req Request) bool {
 // harness case combines them). cfg is the post-guard config: the mode selects
 // the record path and the snapshot label rule.
 func Run(ctx context.Context, req Request, cfg config.Config, deps Deps) (Result, error) {
+	// The single-mode leaderboard gate precedes Normalize (the TS main()
+	// order): it fires with no notice lines, on the post-guard config.
+	if leaderboard(req.Display) && cfg.Mode == config.Single {
+		return Result{}, ErrLeaderboardMode
+	}
 	req, notices, capActive := Normalize(req, cfg.Mode, deps.Now())
 	if !inScope(req) {
 		return Result{}, ErrUnported
+	}
+
+	if leaderboard(req.Display) {
+		// Both leaderboards are repo-only (the TS ALL_USERS path): no live
+		// fetch, no ccusage call, no source warnings, no writes.
+		tools := fact.Tools
+		if req.Source != "" {
+			tool, _ := fact.Lookup(req.Source)
+			tools = []fact.Tool{tool}
+		}
+		raw := gatherAllUsers(deps.Repo, tools)
+		if req.Display == Leaderboard {
+			return runLeaderboard(req, cfg, raw, notices, deps), nil
+		}
+		return runLeaderboardHistory(req, cfg, raw, notices, capActive, deps), nil
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, source.DefaultTimeout)
@@ -421,7 +459,7 @@ func runHistory(req Request, cfg config.Config, raw []fact.Record, errs []*sourc
 	case req.Format == CSV:
 		res.Lines = csv.TotalHistory(series)
 	case req.Format == Markdown:
-		res.Lines = markdown.TotalHistory(series, req.Period, capActive)
+		res.Lines = markdown.TotalHistory(series, req.Period, capActive, "Combined Cost History")
 	default:
 		res.Lines = ansi.Table(view.TotalHistory(series, opts), deps.Colors)
 	}

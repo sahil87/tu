@@ -57,7 +57,7 @@ func Status(p Paths, env Env, now time.Time) (StatusData, []string) {
 	}
 	if cfg.Mode == Multi {
 		d.MetricsFound = fileExists(cfg.MetricsDir)
-		d.LastSync = lastSync(StateDir(p.Home), now)
+		d.LastSync = LastSync(StateDir(p.Home), now)
 	}
 	return d, warnings
 }
@@ -113,11 +113,12 @@ func autoSyncWord(on bool) string {
 	return "off"
 }
 
-// lastSync is the TS formatLastSync: stateDir/.last-sync absent, unreadable,
+// LastSync is the TS formatLastSync: stateDir/.last-sync absent, unreadable,
 // or unparseable (after trimming, as RFC3339Nano — the file is written by
 // `tu sync` as JavaScript toISOString()) → "never"; else
-// "{RelativeTime(now − ts)} ({trimmed raw})".
-func lastSync(stateDir string, now time.Time) string {
+// "{RelativeTime(now − ts)} ({trimmed raw})". Shared by Status and the
+// leaderboard's staleness footer (which reaches it through Deps.LastSync).
+func LastSync(stateDir string, now time.Time) string {
 	raw, err := os.ReadFile(filepath.Join(stateDir, ".last-sync"))
 	if err != nil {
 		return "never"

@@ -45,15 +45,21 @@ type Column struct {
 	Title string
 	Width int
 	Align Align
+	// BarAfter renders the bar area (exactly 1 + Scale.Width visible chars)
+	// immediately after this column's cell instead of trailing the last cell —
+	// the leaderboard's mid-row bar. False everywhere else ⇒ the bar trails.
+	BarAfter bool
 }
 
 // Cell is one rendered cell. Text is pre-formatted; Dim marks exact-zero
 // cell styling (pivot/machine columns) — false everywhere in the snapshot.
-// Style is used only by a Data row's first (Date) cell.
+// Style is used only by a Data row's first (Date) cell. Leader wraps the
+// padded cell (after any Dim wrap) in BoldWhite — the lbh per-row leader.
 type Cell struct {
-	Text  string
-	Dim   bool
-	Style LabelStyle
+	Text   string
+	Dim    bool
+	Style  LabelStyle
+	Leader bool
 }
 
 // Delta is a watch-mode delta direction (B7 feeds the Prev map; B2 wires the

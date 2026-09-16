@@ -1,0 +1,24 @@
+{
+  "harness-user": [
+    {
+      "label": "2026-01",
+      "totalCost": 1.7,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 0,
+      "totalTokens": 97600
+    }
+  ],
+  "others": [
+    {
+      "label": "2026-01",
+      "totalCost": 1.3,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 0,
+      "totalTokens": 48800
+    }
+  ]
+}

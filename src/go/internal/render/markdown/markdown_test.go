@@ -88,13 +88,13 @@ func TestGoldens(t *testing.T) {
 				{Name: "other-box", Totals: fact.Totals{TotalCost: 0.40}},
 			},
 		}})},
-		{"total history populated", "total_history_populated.golden", TotalHistory(sixSeries(), query.Daily, false)},
-		{"total history empty cap", "total_history_empty_cap.golden", TotalHistory(sixEmptySeries(), query.Daily, true)},
+		{"total history populated", "total_history_populated.golden", TotalHistory(sixSeries(), query.Daily, false, "Combined Cost History")},
+		{"total history empty cap", "total_history_empty_cap.golden", TotalHistory(sixEmptySeries(), query.Daily, true, "Combined Cost History")},
 		{"total history omission", "total_history_omission.golden", TotalHistory([]view.Series{
 			{Name: "Claude Code", Entries: []view.Entry{{Label: "2026-01-05", Totals: dayTotals}, {Label: "2026-01-06", Totals: dayTotals}}},
 			{Name: "Codex", Entries: []view.Entry{{Label: "2026-01-05", Totals: fact.Totals{TotalCost: 0.004}}}},
 			{Name: "Kimi"},
-		}, query.Daily, false)},
+		}, query.Daily, false, "Combined Cost History")},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -133,7 +133,7 @@ func TestIntakeByteReferences(t *testing.T) {
 		t.Errorf("cc-mh-md bytes =\n%q\nwant:\n%q", got, want)
 	}
 
-	got = strings.Join(TotalHistory(sixEmptySeries(), query.Daily, true), "\n") + "\n"
+	got = strings.Join(TotalHistory(sixEmptySeries(), query.Daily, true, "Combined Cost History"), "\n") + "\n"
 	want = "## Combined Cost History (daily, last 3 months)\n" +
 		"\n" +
 		"| Date | Claude Code | Codex | OpenCode | Gemini | Copilot | Kimi | Cost |\n" +
@@ -160,7 +160,7 @@ func TestTotalHistoryExactZeroOmission(t *testing.T) {
 		{Name: "Codex", Entries: []view.Entry{{Label: "2026-01-05", Totals: fact.Totals{TotalCost: 0.004}}}},
 		{Name: "Kimi"},
 	}
-	lines := TotalHistory(series, query.Daily, false)
+	lines := TotalHistory(series, query.Daily, false, "Combined Cost History")
 	// Codex is NOT exact-zero ($0.004 → $0.00): the exact-zero rule keeps it
 	// (Markdown has no significance floor); Kimi drops.
 	header := lines[2]
@@ -173,7 +173,7 @@ func TestTotalHistoryExactZeroOmission(t *testing.T) {
 	}
 
 	// All-zero: every column stays.
-	lines = TotalHistory(sixEmptySeries(), query.Daily, false)
+	lines = TotalHistory(sixEmptySeries(), query.Daily, false, "Combined Cost History")
 	if lines[2] != "| Date | Claude Code | Codex | OpenCode | Gemini | Copilot | Kimi | Cost |" {
 		t.Errorf("all-zero header = %q, want all six tools", lines[2])
 	}

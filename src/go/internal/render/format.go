@@ -5,6 +5,8 @@
 package render
 
 import (
+	"math"
+	"math/big"
 	"strconv"
 	"strings"
 )
@@ -41,6 +43,66 @@ func FormatCost(x float64) string {
 		x = -x
 	}
 	return "$" + sign + round2(strconv.FormatFloat(x, 'f', -1, 64))
+}
+
+// FixedHalfUp formats x with exactly digits fraction digits, rounding the
+// EXACT binary value half-up — the JS toFixed(digits) rule (the leaderboard's
+// share cell is toFixed(1); the CSV cost field is toFixed(2)). This is NOT
+// strconv.FormatFloat(x, 'f', digits, 64): Go's 'f' rounds the exact value
+// half-EVEN on ties (12.25 → "12.2" at one digit; toFixed(1) gives "12.3").
+// big.Rat holds the exact value; scale by 10^digits, truncate, round up when
+// the remainder ≥ 1/2; the magnitude is rounded and the sign re-added only
+// when the result is nonzero, so -0 (and a negative that rounds to zero)
+// renders unsigned.
+//
+// Node-verified (v24, 2026-09-16), two digits: 1.005 → 1.00, 0.125 → 0.13,
+// 2.675 → 2.67, 0.015 → 0.01, 1.045 → 1.04, 0.045 → 0.04, 999999.995 →
+// 999999.99, 1234567.891 → 1234567.89, 0.5 → 0.50, 0 → 0.00.
+func FixedHalfUp(x float64, digits int) string {
+	scale := int64(1)
+	for range digits {
+		scale *= 10
+	}
+	// exact = the binary value as a rational; scaled = exact × 10^digits.
+	r := new(big.Rat).SetFloat64(x)
+	if x < 0 {
+		r.Neg(r) // round the magnitude; re-add the sign at the end
+	}
+	scaled := new(big.Rat).Mul(r, big.NewRat(scale, 1))
+	intPart := new(big.Int)
+	remainder := new(big.Rat)
+	intPart.Quo(scaled.Num(), scaled.Denom()) // truncated; scaled ≥ 0 so == floor
+	remainder.Sub(scaled, new(big.Rat).SetInt(intPart))
+	if remainder.Cmp(big.NewRat(1, 2)) >= 0 {
+		intPart.Add(intPart, big.NewInt(1))
+	}
+	digitsStr := intPart.String()
+	var out string
+	if digits == 0 {
+		out = digitsStr
+	} else {
+		if len(digitsStr) < digits+1 {
+			digitsStr = strings.Repeat("0", digits+1-len(digitsStr)) + digitsStr
+		}
+		out = digitsStr[:len(digitsStr)-digits] + "." + digitsStr[len(digitsStr)-digits:]
+	}
+	if x < 0 && intPart.Sign() != 0 {
+		return "-" + out
+	}
+	return out
+}
+
+// JSRound is the Math.round twin: floor(x + 0.5), i.e. half toward +∞ — NOT
+// Go's math.Round, which rounds half away from zero (Math.round(-553.5) is
+// -553; math.Round gives -554). Negative zero is normalized to 0. The
+// leaderboard's Δ percent and CSV share/delta fractions are byte surfaces
+// rounded by this rule.
+func JSRound(x float64) float64 {
+	r := math.Floor(x + 0.5)
+	if r == 0 {
+		return 0 // normalize -0
+	}
+	return r
 }
 
 // round2 rounds a non-negative decimal string (strconv 'f' form, no exponent)

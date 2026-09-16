@@ -9,10 +9,12 @@
 // mode (tu, tu cc, tu m, tu h, tu cc mh --since/--until/--full,
 // --json/--csv/--md, --no-color, --fresh, -u <user> / -u all against the
 // metrics repo, the single-mode -u notice, and the metrics-dir auto-clone
-// guard's stderr lines), the setup commands (init-conf, init-metrics,
-// status), and the toolkit surfaces (help/-h/--help, help-dump, skill,
-// shell-init, update) for real; everything else prints the deliberate
-// not-implemented placeholder the differential harness diffs against.
+// guard's stderr lines), the leaderboards lb/lbh in multi mode (user ranking,
+// previous-period deltas, --top, --by-machine on lb, the exit-1 single-mode
+// gate), the setup commands (init-conf, init-metrics, status), and the
+// toolkit surfaces (help/-h/--help, help-dump, skill, shell-init, update) for
+// real; everything else (sync, watch) prints the deliberate not-implemented
+// placeholder the differential harness diffs against.
 package main
 
 import (
@@ -152,6 +154,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		Now:    time.Now,
 		Colors: ansi.Colors{Enabled: !req.Flags.NoColor && os.Getenv("NO_COLOR") == ""},
 		Width:  terminalWidth(stdout),
+		// The leaderboard footer's staleness text — a closure like Now,
+		// evaluated only by the lb path so no other command reads the file.
+		LastSync: func() string { return config.LastSync(config.StateDir(paths.Home), time.Now()) },
 	}
 
 	res, err := command.Run(context.Background(), req, cfg, deps)

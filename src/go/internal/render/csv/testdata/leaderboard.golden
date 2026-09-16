@@ -1,0 +1,4 @@
+rank,user,cost,total_tokens,share,delta
+1,harness-user,1.70,97600,0.567,
+2,other-user,1.30,48800,0.433,
+Total,,3.00,146400,,
