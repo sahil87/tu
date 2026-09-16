@@ -59,7 +59,7 @@ The history pipeline composes `RollUp(Window(recs, since, until), period)` — t
 - `Title` `📊 {Name} ({PeriodLabel})` — metric-independent (only the pivot's title changes under tokens).
 - No entries → `Empty = "  No data"`, no rows.
 - Columns: `Date` (12, left); `Input`, `Output`, `Cache Write`, `Cache Read`, `Total` (14, right); last column `Cost`/`Tokens` (right), data-sized `metricColumnWidth` over every row's metric value plus their sum, floor 9. The fixed body measures 97 visible chars (`historyBodyWidth = 12 + 5×14 + 5×3`).
-- Bar budget: `barWidth = min(Width − 97 − 3 − costWidth − 1, 30)`; bars show when `barWidth ≥ 10`, else `Scale.Width = 0` and no row carries a `Bar`.
+- Bar budget through the shared `barBudget(Width, historyBodyWidth, costWidth, 0)`: `barWidth = min(Width − 97 − 3 − costWidth − 1, 30)`; bars show when `barWidth ≥ 10`, else `Scale.Width = 0` and no row carries a `Bar`.
 - Data rows in input order: `[label, FormatInt(Input), FormatInt(Output), FormatInt(CacheCreation), FormatInt(CacheRead), FormatInt(TotalTokens), metricCell]`; `Cells[0].Style` per `labelStyle`; `Delta` from `Prev["{Name}:{label}"]`; solid bars (`Segments` nil). A `Separator` row precedes any Data row whose `label[:7]` differs from the previous row's — daily period only, never before the first row.
 - When `len(entries) > 1`: a `Divider`, a `Total` row `["Total", the five FormatInt sums, fmtMetric(sum)]`, and `Footer` per the footer requirement. A one-row window has none of the three.
 - `DeltaSpaced = true`.
@@ -73,7 +73,7 @@ The history pipeline composes `RollUp(Window(recs, since, until), period)` — t
 - Visible tools (`significant`): keep a series iff its total over the labels is `≥ negligibleAbs` ($1.00 under cost, 1,000 tokens under tokens) **and** `≥ 0.001 × grand`, where `grand` sums **every** series; boundary values are kept. If nothing survives, fall back to `nonzero` (series with any nonzero cell); if that is empty too, every series. Visible order = input (registry) order.
 - Per label, `rowValue` sums **all** series (omitted tools still count in the row, the Total, and the footer); `values[i]` covers visible tools; `toolSums` accumulates over visible tools.
 - Widths: Date 10; per visible tool `max(len(Name), 9, longest fmtMetric among its cells, fmtMetric(toolSum))`; last column `metricColumnWidth(rowValues + grandTotal)`, floor 9.
-- Bar budget: `barWidth = min(Width − tableWidth − 3 − costWidth − 1 − indicatorReserve, 30)` with `indicatorReserve = 1` when `Prev != nil`; bars show when `barWidth ≥ 10`. At 80 columns the six-tool placeholder pivot needs 84 + 3 + 9 + 1 = 97, so no bars.
+- Bar budget through the shared `barBudget(Width, pivotBodyWidth, costWidth, indicatorReserve)`: `barWidth = min(Width − tableWidth − 3 − costWidth − 1 − indicatorReserve, 30)` with `indicatorReserve = 1` when `Prev != nil`; bars show when `barWidth ≥ 10`. At 80 columns the six-tool placeholder pivot needs 84 + 3 + 9 + 1 = 97, so no bars.
 - Rows: header `["Date", visible names…, "Cost" or "Tokens"]`; Data rows `[label, metricCell per visible tool…, metricCell(rowValue)]` with `Cells[0].Style`, `Delta` from `Prev["total:{label}"]`, and `Bar.Segments = Apportion(values, runes(Main))`. `Separator` rows as in the single-tool table (daily only).
 - When `len(labels) > 1`: `Divider`, `Total` `["Total", fmtMetric(toolSums)…, fmtMetric(grandTotal)]`, and `Footer`. `Legend` = one `Swatch{Name, i}` per visible tool iff bars are shown and ≥ 2 tools are visible (the encoder additionally requires color).
 - `DeltaSpaced = false` (the space-less `$128.13↑` form — the pivot's width contract).
@@ -132,10 +132,16 @@ Every encoder is pinned by golden files under each package's `testdata/` directo
 *Introduced by*: 260916-3am6-query-view-render-snapshot
 
 ### view receives display names, not registry keys
-**Decision**: `command` resolves `ccusage.Lookup(key).Name` and hands `view.ToolTotals{Name}` / `view.Series{Name}` in registry order.
-**Why**: Keeps `query`/`view`/`render` free of the exec package (the layering the plan's G1 gate checks).
-**Rejected**: Moving the registry into `fact` (churns the input layer for no gain).
+**Decision**: `command` resolves `fact.Lookup(key).Name` and hands `view.ToolTotals{Name}` / `view.Series{Name}` in registry order.
+**Why**: Keeps `query`/`view`/`render` free of the registry and the exec adapters (the layering the plan's G1 gate checks).
+**Rejected**: Letting `view` import the registry or resolve names itself (pulls the registry dependency into the pure layer).
 *Introduced by*: 260916-3am6-query-view-render-snapshot
+
+### One bar budget and concern-per-helper structure for the history tables
+**Decision**: `barBudget(width, bodyWidth, costWidth, reserve)` is the single bar-width formula both history tables call — the two differ only in `bodyWidth` (the pivot's computed table width vs the fixed `historyBodyWidth`) and `reserve` (the pivot's `Prev != nil` indicator vs 0). Each table body is a short composition over concern-named helpers: `pivotValues`/`pivotData`/`pivotWidths`/`pivotRows`/`pivotTotals` for `TotalHistory`, `historyValues`/`historyColumns`/`historyRows` for `History`, with parallel `*Values`/`*Rows` verbs.
+**Why**: B4's machine columns add a column source to the pivot and B5's `lbh` hooks add a row source — both extend the tables by adding a helper, not lines; one bar formula cannot drift into two.
+**Rejected**: Keeping each table as one body with its `min(...)` bar expression inline — two copies of one rule and no named joints for the later rows.
+*Introduced by*: 260916-m9of-g1-rework-1
 
 ### GroupBy emits groups in first-seen order
 **Decision**: No sorting inside `GroupBy`; callers order their input.

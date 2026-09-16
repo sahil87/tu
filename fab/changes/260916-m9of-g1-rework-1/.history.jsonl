@@ -1,0 +1,10 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-16T18:01:20Z"}
+{"args":"Context: fab/plans/sahil/26-09-15-go-port.md, row V3 (G1 cycle 1), verdict fab/plans/sahil/reviews/g1-1.md. Scope: findings 1 (command welded to ccusage adapter; move Tool/Tools/Lookup to fact, Fetcher.Fetch takes fact.Tool, PeriodDaily/DefaultTimeout out of ccusage) and 2 (split view.TotalHistory and view.History into named helpers). Harness \u003e= 134/368 same case set; no new behavior.","cmd":"fab-new","event":"command","ts":"2026-09-16T18:01:20Z"}
+{"delta":"+0.0","event":"confidence","score":4.6,"trigger":"calc-score","ts":"2026-09-16T18:03:30Z"}
+{"delta":"+0.0","event":"confidence","score":4.6,"trigger":"calc-score","ts":"2026-09-16T18:03:58Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-16T18:05:09Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-16T18:05:59Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-16T18:15:43Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-16T18:17:55Z"}
+{"event":"review","result":"passed","ts":"2026-09-16T18:17:55Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-16T18:21:07Z"}

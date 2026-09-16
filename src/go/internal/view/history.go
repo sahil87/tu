@@ -89,6 +89,16 @@ const (
 	barLeading  = 1
 )
 
+// barBudget is the one bar-width rule both history tables share:
+// min(width − bodyWidth − gutter − costWidth − leading − reserve, maxBarWidth),
+// shown when the result is at least minBarArea. bodyWidth is the table's
+// fixed body (historyBodyWidth for the single-tool table; the pivot's
+// computed width); reserve is the pivot's Prev-indicator column.
+func barBudget(width, bodyWidth, costWidth, reserve int) (barWidth int, show bool) {
+	barWidth = min(width-bodyWidth-gutterWidth-costWidth-barLeading-reserve, maxBarWidth)
+	return barWidth, barWidth >= minBarArea
+}
+
 // History builds the single-tool history table (the TS renderHistory):
 //
 //   - Title "📊 {Name} ({period}[, last 3 months])" — metric-independent.
@@ -112,24 +122,50 @@ func History(s Series, o HistoryOptions) Table {
 		return t
 	}
 
-	// The metric column is sized from the data before the bar budget: every
-	// row's value plus their sum (the Total row's cell, usually the longest).
 	m := o.Metric
-	sumValue := 0.0
-	values := make([]float64, len(s.Entries))
-	for i, e := range s.Entries {
-		values[i] = metricValue(e.Totals, m)
-		sumValue += values[i]
-	}
+	values, sumValue := historyValues(s, m)
 	costWidth := metricColumnWidth(append(values, sumValue), m)
 
-	barWidth := min(o.Width-historyBodyWidth-gutterWidth-costWidth-barLeading, maxBarWidth)
-	showBars := barWidth >= minBarArea
+	barWidth, showBars := barBudget(o.Width, historyBodyWidth, costWidth, 0)
 	if showBars {
 		t.Scale = ComputeScale(values, barWidth)
 	}
 
-	t.Columns = []Column{
+	t.Columns = historyColumns(costWidth, m)
+	rows, labels, sums := historyRows(s, values, o, m, t.Scale, showBars)
+	t.Rows = append([]Row{headerRow(t.Columns), {Kind: Divider}}, rows...)
+
+	if len(s.Entries) > 1 {
+		t.Rows = append(t.Rows, Row{Kind: Divider}, Row{Kind: Total, Cells: []Cell{
+			{Text: "Total"},
+			{Text: render.FormatInt(sums.InputTokens)},
+			{Text: render.FormatInt(sums.OutputTokens)},
+			{Text: render.FormatInt(sums.CacheCreationTokens)},
+			{Text: render.FormatInt(sums.CacheReadTokens)},
+			{Text: render.FormatInt(sums.TotalTokens)},
+			{Text: fmtMetric(sumValue, m)},
+		}})
+		t.Footer = footerText(labels, values, o.Period, t.Scale, o.Now, m)
+	}
+	return t
+}
+
+// historyValues is the series' per-entry metric values plus their sum. The
+// metric column is sized from the data before the bar budget: every row's
+// value plus their sum (the Total row's cell, usually the longest).
+func historyValues(s Series, m Metric) (values []float64, sum float64) {
+	values = make([]float64, len(s.Entries))
+	for i, e := range s.Entries {
+		values[i] = metricValue(e.Totals, m)
+		sum += values[i]
+	}
+	return values, sum
+}
+
+// historyColumns is the fixed single-tool layout: Date 12 Left; the five
+// token columns 14 Right; the data-sized metric column (floor 9) last.
+func historyColumns(costWidth int, m Metric) []Column {
+	return []Column{
 		{Title: "Date", Width: historyDateWidth, Align: Left},
 		{Title: "Input", Width: historyNumWidth, Align: Right},
 		{Title: "Output", Width: historyNumWidth, Align: Right},
@@ -138,17 +174,21 @@ func History(s Series, o HistoryOptions) Table {
 		{Title: "Total", Width: historyNumWidth, Align: Right},
 		{Title: metricHeader(m), Width: costWidth, Align: Right},
 	}
-	t.Rows = append(t.Rows, headerRow(t.Columns), Row{Kind: Divider})
+}
 
-	var sums fact.Totals
+// historyRows builds the data rows — FormatInt token cells, the metric cell,
+// the label style, the Prev delta and a solid bar (Segments nil); a Separator
+// precedes a Data row whose label[:7] changes, daily only, never the first —
+// and sums the totals the Total row needs.
+func historyRows(s Series, values []float64, o HistoryOptions, m Metric, scale Scale, showBars bool) (rows []Row, labels []string, sums fact.Totals) {
+	labels = make([]string, len(s.Entries))
 	prevMonthPrefix := ""
-	labels := make([]string, len(s.Entries))
 	for i, e := range s.Entries {
 		labels[i] = e.Label
 		// Month-boundary separator: daily only, never before the first row.
 		monthPrefix := monthPrefixOf(e.Label)
 		if o.Period == query.Daily && prevMonthPrefix != "" && monthPrefix != prevMonthPrefix {
-			t.Rows = append(t.Rows, Row{Kind: Separator})
+			rows = append(rows, Row{Kind: Separator})
 		}
 		prevMonthPrefix = monthPrefix
 
@@ -166,25 +206,12 @@ func History(s Series, o HistoryOptions) Table {
 			Delta: rowDelta(o.Prev, s.Name+":"+e.Label, values[i]),
 		}
 		if showBars {
-			row.Bar = rowBar(values[i], t.Scale, nil)
+			row.Bar = rowBar(values[i], scale, nil)
 		}
-		t.Rows = append(t.Rows, row)
+		rows = append(rows, row)
 		sums = sums.Add(e.Totals)
 	}
-
-	if len(s.Entries) > 1 {
-		t.Rows = append(t.Rows, Row{Kind: Divider}, Row{Kind: Total, Cells: []Cell{
-			{Text: "Total"},
-			{Text: render.FormatInt(sums.InputTokens)},
-			{Text: render.FormatInt(sums.OutputTokens)},
-			{Text: render.FormatInt(sums.CacheCreationTokens)},
-			{Text: render.FormatInt(sums.CacheReadTokens)},
-			{Text: render.FormatInt(sums.TotalTokens)},
-			{Text: fmtMetric(sumValue, m)},
-		}})
-		t.Footer = footerText(labels, values, o.Period, t.Scale, o.Now, m)
-	}
-	return t
+	return rows, labels, sums
 }
 
 // monthPrefixOf is a label's YYYY-MM prefix (the TS label.slice(0, 7)).

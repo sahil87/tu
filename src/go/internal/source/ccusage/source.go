@@ -26,7 +26,7 @@ type Source struct {
 // write happens on an exec failure, a parse failure, or an empty result —
 // the TS returns before writeCache in all three cases. fresh skips the read
 // but still writes.
-func (s *Source) Fetch(ctx context.Context, tool Tool, period string, extraArgs []string, fresh bool) ([]fact.Record, *source.Error) {
+func (s *Source) Fetch(ctx context.Context, tool fact.Tool, period string, extraArgs []string, fresh bool) ([]fact.Record, *source.Error) {
 	key := cache.Key{Tool: tool.Key, Period: period, Args: extraArgs}
 	if !fresh && s.Cache != nil {
 		if records, ok := s.Cache.Get(key); ok {
@@ -67,16 +67,17 @@ func (s *Source) Fetch(ctx context.Context, tool Tool, period string, extraArgs 
 	return stamp(records, s.User, s.Machine), nil
 }
 
-// FetchAll fetches every tool in Tools concurrently (one goroutine each) and
-// returns the records concatenated in registry order followed by the non-nil
-// errors, also in registry order. It never stops early: one failing tool
-// does not cancel the others, and a failed tool contributes no records.
+// FetchAll fetches every tool in fact.Tools concurrently (one goroutine
+// each) and returns the records concatenated in registry order followed by
+// the non-nil errors, also in registry order. It never stops early: one
+// failing tool does not cancel the others, and a failed tool contributes no
+// records.
 func (s *Source) FetchAll(ctx context.Context, period string, extraArgs []string, fresh bool) ([]fact.Record, []*source.Error) {
-	recSlots := make([][]fact.Record, len(Tools))
-	errSlots := make([]*source.Error, len(Tools))
+	recSlots := make([][]fact.Record, len(fact.Tools))
+	errSlots := make([]*source.Error, len(fact.Tools))
 
 	var wg sync.WaitGroup
-	for i, tool := range Tools {
+	for i, tool := range fact.Tools {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -87,7 +88,7 @@ func (s *Source) FetchAll(ctx context.Context, period string, extraArgs []string
 
 	var records []fact.Record
 	var errs []*source.Error
-	for i := range Tools {
+	for i := range fact.Tools {
 		records = append(records, recSlots[i]...)
 		if errSlots[i] != nil {
 			errs = append(errs, errSlots[i])

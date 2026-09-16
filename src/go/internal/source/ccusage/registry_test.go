@@ -3,50 +3,44 @@ package ccusage
 import (
 	"reflect"
 	"testing"
+
+	"github.com/sahil87/tu/internal/fact"
 )
 
-func TestToolsOrderAndShape(t *testing.T) {
-	want := []Tool{
-		{Key: "cc", Name: "Claude Code", PrefixArgs: []string{"claude"}, LabelKey: "date"},
-		{Key: "codex", Name: "Codex", PrefixArgs: []string{"codex"}, LabelKey: "date"},
-		{Key: "oc", Name: "OpenCode", PrefixArgs: []string{"opencode"}, LabelKey: "date"},
-		{Key: "gemini", Name: "Gemini", PrefixArgs: []string{"gemini"}, LabelKey: "date"},
-		{Key: "copilot", Name: "Copilot", PrefixArgs: []string{"copilot"}, LabelKey: "date"},
-		{Key: "kimi", Name: "Kimi", PrefixArgs: []string{"kimi"}, LabelKey: "date"},
+func TestInvocationsMatchRegistry(t *testing.T) {
+	if len(invocations) != len(fact.Tools) {
+		t.Errorf("invocations has %d entries, fact.Tools has %d", len(invocations), len(fact.Tools))
 	}
-	if !reflect.DeepEqual(Tools, want) {
-		t.Errorf("Tools = %+v, want %+v", Tools, want)
-	}
-}
-
-func TestLookup(t *testing.T) {
-	tool, ok := Lookup("gemini")
-	if !ok {
-		t.Fatal("Lookup(gemini) missed")
-	}
-	if tool.Name != "Gemini" || !reflect.DeepEqual(tool.PrefixArgs, []string{"gemini"}) || tool.LabelKey != "date" {
-		t.Errorf("Lookup(gemini) = %+v", tool)
-	}
-
-	for _, alias := range []string{"gem", "co", "cop", "ki", ""} {
-		if _, ok := Lookup(alias); ok {
-			t.Errorf("Lookup(%q) should miss (aliases are not in the registry)", alias)
+	for _, tool := range fact.Tools {
+		if _, ok := invocations[tool.Key]; !ok {
+			t.Errorf("invocations missing registry key %q", tool.Key)
 		}
+	}
+	for key := range invocations {
+		if _, ok := fact.Lookup(key); !ok {
+			t.Errorf("invocations has orphan key %q (not in fact.Tools)", key)
+		}
+	}
+	if invocations["cc"].prefixArgs[0] != "claude" {
+		t.Errorf(`invocations["cc"].prefixArgs[0] = %q, want "claude"`, invocations["cc"].prefixArgs[0])
 	}
 }
 
 func TestArgvComposition(t *testing.T) {
-	cc := Tools[0]
-	if got := argv(cc, PeriodDaily, nil); !reflect.DeepEqual(got, []string{"claude", "daily", "--json"}) {
+	cc, ok := fact.Lookup("cc")
+	if !ok {
+		t.Fatal(`fact.Lookup("cc") missed`)
+	}
+	if got := argv(cc, "daily", nil); !reflect.DeepEqual(got, []string{"claude", "daily", "--json"}) {
 		t.Errorf("argv(cc, daily, nil) = %v", got)
 	}
 	if got := argv(cc, "monthly", []string{"--since", "20260101"}); !reflect.DeepEqual(got, []string{"claude", "monthly", "--json", "--since", "20260101"}) {
 		t.Errorf("argv with extra args = %v", got)
 	}
-	// The returned slice must not alias the registry's PrefixArgs.
-	got := argv(cc, PeriodDaily, nil)
+	// The returned slice must not alias the invocation's prefixArgs.
+	got := argv(cc, "daily", nil)
 	got[0] = "mutated"
-	if Tools[0].PrefixArgs[0] != "claude" {
-		t.Error("argv aliased tool.PrefixArgs")
+	if invocations["cc"].prefixArgs[0] != "claude" {
+		t.Error("argv aliased the invocation's prefixArgs")
 	}
 }

@@ -1,6 +1,6 @@
 ---
 type: memory
-description: The Go port's input layer — internal/fact (Record/Totals, the one fact type), internal/source (typed Error plus the WriteWarnings edge writer), internal/source/ccusage (ordered six-tool registry, exec, normalize, Fetch/FetchAll), and internal/source/cache (hash-keyed on-disk JSON, 60 s TTL), tested against the _placeholder corpus; consumed by internal/command and cmd/tu, unshipped until cutover
+description: The Go port's input layer — internal/fact (Record/Totals plus the Tool/Tools/Lookup six-tool registry), internal/source (typed Error, the WriteWarnings edge writer, the fetch-contract constants PeriodDaily/DefaultTimeout), internal/source/ccusage (adapter-private invocations map, exec, normalize, Fetch/FetchAll), and internal/source/cache (hash-keyed on-disk JSON, 60 s TTL), tested against the _placeholder corpus; consumed by internal/command and cmd/tu, unshipped until cutover
 ---
 # Fact Type and ccusage Sources (Go port)
 
@@ -8,7 +8,7 @@ description: The Go port's input layer — internal/fact (Record/Totals, the one
 
 ## Overview
 
-The Go port's input layer is four packages under `src/go/internal/`: `fact` is pure — the one record type every downstream stage consumes; `source` holds the typed per-source `Error` and `WriteWarnings`, the single edge writer; `source/ccusage` is the one impure adapter (registry, exec, JSON normalize, fetch); `source/cache` is the on-disk JSON store behind it. The command edge consumes this layer: `command.Run` fetches through the `command.Fetcher` interface that `*ccusage.Source` satisfies, applies `ccusage.DefaultTimeout` once per invocation, builds its source with `cache.Default()`, and `cmd/tu` writes the result's warnings with `source.WriteWarnings` (see [command-edge](/go-port/command-edge.md)). The corpus these packages are tested against lives in [differential-harness](/harness/differential-harness.md); the shipped TypeScript data model they mirror is in [data-pipeline](/cli/data-pipeline.md); build/test wiring is in [toolchain](/build/toolchain.md).
+The Go port's input layer is four packages under `src/go/internal/`: `fact` is pure — the one record type every downstream stage consumes plus the tool registry; `source` holds the typed per-source `Error`, `WriteWarnings` (the single edge writer), and the fetch-contract constants `PeriodDaily`/`DefaultTimeout`; `source/ccusage` is the one impure adapter (an adapter-private invocation map, exec, JSON normalize, fetch); `source/cache` is the on-disk JSON store behind it. The command edge consumes this layer: `command.Run` fetches through the `command.Fetcher` interface (`Fetch` takes `fact.Tool`), which `*ccusage.Source` satisfies at the `cmd/tu` assignment, applies `source.DefaultTimeout` once per invocation, builds its source with `cache.Default()`, and `cmd/tu` writes the result's warnings with `source.WriteWarnings` (see [command-edge](/go-port/command-edge.md)). The corpus these packages are tested against lives in [differential-harness](/harness/differential-harness.md); the shipped TypeScript data model they mirror is in [data-pipeline](/cli/data-pipeline.md); build/test wiring is in [toolchain](/build/toolchain.md).
 
 ## Requirements
 
@@ -60,12 +60,12 @@ The Go port's input layer is four packages under `src/go/internal/`: `fact` is p
 - **THEN** `buf` holds exactly two lines, the exec warning then the timeout warning
 
 ### Requirement: Ordered six-tool registry and argv composition
-`package ccusage` SHALL define `Tool{Key, Name string; PrefixArgs []string; LabelKey string}` and `Tools` as an **ordered slice** (never a map — Go maps are unordered and insertion order is the all-tools column order) of exactly: `cc`/Claude Code/`claude`, `codex`/Codex/`codex`, `oc`/OpenCode/`opencode`, `gemini`/Gemini/`gemini`, `copilot`/Copilot/`copilot`, `kimi`/Kimi/`kimi` — every `LabelKey` is `date` at ccusage v20. `Lookup(key)` scans the slice; `PeriodDaily = "daily"`. Source aliases (`co`, `gem`, `cop`, `ki`) are command grammar and are not part of this package. The argv handed to the binary MUST be `PrefixArgs…, period, "--json", extraArgs…` (e.g. `claude daily --json`), passed to `os/exec` as a slice with no shell.
+`package fact` SHALL define `Tool{Key, Name string}` and own the registry: `Tools`, an **ordered slice** (never a map — Go maps are unordered and insertion order is the all-tools column order) of exactly `cc`/Claude Code, `codex`/Codex, `oc`/OpenCode, `gemini`/Gemini, `copilot`/Copilot, `kimi`/Kimi, and `Lookup(key) (Tool, bool)` scanning the slice. Source aliases (`co`, `gem`, `cop`, `ki`) are command grammar and are not part of the registry. `package ccusage` holds only the unexported `invocations map[string]invocation{prefixArgs []string; labelKey string}` keyed by `fact.Tool.Key` — the per-agent subcommand (`claude`, `codex`, `opencode`, `gemini`, `copilot`, `kimi`) and the JSON label key (every `labelKey` is `date` at ccusage v20); a registry test asserts the map's key set equals the keys of `fact.Tools`. The argv handed to the binary MUST be `invocations[tool.Key].prefixArgs…, period, "--json", extraArgs…` (e.g. `claude daily --json`), passed to `os/exec` as a slice with no shell.
 
 #### Scenario: Registry order and argv
-- **GIVEN** the registry iterated
+- **GIVEN** `fact.Tools` iterated
 - **WHEN** keys are read
-- **THEN** they are `cc, codex, oc, gemini, copilot, kimi` in that order, `Lookup("gemini")` returns the Gemini tool, and `Lookup("gem")` misses
+- **THEN** they are `cc, codex, oc, gemini, copilot, kimi` in that order, `fact.Lookup("gemini")` returns the Gemini tool, and `fact.Lookup("gem")` misses
 - **GIVEN** the `cc` tool, period `daily`, no extra args
 - **WHEN** a fetch runs against the fake ccusage with `TUDIFF_CALL_LOG` set
 - **THEN** the logged argv is exactly `["claude","daily","--json"]`
@@ -79,7 +79,7 @@ The Go port's input layer is four packages under `src/go/internal/`: `fact` is p
 - **THEN** it returns `(nil, err)` with `err.Kind == KindExec` and `err.Detail == "spawn ccusage ENOENT"`
 
 ### Requirement: Exec semantics
-The adapter SHALL run the binary with `exec.CommandContext(ctx, binary, argv...)`, inherited environment and cwd, stdout and stderr captured into separate temp files with **no size cap** (real files, not pipes: a killed child can leave grandchildren holding a pipe open, and `exec.Wait` would then block past the deadline). The source imposes no deadline of its own — it honors the given context; `const DefaultTimeout = 120 * time.Second` is exported for the command edge to apply. Failure classification: context deadline → `KindTimeout`; start failure → `KindExec` with the `spawn` detail; non-zero exit or signal → `KindExec` with the `Command failed` detail. ccusage's stderr on a successful run is captured and discarded, never forwarded.
+The adapter SHALL run the binary with `exec.CommandContext(ctx, binary, argv...)`, inherited environment and cwd, stdout and stderr captured into separate temp files with **no size cap** (real files, not pipes: a killed child can leave grandchildren holding a pipe open, and `exec.Wait` would then block past the deadline). The adapter imposes no deadline of its own — it honors the given context; the per-invocation deadline `source.DefaultTimeout = 120 * time.Second` lives in `internal/source` for the command edge to apply. Failure classification: context deadline → `KindTimeout`; start failure → `KindExec` with the `spawn` detail; non-zero exit or signal → `KindExec` with the `Command failed` detail. ccusage's stderr on a successful run is captured and discarded, never forwarded.
 
 #### Scenario: Deadline fires
 - **GIVEN** a `#!/bin/sh` stub that runs `sleep 5` and a context with a 200 ms timeout
@@ -87,7 +87,7 @@ The adapter SHALL run the binary with `exec.CommandContext(ctx, binary, argv...)
 - **THEN** it returns promptly with `err.Kind == KindTimeout` and `err.Detail` starting `timeout after `
 
 ### Requirement: Parse coercion and label normalization
-`func Parse(raw []byte, tool Tool) ([]fact.Record, *source.Error)` SHALL decode `{"daily": [ … ]}` and, for each entry, build a `fact.Record` with `Tool = tool.Key` and empty `User`/`Machine`, applying the TS `toUsageTotals` coercion: `TotalCost` ← `totalCost` else `costUSD` (the codex outlier) else 0; `CacheReadTokens` ← `cacheReadTokens` else `cachedInputTokens` else 0; the other four counters ← same-named keys else 0; a present key whose value is not a JSON number → 0, never an error. `Date` ← `normalizeLabel(entry[tool.LabelKey])`: ISO passes through unchanged, `Feb 14, 2026` → `2026-02-14` (day zero-padded), `Feb 2026` → `2026-02`, an unknown 3-letter month maps to `00`, a missing or non-string label yields `""`. The `totals` object and unknown keys (`modelBreakdowns`, `models`, `reasoningOutputTokens`, …) are ignored.
+`func Parse(raw []byte, tool fact.Tool) ([]fact.Record, *source.Error)` SHALL decode `{"daily": [ … ]}` and, for each entry, build a `fact.Record` with `Tool = tool.Key` and empty `User`/`Machine`, applying the TS `toUsageTotals` coercion: `TotalCost` ← `totalCost` else `costUSD` (the codex outlier) else 0; `CacheReadTokens` ← `cacheReadTokens` else `cachedInputTokens` else 0; the other four counters ← same-named keys else 0; a present key whose value is not a JSON number → 0, never an error. `Date` ← `normalizeLabel(entry[invocations[tool.Key].labelKey])`: ISO passes through unchanged, `Feb 14, 2026` → `2026-02-14` (day zero-padded), `Feb 2026` → `2026-02`, an unknown 3-letter month maps to `00`, a missing or non-string label yields `""`. The `totals` object and unknown keys (`modelBreakdowns`, `models`, `reasoningOutputTokens`, …) are ignored.
 
 #### Scenario: Placeholder corpus parses uniformly
 - **GIVEN** `harness/fixtures/_placeholder/codex/daily.json`
@@ -106,7 +106,7 @@ The adapter SHALL run the binary with `exec.CommandContext(ctx, binary, argv...)
 - **THEN** each returns `err.Kind == KindParse`
 
 ### Requirement: Fetch order of operations
-`Source{Binary, User, Machine string; Cache *cache.Store}` (nil cache → no caching). `Fetch(ctx, tool, period, extraArgs, fresh)` SHALL, in order: (1) when `!fresh` and a cache is set, `Cache.Get(key)` with `key = cache.Key{Tool: tool.Key, Period: period, Args: extraArgs}` — a hit returns the records with `User`/`Machine` stamped; (2) resolve the binary and run — on error return `(nil, err)` with **no cache write**; (3) `Parse` — on `KindParse` return `(nil, err)` with no cache write, on zero records return `([]fact.Record{}, nil)` with **no cache write**; (4) on one or more records, `Cache.Put(key, records)` (records stored unstamped; `Put` errors ignored by design — a cache write failure must not fail a successful fetch), then stamp `User`/`Machine` on every record and return. `fresh` skips the read but still writes. The Go adapter writes no cache file for an empty `daily`, matching the shipped TypeScript; `docs/specs/usage.md` § Caching states otherwise and is flagged for a human correction at gate G0.
+`Source{Binary, User, Machine string; Cache *cache.Store}` (nil cache → no caching). `Fetch(ctx, tool fact.Tool, period, extraArgs, fresh)` SHALL, in order: (1) when `!fresh` and a cache is set, `Cache.Get(key)` with `key = cache.Key{Tool: tool.Key, Period: period, Args: extraArgs}` — a hit returns the records with `User`/`Machine` stamped; (2) resolve the binary and run — on error return `(nil, err)` with **no cache write**; (3) `Parse` — on `KindParse` return `(nil, err)` with no cache write, on zero records return `([]fact.Record{}, nil)` with **no cache write**; (4) on one or more records, `Cache.Put(key, records)` (records stored unstamped; `Put` errors ignored by design — a cache write failure must not fail a successful fetch), then stamp `User`/`Machine` on every record and return. `fresh` skips the read but still writes. The Go adapter writes no cache file for an empty `daily`, matching the shipped TypeScript; `docs/specs/usage.md` § Caching states otherwise and is flagged for a human correction at gate G0.
 
 #### Scenario: Cache hit skips the binary
 - **GIVEN** a `Source` with a temp-dir cache and the fake ccusage
@@ -114,7 +114,7 @@ The adapter SHALL run the binary with `exec.CommandContext(ctx, binary, argv...)
 - **THEN** the call log has exactly one ccusage line, both results are equal, and every record has the configured `User` and `Machine`
 
 ### Requirement: FetchAll collects everything in registry order
-`FetchAll(ctx, period, extraArgs, fresh)` SHALL call `Fetch` for every entry of `Tools` concurrently (one goroutine each, `sync.WaitGroup`, one result slot per registry index), never cancelling siblings on a failure, and return the records concatenated in registry order followed by the non-nil errors, also in registry order. A failed tool contributes no records.
+`FetchAll(ctx, period, extraArgs, fresh)` SHALL call `Fetch` for every entry of `fact.Tools` concurrently (one goroutine each, `sync.WaitGroup`, one result slot per registry index), never cancelling siblings on a failure, and return the records concatenated in registry order followed by the non-nil errors, also in registry order. A failed tool contributes no records.
 
 #### Scenario: Deterministic output regardless of completion order
 - **GIVEN** the fake ccusage serving all six placeholder fixtures
@@ -146,10 +146,28 @@ Adapter tests SHALL read fixtures via the relative walk `../../../../../harness/
 *Introduced by*: 260916-v0as-fact-source-ccusage
 
 ### Registry is an ordered slice
-**Decision**: `ccusage.Tools` is `[]Tool`; `Lookup` scans it.
+**Decision**: `fact.Tools` is `[]Tool`; `fact.Lookup` scans it.
 **Why**: Go maps are unordered and insertion order is the all-tools column order (Output Stability).
 **Rejected**: `map[string]Tool` plus a separate order slice (two sources of truth).
 *Introduced by*: 260916-v0as-fact-source-ccusage
+
+### Registry lives in `fact`, not a new package
+**Decision**: `fact.Tool{Key, Name}`, `fact.Tools`, `fact.Lookup` own the registry; adapters hold their own per-key data.
+**Why**: the registry (key, display name, column order) is a property of the fact model — `fact.Record.Tool` already carries the key — and `fact` is the package every stage imports; B3's `source/metrics` and `command` need it without touching an adapter.
+**Rejected**: a tiny `internal/tools` package (a fourth import for ~30 lines, no isolation gain); a type alias in `ccusage` (keeps the weld).
+*Introduced by*: 260916-m9of-g1-rework-1
+
+### `Fetcher.Fetch` takes `fact.Tool`
+**Decision**: the parameter is the struct, not the key string.
+**Why**: the command edge already resolved `fact.Lookup(req.Source)` after grammar validation; passing the struct spares every adapter a re-lookup and a miss branch, and `source.Error{Tool, Name}` needs the name anyway.
+**Rejected**: `Fetch(ctx, key string, …)` — a smaller interface that pushes a lookup-and-miss path into each adapter.
+*Introduced by*: 260916-m9of-g1-rework-1
+
+### Fetch contract constants live in `source`
+**Decision**: `source.PeriodDaily` and `source.DefaultTimeout`.
+**Why**: both describe the contract every adapter honors (the one period tu fetches; the edge-applied deadline); `source` is already the adapter-neutral package (`Error`, `WriteWarnings`), and B3/B6 fetch under the same rules.
+**Rejected**: unexported constants in `command` (correct today, but B6's `sync` would re-declare the deadline).
+*Introduced by*: 260916-m9of-g1-rework-1
 
 ### needsFilter / stripNoise not ported
 **Decision**: Non-JSON stdout is a `KindParse` error; no `[`-line stripping.
@@ -158,7 +176,7 @@ Adapter tests SHALL read fixtures via the relative walk `../../../../../harness/
 *Introduced by*: 260916-v0as-fact-source-ccusage
 
 ### Caller-owned timeout with an exported default
-**Decision**: `Fetch` honors the given `context.Context` only; `DefaultTimeout = 120s` is exported for the command edge.
+**Decision**: `Fetch` honors the given `context.Context` only; `source.DefaultTimeout = 120s` is exported for the command edge.
 **Why**: The TS has no timeout, so any value is an addition; the edge is where a deadline is policy; 120 s matches the harness capture bound.
 **Rejected**: A hard-coded internal deadline (untestable without sleeping 120 s; hides policy in the adapter).
 *Introduced by*: 260916-v0as-fact-source-ccusage

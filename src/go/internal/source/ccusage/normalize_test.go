@@ -37,9 +37,9 @@ func TestParsePlaceholderCorpus(t *testing.T) {
 		t.Fatalf("placeholder corpus missing at %s: %v", placeholderRoot, err)
 	}
 
-	for _, tool := range Tools {
+	for _, tool := range fact.Tools {
 		t.Run(tool.Key, func(t *testing.T) {
-			path := filepath.Join(placeholderRoot, tool.PrefixArgs[0], "daily.json")
+			path := filepath.Join(placeholderRoot, invocations[tool.Key].prefixArgs[0], "daily.json")
 			raw, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatalf("fixture missing: %v", err)
@@ -74,7 +74,7 @@ func TestParsePlaceholderCorpus(t *testing.T) {
 }
 
 func TestParseCoercionAndLabels(t *testing.T) {
-	tool, _ := Lookup("cc")
+	tool, _ := fact.Lookup("cc")
 
 	t.Run("non-numeric value zeroes, cachedInputTokens fallback", func(t *testing.T) {
 		raw := `{"daily":[{"date":"Feb 14, 2026","inputTokens":"12","cachedInputTokens":7}]}`
@@ -135,7 +135,7 @@ func TestParseCoercionAndLabels(t *testing.T) {
 }
 
 func TestParseEmptyAndGarbage(t *testing.T) {
-	tool, _ := Lookup("cc")
+	tool, _ := fact.Lookup("cc")
 
 	t.Run("empty daily is zero records, no error", func(t *testing.T) {
 		records, perr := Parse([]byte(`{"daily":[],"totals":{"totalCost":-0.0}}`), tool)
@@ -196,10 +196,12 @@ func TestNormalizeLabel(t *testing.T) {
 	}
 }
 
-// TestParseRegistryLabelKey pins that every registry tool parses its own
-// fixture via its LabelKey (all "date" at ccusage v20).
+// TestParseUsesLabelKey pins that Parse reads the entry label via the
+// invocation's labelKey (all "date" at ccusage v20).
 func TestParseUsesLabelKey(t *testing.T) {
-	tool := Tool{Key: "x", Name: "X", PrefixArgs: []string{"x"}, LabelKey: "period"}
+	invocations["x"] = invocation{labelKey: "period"}
+	defer delete(invocations, "x")
+	tool := fact.Tool{Key: "x", Name: "X"}
 	raw := `{"daily":[{"period":"Feb 2026","totalCost":2}]}`
 	records, perr := Parse([]byte(raw), tool)
 	if perr != nil {

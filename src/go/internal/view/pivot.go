@@ -59,8 +59,32 @@ func TotalHistory(series []Series, o HistoryOptions) Table {
 		return t
 	}
 
-	// One lookup: tool → label → the displayed value. Cells, the row column,
-	// the Total row, bars, segments and the footer all render in the metric.
+	valueMap := pivotValues(series, m)
+	visible := significant(series, valueMap, labels, m)
+	rows, toolSums, grandTotal := pivotData(series, valueMap, visible, labels)
+	toolWidths, rowValues, costWidth := pivotWidths(series, visible, rows, toolSums, grandTotal, m)
+
+	indicatorReserve := 0
+	if o.Prev != nil {
+		indicatorReserve = 1
+	}
+	barWidth, showBars := barBudget(o.Width, pivotBodyWidth(toolWidths), costWidth, indicatorReserve)
+	if showBars {
+		t.Scale = ComputeScale(rowValues, barWidth)
+	}
+
+	t.Columns = pivotColumns(series, visible, toolWidths, costWidth, m)
+	t.Rows = pivotRows(rows, visible, t.Columns, o, m, t.Scale, showBars)
+	if len(labels) > 1 {
+		pivotTotals(&t, labels, rowValues, toolSums, grandTotal, series, visible, o, m, showBars)
+	}
+	return t
+}
+
+// pivotValues builds one lookup per series: label → the displayed metric
+// value. Cells, the row column, the Total row, bars, segments and the footer
+// all render in the metric.
+func pivotValues(series []Series, m Metric) []map[string]float64 {
 	valueMap := make([]map[string]float64, len(series))
 	for i, s := range series {
 		values := make(map[string]float64, len(s.Entries))
@@ -69,19 +93,24 @@ func TotalHistory(series []Series, o HistoryOptions) Table {
 		}
 		valueMap[i] = values
 	}
+	return valueMap
+}
 
-	visible := significant(series, valueMap, labels, m)
+// pivotRow is one label's pivot data: the per-visible-tool values and the
+// row total over ALL series (an omitted column still counts in the row, the
+// Total, and the footer).
+type pivotRow struct {
+	label    string
+	values   []float64
+	rowValue float64
+}
 
-	// Pre-compute per-row value data before the width budget: rowValue and
-	// grandTotal sum over ALL series; values/toolSums cover the visible set.
-	type rowData struct {
-		label    string
-		values   []float64
-		rowValue float64
-	}
-	rows := make([]rowData, len(labels))
-	toolSums := make([]float64, len(visible))
-	grandTotal := 0.0
+// pivotData pre-computes the per-row value data before the width budget:
+// rowValue and grandTotal sum over ALL series; values/toolSums cover the
+// visible set.
+func pivotData(series []Series, valueMap []map[string]float64, visible []int, labels []string) (rows []pivotRow, toolSums []float64, grandTotal float64) {
+	rows = make([]pivotRow, len(labels))
+	toolSums = make([]float64, len(visible))
 	for li, label := range labels {
 		rowValue := 0.0
 		for i := range series {
@@ -93,13 +122,17 @@ func TotalHistory(series []Series, o HistoryOptions) Table {
 			toolSums[vi] += values[vi]
 		}
 		grandTotal += rowValue
-		rows[li] = rowData{label, values, rowValue}
+		rows[li] = pivotRow{label, values, rowValue}
 	}
+	return rows, toolSums, grandTotal
+}
 
-	// Per-tool column width: max(name, floor, longest cell including its
-	// Total-row sum); the row column is data-sized over every row value plus
-	// the grand total.
-	toolWidths := make([]int, len(visible))
+// pivotWidths sizes the columns: per visible tool max(name, floor, longest
+// cell including its Total-row sum); the row column is data-sized over every
+// row value plus the grand total. rowValues is returned for the bar scale
+// and the footer.
+func pivotWidths(series []Series, visible []int, rows []pivotRow, toolSums []float64, grandTotal float64, m Metric) (toolWidths []int, rowValues []float64, costWidth int) {
+	toolWidths = make([]int, len(visible))
 	for vi, si := range visible {
 		w := max(len(series[si].Name), metricFloor)
 		for _, r := range rows {
@@ -107,39 +140,44 @@ func TotalHistory(series []Series, o HistoryOptions) Table {
 		}
 		toolWidths[vi] = max(w, len(fmtMetric(toolSums[vi], m)))
 	}
-	rowValues := make([]float64, len(rows))
+	rowValues = make([]float64, len(rows))
 	for i, r := range rows {
 		rowValues[i] = r.rowValue
 	}
-	costWidth := metricColumnWidth(append(rowValues, grandTotal), m)
+	return toolWidths, rowValues, metricColumnWidth(append(rowValues, grandTotal), m)
+}
 
-	tableWidth := pivotDateWidth
-	for _, w := range toolWidths {
-		tableWidth += w + gutterWidth
+// pivotBodyWidth is the pivot's fixed body width: the Date column plus each
+// visible tool column and its gutter.
+func pivotBodyWidth(toolWidths []int) int {
+	w := pivotDateWidth
+	for _, tw := range toolWidths {
+		w += tw + gutterWidth
 	}
-	indicatorReserve := 0
-	if o.Prev != nil {
-		indicatorReserve = 1
-	}
-	barWidth := min(o.Width-tableWidth-gutterWidth-costWidth-barLeading-indicatorReserve, maxBarWidth)
-	showBars := barWidth >= minBarArea
-	if showBars {
-		t.Scale = ComputeScale(rowValues, barWidth)
-	}
+	return w
+}
 
-	t.Columns = make([]Column, 0, len(visible)+2)
-	t.Columns = append(t.Columns, Column{Title: "Date", Width: pivotDateWidth, Align: Left})
+// pivotColumns assembles the pivot's columns: Date, one per visible tool,
+// then the data-sized metric column.
+func pivotColumns(series []Series, visible []int, toolWidths []int, costWidth int, m Metric) []Column {
+	cols := make([]Column, 0, len(visible)+2)
+	cols = append(cols, Column{Title: "Date", Width: pivotDateWidth, Align: Left})
 	for vi, si := range visible {
-		t.Columns = append(t.Columns, Column{Title: series[si].Name, Width: toolWidths[vi], Align: Right})
+		cols = append(cols, Column{Title: series[si].Name, Width: toolWidths[vi], Align: Right})
 	}
-	t.Columns = append(t.Columns, Column{Title: metricHeader(m), Width: costWidth, Align: Right})
-	t.Rows = append(t.Rows, headerRow(t.Columns), Row{Kind: Divider})
+	return append(cols, Column{Title: metricHeader(m), Width: costWidth, Align: Right})
+}
 
+// pivotRows assembles the header, divider, month separators and data rows:
+// each data row carries the label style, the Prev delta, per-visible-tool
+// metric cells, the row total, and the apportioned bar when bars show.
+func pivotRows(rows []pivotRow, visible []int, columns []Column, o HistoryOptions, m Metric, scale Scale, showBars bool) []Row {
+	out := []Row{headerRow(columns), {Kind: Divider}}
 	prevMonthPrefix := ""
 	for _, r := range rows {
 		monthPrefix := monthPrefixOf(r.label)
 		if o.Period == query.Daily && prevMonthPrefix != "" && monthPrefix != prevMonthPrefix {
-			t.Rows = append(t.Rows, Row{Kind: Separator})
+			out = append(out, Row{Kind: Separator})
 		}
 		prevMonthPrefix = monthPrefix
 
@@ -154,29 +192,32 @@ func TotalHistory(series []Series, o HistoryOptions) Table {
 		}
 		row.Cells = append(row.Cells, metricCell(r.rowValue, m))
 		if showBars {
-			row.Bar = rowBar(r.rowValue, t.Scale, r.values)
+			row.Bar = rowBar(r.rowValue, scale, r.values)
 		}
-		t.Rows = append(t.Rows, row)
+		out = append(out, row)
 	}
+	return out
+}
 
-	if len(labels) > 1 {
-		t.Rows = append(t.Rows, Row{Kind: Divider})
-		total := Row{Kind: Total, Cells: make([]Cell, 0, len(visible)+2)}
-		total.Cells = append(total.Cells, Cell{Text: "Total"})
-		for _, sum := range toolSums {
-			total.Cells = append(total.Cells, Cell{Text: fmtMetric(sum, m)})
-		}
-		total.Cells = append(total.Cells, Cell{Text: fmtMetric(grandTotal, m)})
-		t.Rows = append(t.Rows, total)
-		t.Footer = footerText(labels, rowValues, o.Period, t.Scale, o.Now, m)
-		if showBars && len(visible) >= 2 {
-			t.Legend = make([]Swatch, len(visible))
-			for vi, si := range visible {
-				t.Legend[vi] = Swatch{Name: series[si].Name, Palette: vi}
-			}
+// pivotTotals appends the Total row and sets the Footer and Legend for a
+// multi-label window: per-tool sums over the visible set, the grand total,
+// and one swatch per visible tool when bars show and ≥ 2 tools are visible.
+func pivotTotals(t *Table, labels []string, rowValues, toolSums []float64, grandTotal float64, series []Series, visible []int, o HistoryOptions, m Metric, showBars bool) {
+	t.Rows = append(t.Rows, Row{Kind: Divider})
+	total := Row{Kind: Total, Cells: make([]Cell, 0, len(visible)+2)}
+	total.Cells = append(total.Cells, Cell{Text: "Total"})
+	for _, sum := range toolSums {
+		total.Cells = append(total.Cells, Cell{Text: fmtMetric(sum, m)})
+	}
+	total.Cells = append(total.Cells, Cell{Text: fmtMetric(grandTotal, m)})
+	t.Rows = append(t.Rows, total)
+	t.Footer = footerText(labels, rowValues, o.Period, t.Scale, o.Now, m)
+	if showBars && len(visible) >= 2 {
+		t.Legend = make([]Swatch, len(visible))
+		for vi, si := range visible {
+			t.Legend[vi] = Swatch{Name: series[si].Name, Palette: vi}
 		}
 	}
-	return t
 }
 
 // LabelUnion is the sorted union of every series' labels (ascending byte

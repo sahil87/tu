@@ -15,7 +15,7 @@ import (
 // reasoningOutputTokens, …) are ignored. A "daily" empty array is a
 // legitimate zero result, not an error; empty/garbage stdout or a missing or
 // non-array "daily" is a KindParse error.
-func Parse(raw []byte, tool Tool) ([]fact.Record, *source.Error) {
+func Parse(raw []byte, tool fact.Tool) ([]fact.Record, *source.Error) {
 	var doc struct {
 		Daily json.RawMessage `json:"daily"`
 	}
@@ -34,7 +34,7 @@ func Parse(raw []byte, tool Tool) ([]fact.Record, *source.Error) {
 	records := make([]fact.Record, 0, len(entries))
 	for _, entry := range entries {
 		records = append(records, fact.Record{
-			Date: normalizeLabel(labelOf(entry, tool.LabelKey)),
+			Date: normalizeLabel(labelOf(entry, invocations[tool.Key].labelKey)),
 			Tool: tool.Key,
 			Totals: fact.Totals{
 				TotalCost:           number(entry, "totalCost", "costUSD"),
@@ -50,7 +50,7 @@ func Parse(raw []byte, tool Tool) ([]fact.Record, *source.Error) {
 }
 
 // parseError builds the KindParse error for a malformed document.
-func parseError(tool Tool, detail string, err error) *source.Error {
+func parseError(tool fact.Tool, detail string, err error) *source.Error {
 	return &source.Error{Tool: tool.Key, Name: tool.Name, Kind: source.KindParse, Detail: detail, Err: err}
 }
 

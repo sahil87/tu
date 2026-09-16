@@ -1,0 +1,57 @@
+id: m9of
+name: 260916-m9of-g1-rework-1
+created: 2026-09-16T18:01:20Z
+created_by: Sahil Ahuja
+change_type: refactor
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
+    review-pr: pending
+plan:
+    generated: true
+    task_count: 12
+    acceptance_count: 25
+    acceptance_completed: 25
+confidence:
+    certain: 6
+    confident: 5
+    tentative: 0
+    unresolved: 0
+    score: 4.6
+    fuzzy: true
+    dimensions:
+        signal: 78.6
+        reversibility: 89.5
+        competence: 84.5
+        disambiguation: 78.2
+stage_metrics:
+    intake: {started_at: "2026-09-16T18:01:20Z", driver: fab-new, iterations: 1, completed_at: "2026-09-16T18:05:59Z"}
+    apply: {started_at: "2026-09-16T18:05:59Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T18:15:43Z"}
+    review: {started_at: "2026-09-16T18:15:43Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T18:17:55Z"}
+    hydrate: {started_at: "2026-09-16T18:17:55Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T18:21:07Z"}
+    ship: {started_at: "2026-09-16T18:21:07Z", driver: fab-fff, iterations: 1}
+prs: []
+change_type_source: explicit
+base_branch: main
+true_impact:
+    added: 0
+    deleted: 0
+    net: 0
+    excluding:
+        added: 0
+        deleted: 0
+        net: 0
+    tests:
+        added: 0
+        deleted: 0
+        net: 0
+    computed_at: "2026-09-16T18:21:07Z"
+    computed_at_stage: hydrate
+summary: Tool registry moved to fact, ccusage keeps an adapter-private invocation map, Fetcher takes fact.Tool, PeriodDaily/DefaultTimeout in source; TotalHistory/History split into concern helpers with a shared barBudget
+# base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-09-16T18:21:07Z
