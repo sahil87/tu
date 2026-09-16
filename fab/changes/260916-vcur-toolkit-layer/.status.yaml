@@ -1,0 +1,57 @@
+id: vcur
+name: 260916-vcur-toolkit-layer
+created: 2026-09-16T18:42:24Z
+created_by: sahil-noon
+change_type: feat
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
+    review-pr: pending
+plan:
+    generated: true
+    task_count: 12
+    acceptance_count: 25
+    acceptance_completed: 25
+confidence:
+    certain: 17
+    confident: 4
+    tentative: 0
+    unresolved: 0
+    score: 4.9
+    fuzzy: true
+    dimensions:
+        signal: 80.0
+        reversibility: 88.8
+        competence: 91.2
+        disambiguation: 84.3
+stage_metrics:
+    intake: {started_at: "2026-09-16T18:42:24Z", driver: fab-new, iterations: 1, completed_at: "2026-09-16T18:50:17Z"}
+    apply: {started_at: "2026-09-16T18:50:17Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T19:07:13Z"}
+    review: {started_at: "2026-09-16T19:07:13Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T19:10:19Z"}
+    hydrate: {started_at: "2026-09-16T19:10:19Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T19:15:28Z"}
+    ship: {started_at: "2026-09-16T19:15:28Z", driver: fab-fff, iterations: 1}
+prs: []
+change_type_source: explicit
+base_branch: main
+true_impact:
+    added: 0
+    deleted: 0
+    net: 0
+    excluding:
+        added: 0
+        deleted: 0
+        net: 0
+    tests:
+        added: 0
+        deleted: 0
+        net: 0
+    computed_at: "2026-09-16T19:15:28Z"
+    computed_at_stage: hydrate
+summary: implements the Go toolkit layer (help/-h/--help, help-dump, skill, shell-init, update) in internal/toolkit + cmd/tu with both skill drift guards; 144 harness cases green
+# base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-09-16T19:15:28Z

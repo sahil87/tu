@@ -7,9 +7,10 @@
 //
 // The binary answers the single-mode snapshot and history grammars (tu,
 // tu cc, tu m, tu h, tu cc mh --since/--until/--full, --json/--csv/--md,
-// --no-color, --fresh, …) and the setup commands (init-conf, init-metrics,
-// status) for real; everything else prints the deliberate not-implemented
-// placeholder the differential harness diffs against.
+// --no-color, --fresh, …), the setup commands (init-conf, init-metrics,
+// status), and the toolkit surfaces (help/-h/--help, help-dump, skill,
+// shell-init, update) for real; everything else prints the deliberate
+// not-implemented placeholder the differential harness diffs against.
 package main
 
 import (
@@ -20,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"time"
 
 	// TZ data for hosts without /usr/share/zoneinfo: the harness's tz:alt axis
@@ -36,6 +38,7 @@ import (
 	"github.com/sahil87/tu/internal/source/cache"
 	"github.com/sahil87/tu/internal/source/ccusage"
 	metricsync "github.com/sahil87/tu/internal/sync"
+	"github.com/sahil87/tu/internal/toolkit"
 )
 
 // version is the binary version, overridden via -ldflags "-X main.version=..." at build time.
@@ -43,10 +46,7 @@ import (
 // transition) so `--version` byte-matches the shipped TypeScript binary.
 var version = "dev"
 
-const (
-	toolName          = "tu"
-	notImplementedMsg = "tu: not implemented (Go port in progress)"
-)
+const notImplementedMsg = "tu: not implemented (Go port in progress)"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -100,7 +100,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return command.ExitUsage
 	}
 	if req.Version {
-		fmt.Fprintln(stdout, versionLine(version))
+		fmt.Fprintln(stdout, toolkit.VersionLine(version))
 		return command.ExitOK
 	}
 
@@ -159,12 +159,31 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return command.ExitOK
 }
 
-// runCommand dispatches a non-data command: init-conf, init-metrics, and
-// status are answered for real; every other command stays on the scaffold's
-// placeholder. Data flags on a setup command are ignored (DC-02) — Parse sets
-// Command regardless of flags and the handlers never look at Format/Flags.
+// runCommand dispatches a non-data command. The toolkit commands — help,
+// help-dump, skill, shell-init, update — are answered for real BEFORE
+// config.ResolvePaths: none of them needs $HOME. init-conf, init-metrics, and
+// status resolve paths first; every other command (sync, B6's) stays on the
+// scaffold's placeholder. Data flags on a setup command are ignored (DC-02) —
+// Parse sets Command regardless of flags and the handlers never look at
+// Format/Flags.
 func runCommand(req command.Request, env config.Env, stdout, stderr io.Writer) int {
 	switch req.Command {
+	case "help", "-h", "--help":
+		// console.log(FULL_HELP) appends exactly one newline.
+		fmt.Fprintln(stdout, command.FullHelp)
+		return command.ExitOK
+	case "help-dump":
+		// The envelope's version is bare while the binary is stamped with a
+		// leading v. Encode writes JSON.stringify(doc, null, 2) + "\n".
+		toolkit.BuildHelpDoc(toolkit.BareVersion(version), command.FullHelp+"\n").Encode(stdout)
+		return command.ExitOK
+	case "skill":
+		toolkit.WriteSkill(stdout)
+		return command.ExitOK
+	case "shell-init":
+		return runShellInit(req.Args, stdout, stderr)
+	case "update":
+		return runUpdate(req, stdout, stderr)
 	case "init-conf", "init-metrics", "status":
 		// handled below
 	default:
@@ -235,13 +254,67 @@ func writeLines(w io.Writer, lines []string) {
 	}
 }
 
-// versionLine renders the toolkit version standard's recommended shape,
-// `<tool> version vX.Y.Z`. A value that starts with a digit gets a `v` prefix so
-// both `-X main.version=0.11.5` and `-X main.version=v0.11.5` print identically;
-// anything else (the unstamped `dev` fallback) is printed as-is.
-func versionLine(v string) string {
-	if len(v) > 0 && v[0] >= '0' && v[0] <= '9' {
-		v = "v" + v
+// runShellInit implements `tu shell-init`: a missing shell is the usage block
+// on stderr, an unknown shell the unknown-shell line — both exit 2 with stdout
+// EMPTY (stdout may be eval'd); a known shell's script goes to stdout with no
+// added newline. Arguments after the shell are ignored (the TS reads
+// filteredArgs[1] only).
+func runShellInit(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, toolkit.ShellInitUsage)
+		return command.ExitUsage
 	}
-	return toolName + " version " + v
+	script, ok := toolkit.Completion(args[0])
+	if !ok {
+		fmt.Fprintln(stderr, toolkit.UnknownShellMessage(args[0]))
+		return command.ExitUsage
+	}
+	stdout.Write(script)
+	return command.ExitOK
+}
+
+// runUpdate implements `tu update` in the TS runUpdate order, sequencing the
+// pure/driver pieces of internal/toolkit and printing the wrapper lines itself
+// (cmd/tu is the only writer; the interactive `brew upgrade` streams pass
+// through the driver call).
+func runUpdate(req command.Request, stdout, stderr io.Writer) int {
+	// The update standard's flag-discovery probe: --help/-h anywhere in the
+	// args prints the full help and runs nothing (the help carries the
+	// literal --skip-brew-update).
+	for _, a := range req.Args {
+		if a == "--help" || a == "-h" {
+			fmt.Fprintln(stdout, command.FullHelp)
+			return command.ExitOK
+		}
+	}
+	// The Homebrew gate tests the symlink-resolved executable (dev builds,
+	// the go test binary and the R2 dogfood install all land off-Homebrew).
+	resolved, err := os.Executable()
+	if err == nil {
+		resolved, err = filepath.EvalSymlinks(resolved)
+	}
+	if err != nil || !toolkit.IsBrewInstall(resolved) {
+		writeLines(stdout, toolkit.NotBrewInstallLines(version))
+		return command.ExitOK
+	}
+
+	ctx := context.Background()
+	brew := toolkit.BrewExec{}
+	fmt.Fprintln(stdout, toolkit.CurrentVersionLine(version))
+	latest, uerr := toolkit.CheckLatest(ctx, brew, req.Flags.SkipBrewUpdate)
+	if uerr != nil {
+		fmt.Fprintln(stderr, uerr.Message)
+		return command.ExitOperational
+	}
+	if toolkit.UpToDate(version, latest) {
+		fmt.Fprintln(stdout, toolkit.AlreadyUpToDateLine(version))
+		return command.ExitOK
+	}
+	fmt.Fprintln(stdout, toolkit.UpdatingLine(version, latest))
+	if uerr := toolkit.Upgrade(ctx, brew, os.Stdin, stdout, stderr); uerr != nil {
+		fmt.Fprintln(stderr, uerr.Message)
+		return command.ExitOperational
+	}
+	fmt.Fprintln(stdout, toolkit.UpdatedLine(latest))
+	return command.ExitOK
 }

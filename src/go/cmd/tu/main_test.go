@@ -2,31 +2,18 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/sahil87/tu/internal/command"
+	"github.com/sahil87/tu/internal/toolkit"
 )
 
 // Same shape the TypeScript pinning test enforces (src/node/core/__tests__/cli-version.test.ts)
 // and the toolkit `version` standard recommends: `<tool> version vX.Y.Z`.
 var versionLineRE = regexp.MustCompile(`^tu version v\d+(\.\d+)*$`)
-
-func TestVersionLine(t *testing.T) {
-	cases := []struct {
-		in, want string
-	}{
-		{"v0.11.5", "tu version v0.11.5"},
-		{"0.11.5", "tu version v0.11.5"},
-		{"dev", "tu version dev"},
-		{"", "tu version "},
-	}
-	for _, c := range cases {
-		if got := versionLine(c.in); got != c.want {
-			t.Errorf("versionLine(%q) = %q, want %q", c.in, got, c.want)
-		}
-	}
-}
 
 func TestRunVersionFlags(t *testing.T) {
 	orig := version
@@ -70,10 +57,11 @@ func TestRunDevFallback(t *testing.T) {
 // commands and unported flags keep the scaffold's placeholder (stderr, exit
 // 1). {} and {"cc"} left this list in V2; {"m","dh","--json"} and {"--csv"}
 // left it in B2 (history + the csv/md encoders) — they now fetch and render
-// (covered end-to-end in e2e_test.go). {"h","--by-machine"} pins that B4's
-// flag still routes to the placeholder.
+// (covered end-to-end in e2e_test.go). {"--help"} left it in B8 (the toolkit
+// layer); {"sync"} pins that B6's command still routes to the placeholder, as
+// does {"h","--by-machine"} for B4's flag.
 func TestRunNotImplemented(t *testing.T) {
-	for _, args := range [][]string{{"--help"}, {"h", "--by-machine"}} {
+	for _, args := range [][]string{{"sync"}, {"h", "--by-machine"}} {
 		var stdout, stderr bytes.Buffer
 		code := run(args, &stdout, &stderr)
 		if code != 1 {
@@ -169,6 +157,176 @@ func TestRunNoHome(t *testing.T) {
 	}
 	if got := stderr.String(); got != "Unknown argument: bogus\n"+command.ShortUsage+"\n" {
 		t.Errorf("run(bogus) stderr = %q", got)
+	}
+}
+
+// TestRunHelp covers the four help argv shapes (the help check precedes the
+// --dry-run guard, so "help --dry-run" parses as help). None of them touches
+// $HOME — R9 runs them with HOME unset.
+func TestRunHelp(t *testing.T) {
+	t.Setenv("HOME", "")
+	for _, args := range [][]string{{"help"}, {"-h"}, {"--help"}, {"help", "--dry-run"}} {
+		var stdout, stderr bytes.Buffer
+		code := run(args, &stdout, &stderr)
+		if code != 0 {
+			t.Errorf("run(%q) exit = %d, want 0", args, code)
+		}
+		if got, want := stdout.String(), command.FullHelp+"\n"; got != want {
+			t.Errorf("run(%q) stdout = %q, want FullHelp+newline", args, got[:min(60, len(got))])
+		}
+		if stderr.Len() != 0 {
+			t.Errorf("run(%q) stderr = %q, want empty", args, stderr.String())
+		}
+	}
+}
+
+// TestRunHelpDump pins the help-dump envelope: valid JSON, the bare version
+// (the stamp carries a leading v), the help text's `<date>` raw (never
+// HTML-escaped), stderr empty, exit 0 — with HOME unset.
+func TestRunHelpDump(t *testing.T) {
+	t.Setenv("HOME", "")
+	orig := version
+	version = "v1.2.3"
+	t.Cleanup(func() { version = orig })
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"help-dump"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("exit = %d, want 0", code)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr = %q, want empty", stderr.String())
+	}
+	var doc struct {
+		Tool          string `json:"tool"`
+		Version       string `json:"version"`
+		SchemaVersion int    `json:"schema_version"`
+		Root          struct {
+			Text string `json:"text"`
+		} `json:"root"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
+		t.Fatalf("help-dump output is not valid JSON: %v", err)
+	}
+	if doc.Tool != "tu" || doc.SchemaVersion != 1 {
+		t.Errorf("envelope tool/schema_version = %q/%d", doc.Tool, doc.SchemaVersion)
+	}
+	if doc.Version != "1.2.3" {
+		t.Errorf("version = %q, want bare %q", doc.Version, "1.2.3")
+	}
+	if !strings.Contains(doc.Root.Text, "<date>") {
+		t.Error("root.text lost the raw <date> (HTML escaping?)")
+	}
+	if doc.Root.Text != command.FullHelp+"\n" {
+		t.Error("root.text is not FullHelp + newline verbatim")
+	}
+}
+
+// TestRunSkill pins `tu skill` (any args — the TS ignores them) to the
+// embedded bundle, stderr empty, exit 0, HOME unset.
+func TestRunSkill(t *testing.T) {
+	t.Setenv("HOME", "")
+	for _, args := range [][]string{{"skill"}, {"skill", "topics"}} {
+		var stdout, stderr bytes.Buffer
+		code := run(args, &stdout, &stderr)
+		if code != 0 {
+			t.Errorf("run(%q) exit = %d, want 0", args, code)
+		}
+		if !bytes.Equal(stdout.Bytes(), toolkit.Skill) {
+			t.Errorf("run(%q) stdout != toolkit.Skill", args)
+		}
+		if stderr.Len() != 0 {
+			t.Errorf("run(%q) stderr = %q, want empty", args, stderr.String())
+		}
+	}
+}
+
+// TestRunShellInit covers the five harness rows plus ignored extra args: the
+// three scripts byte-equal the embedded completions with no added newline;
+// missing/unknown shell write the exact stderr lines, leave stdout empty, and
+// exit 2. HOME unset throughout.
+func TestRunShellInit(t *testing.T) {
+	t.Setenv("HOME", "")
+	for _, shell := range []string{"bash", "zsh", "fish"} {
+		for _, args := range [][]string{{"shell-init", shell}, {"shell-init", shell, "extra"}} {
+			var stdout, stderr bytes.Buffer
+			code := run(args, &stdout, &stderr)
+			if code != 0 {
+				t.Errorf("run(%q) exit = %d, want 0", args, code)
+			}
+			script, _ := toolkit.Completion(shell)
+			if !bytes.Equal(stdout.Bytes(), script) {
+				t.Errorf("run(%q) stdout != embedded %s script", args, shell)
+			}
+			if stderr.Len() != 0 {
+				t.Errorf("run(%q) stderr = %q, want empty", args, stderr.String())
+			}
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"shell-init"}, &stdout, &stderr); code != 2 {
+		t.Errorf("run(shell-init) exit = %d, want 2", code)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("run(shell-init) stdout = %q, want empty", stdout.String())
+	}
+	if got, want := stderr.String(), toolkit.ShellInitUsage+"\n"; got != want {
+		t.Errorf("run(shell-init) stderr = %q, want the usage block", got)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"shell-init", "tcsh"}, &stdout, &stderr); code != 2 {
+		t.Errorf("run(shell-init tcsh) exit = %d, want 2", code)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("run(shell-init tcsh) stdout = %q, want empty", stdout.String())
+	}
+	if got, want := stderr.String(), "Unknown shell: tcsh. Supported: bash, zsh, fish\n"; got != want {
+		t.Errorf("run(shell-init tcsh) stderr = %q, want %q", got, want)
+	}
+}
+
+// TestRunUpdateHelp pins the flag-discovery probe: --help/-h anywhere in the
+// update args prints FullHelp and exits 0 without touching brew — with HOME
+// unset.
+func TestRunUpdateHelp(t *testing.T) {
+	t.Setenv("HOME", "")
+	for _, args := range [][]string{{"update", "--help"}, {"update", "-h"}, {"update", "--skip-brew-update", "-h"}} {
+		var stdout, stderr bytes.Buffer
+		code := run(args, &stdout, &stderr)
+		if code != 0 {
+			t.Errorf("run(%q) exit = %d, want 0", args, code)
+		}
+		if got, want := stdout.String(), command.FullHelp+"\n"; got != want {
+			t.Errorf("run(%q) stdout = %q, want FullHelp+newline", args, got[:min(60, len(got))])
+		}
+		if stderr.Len() != 0 {
+			t.Errorf("run(%q) stderr = %q, want empty", args, stderr.String())
+		}
+	}
+}
+
+// TestRunUpdateOffHomebrew pins the deterministic gate path: the go test
+// binary never resolves under /Cellar/tu/, so `update` prints the two
+// off-Homebrew lines and exits 0 without touching brew.
+func TestRunUpdateOffHomebrew(t *testing.T) {
+	orig := version
+	version = "v1.2.3"
+	t.Cleanup(func() { version = orig })
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"update"}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("exit = %d, want 0", code)
+	}
+	want := "tu v1.2.3 was not installed via Homebrew.\n" +
+		"Update manually, or reinstall with: brew install sahil87/tap/tu\n"
+	if got := stdout.String(); got != want {
+		t.Errorf("stdout = %q, want %q", got, want)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr = %q, want empty", stderr.String())
 	}
 }
 
