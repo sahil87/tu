@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 13
@@ -33,25 +33,27 @@ stage_metrics:
     apply: {started_at: "2026-09-16T11:06:35Z", driver: fab-fff, iterations: 2, completed_at: "2026-09-16T11:09:32Z"}
     review: {started_at: "2026-09-16T11:09:32Z", driver: fab-fff, iterations: 2, completed_at: "2026-09-16T11:14:19Z"}
     hydrate: {started_at: "2026-09-16T11:14:19Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T11:19:17Z"}
-    ship: {started_at: "2026-09-16T11:19:17Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-09-16T11:19:17Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T11:22:05Z"}
+    review-pr: {started_at: "2026-09-16T11:22:05Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/tu/pull/82
 change_type_source: explicit
 base_branch: main
 true_impact:
-    added: 0
-    deleted: 0
-    net: 0
+    added: 4011
+    deleted: 39
+    net: 3972
     excluding:
-        added: 0
-        deleted: 0
-        net: 0
+        added: 3178
+        deleted: 24
+        net: 3154
     tests:
-        added: 0
-        deleted: 0
-        net: 0
-    computed_at: "2026-09-16T11:19:17Z"
-    computed_at_stage: hydrate
+        added: 1386
+        deleted: 15
+        net: 1371
+    computed_at: "2026-09-16T11:22:05Z"
+    computed_at_stage: ship
 summary: 'implemented tudiff run: harness/matrix.json case groups over conf/env/io/tz axes, per-side staged $HOME variants with seeded metrics-repo, from-scratch child env, script(1) TTY capture with __TUDIFF_EXIT sentinel, D7 fixture resolution + unconfirmed flagging, first-divergence comparison, report.txt/report.json/cases under bin/harness/report/, date-rollover re-run, --jobs pool; just go-diff recipe and informational go-diff CI job (continue-on-error, tudiff-report artifact, outside ci-gate)'
 # base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-09-16T11:19:17Z
+last_updated: 2026-09-16T11:22:05Z
