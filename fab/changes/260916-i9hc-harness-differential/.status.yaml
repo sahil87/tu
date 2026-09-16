@@ -10,7 +10,7 @@ progress:
     review: done
     hydrate: done
     ship: done
-    review-pr: active
+    review-pr: done
 plan:
     generated: true
     task_count: 13
@@ -34,7 +34,7 @@ stage_metrics:
     review: {started_at: "2026-09-16T11:09:32Z", driver: fab-fff, iterations: 2, completed_at: "2026-09-16T11:14:19Z"}
     hydrate: {started_at: "2026-09-16T11:14:19Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T11:19:17Z"}
     ship: {started_at: "2026-09-16T11:19:17Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-16T11:22:05Z"}
-    review-pr: {started_at: "2026-09-16T11:22:05Z", driver: git-pr, iterations: 1}
+    review-pr: {started_at: "2026-09-16T11:22:05Z", driver: git-pr, iterations: 1, completed_at: "2026-09-16T11:39:12Z"}
 prs:
     - https://github.com/sahil87/tu/pull/82
 change_type_source: explicit
@@ -56,4 +56,4 @@ true_impact:
 summary: 'implemented tudiff run: harness/matrix.json case groups over conf/env/io/tz axes, per-side staged $HOME variants with seeded metrics-repo, from-scratch child env, script(1) TTY capture with __TUDIFF_EXIT sentinel, D7 fixture resolution + unconfirmed flagging, first-divergence comparison, report.txt/report.json/cases under bin/harness/report/, date-rollover re-run, --jobs pool; just go-diff recipe and informational go-diff CI job (continue-on-error, tudiff-report artifact, outside ci-gate)'
 # base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-09-16T11:22:05Z
+last_updated: 2026-09-16T11:39:12Z
