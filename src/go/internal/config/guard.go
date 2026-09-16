@@ -3,7 +3,9 @@ package config
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -78,10 +80,20 @@ func writeCloneMarker(stateDir string, now time.Time) {
 // cloneFailureDetail composes the ({detail}) of the clone-failure warning,
 // reproducing Node's execFileSync error message: `Command failed: git clone
 // {url} {dir}` followed by "\n" + the captured stderr when that is non-empty,
-// or `spawnSync git ETIMEDOUT` when the error wraps context.DeadlineExceeded.
+// or `spawnSync git {code}` when git never ran — the deadline (ETIMEDOUT) or
+// a process-start error (ENOENT when git is not found, EACCES when it is not
+// executable).
 func cloneFailureDetail(cfg Config, stderr string, err error) string {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return "spawnSync git ETIMEDOUT"
+	}
+	// A process-start error never ran git: preserve the spawnSync errno
+	// instead of fabricating a non-zero-exit "Command failed" line.
+	if errors.Is(err, exec.ErrNotFound) || errors.Is(err, fs.ErrNotExist) {
+		return "spawnSync git ENOENT"
+	}
+	if errors.Is(err, fs.ErrPermission) {
+		return "spawnSync git EACCES"
 	}
 	detail := "Command failed: git clone " + cfg.MetricsRepo + " " + cfg.MetricsDir
 	if stderr != "" {

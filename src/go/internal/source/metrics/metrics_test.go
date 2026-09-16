@@ -162,6 +162,8 @@ func TestReadEdgeCases(t *testing.T) {
 	writeDayFile(t, dir, "u", "2026", "m", "cc-2026-01-07.jsonl", "")
 	writeDayFile(t, dir, "u", "2026", "m", "cc-2026-01-08.jsonl", "  \n\t ")
 	writeDayFile(t, dir, "u", "2026", "m", "cc-2026-01-09.jsonl", "not json")
+	// A JSON null unmarshals cleanly into the struct but is no day-file.
+	writeDayFile(t, dir, "u", "2026", "m", "cc-2026-01-10.jsonl", "null")
 	// Non-directories at the year and machine level are skipped.
 	if err := os.WriteFile(filepath.Join(dir, "u", "stray-file"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
@@ -185,5 +187,18 @@ func TestReadEdgeCases(t *testing.T) {
 func TestReadMissingDir(t *testing.T) {
 	if got := (Source{Dir: filepath.Join(t.TempDir(), "nonexistent")}).Read("u", ccTool); got != nil {
 		t.Errorf("Read = %v, want nil", got)
+	}
+}
+
+// user is a profile directory name, never a path: path-like values are
+// rejected so the walk cannot escape Dir.
+func TestReadPathLikeUser(t *testing.T) {
+	dir := t.TempDir()
+	writeDayFile(t, dir, "u", "2026", "m", "cc-2026-01-05.jsonl",
+		`{"label":"2026-01-05","totalCost":0.25,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}`)
+	for _, user := range []string{"", ".", "..", "../u", `..\u`, "a/b"} {
+		if got := (Source{Dir: dir}).Read(user, ccTool); got != nil {
+			t.Errorf("Read(%q) = %v, want nil", user, got)
+		}
 	}
 }

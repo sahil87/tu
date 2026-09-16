@@ -63,6 +63,11 @@ type dayFile struct {
 // missing user directory, an unreadable level, or a non-directory at the year
 // or machine level is skipped silently (nil when nothing is read).
 func (s Source) Read(user string, tool fact.Tool) []fact.Record {
+	// user is a profile directory name, never a path: reject path-like
+	// values ("../outside") so a crafted -u cannot make the walk escape Dir.
+	if user == "" || user == "." || user == ".." || strings.ContainsAny(user, `/\`) {
+		return nil
+	}
 	prefix := tool.Key + "-"
 	var out []fact.Record
 	for _, year := range readSubDirs(filepath.Join(s.Dir, user)) {
@@ -125,7 +130,9 @@ func readDayFile(path string) (fact.Record, bool) {
 		return fact.Record{}, false
 	}
 	trimmed := strings.TrimSpace(string(raw))
-	if trimmed == "" {
+	if trimmed == "" || trimmed[0] != '{' {
+		// Only a JSON object is a day-file: "null" unmarshals cleanly into
+		// the struct and would surface as a zero record with an empty label.
 		return fact.Record{}, false
 	}
 	var d dayFile

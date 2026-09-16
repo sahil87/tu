@@ -3,7 +3,9 @@ package config
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -179,6 +181,26 @@ func TestMetricsDirGuardFailureDetails(t *testing.T) {
 		_, lines := MetricsDirGuard(cfg, filepath.Join(t.TempDir(), ".tu"), guardNow, cloner)
 		want := "Warning: could not clone metrics repo (Command failed: git clone " +
 			cfg.MetricsRepo + " " + cfg.MetricsDir + ") — falling back to single mode."
+		if len(lines) != 1 || lines[0] != want {
+			t.Errorf("lines = %q, want %q", lines, want)
+		}
+	})
+	// A process-start error never ran git: the detail is the spawnSync errno,
+	// not a fabricated Command failed line.
+	t.Run("git not found", func(t *testing.T) {
+		cloner := &fakeCloner{err: &exec.Error{Name: "git", Err: exec.ErrNotFound}}
+		cfg := guardCfg(filepath.Join(t.TempDir(), "metrics_repo"))
+		_, lines := MetricsDirGuard(cfg, filepath.Join(t.TempDir(), ".tu"), guardNow, cloner)
+		want := "Warning: could not clone metrics repo (spawnSync git ENOENT) — falling back to single mode."
+		if len(lines) != 1 || lines[0] != want {
+			t.Errorf("lines = %q, want %q", lines, want)
+		}
+	})
+	t.Run("git not executable", func(t *testing.T) {
+		cloner := &fakeCloner{err: &os.PathError{Op: "fork/exec", Path: "git", Err: fs.ErrPermission}}
+		cfg := guardCfg(filepath.Join(t.TempDir(), "metrics_repo"))
+		_, lines := MetricsDirGuard(cfg, filepath.Join(t.TempDir(), ".tu"), guardNow, cloner)
+		want := "Warning: could not clone metrics repo (spawnSync git EACCES) — falling back to single mode."
 		if len(lines) != 1 || lines[0] != want {
 			t.Errorf("lines = %q, want %q", lines, want)
 		}
