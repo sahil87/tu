@@ -1,6 +1,7 @@
 package view
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/sahil87/tu/internal/fact"
@@ -412,5 +413,71 @@ func TestTotalHistoryHookDefaultsUnchanged(t *testing.T) {
 				t.Errorf("row %d cell %d differs: %+v vs %+v", i, j, a.Rows[i].Cells[j], b.Rows[i].Cells[j])
 			}
 		}
+	}
+}
+
+// MaxRows (B7): the window truncation runs before the empty check, and the
+// significance/omission pass sees only the windowed labels — a tool
+// significant over the full range but zero inside the window drops out.
+func TestTotalHistoryMaxRowsWindowScoping(t *testing.T) {
+	series := []Series{
+		{Name: "Claude Code", Entries: []Entry{
+			{Label: "2026-01-01", Totals: fact.Totals{TotalCost: 100}},
+			{Label: "2026-01-02", Totals: fact.Totals{}},
+		}},
+		{Name: "Kimi", Entries: []Entry{
+			{Label: "2026-01-01", Totals: fact.Totals{}},
+			{Label: "2026-01-02", Totals: fact.Totals{TotalCost: 2}},
+		}},
+	}
+	full := TotalHistory(series, HistoryOptions{Period: query.Daily, Now: historyNow})
+	// Both tools are significant over the full range (Claude $100, Kimi $2 of
+	// the $102 grand): Date + two tools + Cost.
+	if len(full.Columns) != 4 {
+		t.Errorf("full columns = %d, want 4", len(full.Columns))
+	}
+	windowed := TotalHistory(series, HistoryOptions{Period: query.Daily, Now: historyNow, MaxRows: 1})
+	// The window is {2026-01-02}: Claude Code is zero there, so only Kimi's
+	// column survives (Date + Kimi + Cost).
+	if len(windowed.Columns) != 3 || windowed.Columns[1].Title != "Kimi" {
+		t.Errorf("windowed columns = %+v", windowed.Columns)
+	}
+	data := 0
+	var totalRow *Row
+	for i := range windowed.Rows {
+		if windowed.Rows[i].Kind == Data {
+			data++
+		}
+		if windowed.Rows[i].Kind == Total {
+			totalRow = &windowed.Rows[i]
+		}
+	}
+	if data != 1 {
+		t.Errorf("data rows = %d, want 1 (the single windowed label)", data)
+	}
+	if totalRow != nil {
+		t.Errorf("Total row present for a one-label window: %+v", totalRow)
+	}
+}
+
+// MaxRows 0 leaves the tables untouched (the one-shot path stays
+// byte-identical — every existing golden proves it; this pins the field's
+// zero value semantics directly).
+func TestHistoryMaxRowsZeroIsUnlimited(t *testing.T) {
+	entries := make([]Entry, 20)
+	for i := range entries {
+		entries[i] = Entry{Label: fmt.Sprintf("2026-08-%02d", i+1), Totals: fact.Totals{TotalCost: 1}}
+	}
+	s := Series{Name: "Kimi", Entries: entries}
+	full := History(s, HistoryOptions{Period: query.Daily, Now: historyNow}, nil)
+	if len(full.Rows) != 2+20+2 { // header+divider, 20 data, divider+total
+		t.Errorf("full rows = %d, want 24", len(full.Rows))
+	}
+	w := History(s, HistoryOptions{Period: query.Daily, Now: historyNow, MaxRows: 15}, nil)
+	if len(w.Rows) != 2+15+2 {
+		t.Errorf("windowed rows = %d, want 19", len(w.Rows))
+	}
+	if got := w.Rows[2].Cells[0].Text; got != "2026-08-06" {
+		t.Errorf("first windowed label = %q, want 2026-08-06", got)
 	}
 }

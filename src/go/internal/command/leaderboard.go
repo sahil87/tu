@@ -248,6 +248,7 @@ func runLeaderboard(req Request, cfg config.Config, raw []fact.Record, notices [
 			Top:         req.Flags.Top,
 			Width:       deps.Width,
 			LastSync:    deps.lastSync(),
+			Prev:        deps.live().Prev,
 		}), deps.Colors)
 	}
 	return res
@@ -317,12 +318,15 @@ func runLeaderboardHistory(req Request, cfg config.Config, raw []fact.Record, no
 	case Markdown:
 		res.Lines = markdown.TotalHistory(series, req.Period, capActive, base)
 	default:
+		// lbh carries Prev (the delta map) but no MaxRows (the TS
+		// lbhFormatOptions never carries it) and no compact form.
 		res.Lines = ansi.Table(view.TotalHistory(series, view.HistoryOptions{
 			Period:          req.Period,
 			Now:             deps.Now(),
 			Width:           deps.Width,
 			CapActive:       capActive,
 			Metric:          metric,
+			Prev:            deps.live().Prev,
 			Title:           "📊 " + base + " (" + view.PeriodLabel(req.Period, capActive) + ")",
 			RankColumns:     true,
 			HighlightLeader: true,

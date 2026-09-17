@@ -310,3 +310,42 @@ func rep(s string, w, n int) []string {
 	}
 	return out
 }
+
+// The watch row budget (B7): History keeps the last MaxRows entries after the
+// empty check and TotalHistory the last MaxRows labels before it; the footer
+// (avg over the window) and the bar scale are computed on the truncated
+// window. The outlier window's 24 rows become the last 15 — the two-zone rule
+// and the zero row survive truncation.
+func TestMaxRowsGoldens(t *testing.T) {
+	color := Colors{Enabled: true}
+	withRows := func(o view.HistoryOptions, n int) view.HistoryOptions {
+		o.MaxRows = n
+		return o
+	}
+	cases := []struct {
+		name   string
+		golden string
+		lines  []string
+	}{
+		{"history maxrows", "history_maxrows.golden", Table(view.History(outlierWindow(), withRows(dailyAt(140), 15), nil), color)},
+		{"pivot maxrows", "pivot_maxrows.golden", Table(view.TotalHistory(sixToolWindow(), withRows(dailyAt(80), 2)), color)},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := strings.Join(c.lines, "\n") + "\n"
+			path := filepath.Join("testdata", c.golden)
+			if *update {
+				if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read golden (run with -update to create): %v", err)
+			}
+			if got != string(raw) {
+				t.Errorf("table output differs from %s (-update to regenerate)\ngot:\n%q\nwant:\n%q", c.golden, got, string(raw))
+			}
+		})
+	}
+}

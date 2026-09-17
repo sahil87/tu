@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/sahil87/tu/internal/command"
 	"github.com/sahil87/tu/internal/config"
 	"github.com/sahil87/tu/internal/harness"
+	"github.com/sahil87/tu/internal/watch"
 )
 
 // e2eHome is the temp HOME every end-to-end test runs against; the fake
@@ -1224,5 +1226,169 @@ func TestE2ESyncFlagSingle(t *testing.T) {
 	}
 	if calls := gitCalls(t, log); len(calls) != 0 {
 		t.Errorf("git calls = %v, want none (single mode)", calls)
+	}
+}
+
+// ── B7: watch mode ─────────────────────────────────────────────────────────
+
+// fakeWatchTerminal is the e2e Terminal seam: captures the alt-screen byte
+// stream, fixed 100×30 geometry, no key channel (SIGINT-only, like a piped
+// stdin).
+type fakeWatchTerminal struct {
+	buf         *bytes.Buffer
+	constructed *bool
+}
+
+func (f fakeWatchTerminal) Size() (int, int)            { return 100, 30 }
+func (f fakeWatchTerminal) Write(p []byte) (int, error) { return f.buf.Write(p) }
+func (f fakeWatchTerminal) Keys() <-chan []byte         { return nil }
+func (f fakeWatchTerminal) Resize() <-chan struct{}     { return nil }
+func (f fakeWatchTerminal) Interrupt() <-chan struct{}  { return nil }
+func (f fakeWatchTerminal) Close() error                { return nil }
+
+// withWatchSeams swaps the watch terminal/loop seams for the test.
+func withWatchSeams(t *testing.T, termBuf *bytes.Buffer, constructed *bool, loop func(ctx context.Context, o watch.Options) []string) {
+	t.Helper()
+	oldTerm, oldLoop := newWatchTerminal, runWatchLoop
+	newWatchTerminal = func() watch.Terminal {
+		*constructed = true
+		return fakeWatchTerminal{buf: termBuf, constructed: constructed}
+	}
+	runWatchLoop = loop
+	t.Cleanup(func() { newWatchTerminal, runWatchLoop = oldTerm, oldLoop })
+}
+
+// A bare --no-rain or --interval N without -w renders the ordinary one-shot
+// table (DC-03 silent acceptance) — the placeholder is gone.
+func TestE2EWatchFlagsOneShot(t *testing.T) {
+	const emptyTable = "\n\x1b[1;37m📊 Combined Usage (daily)\x1b[0m\n\n  No usage\n\n"
+	assertRun(t, []string{"--no-rain"}, 0, emptyTable, "")
+	assertRun(t, []string{"--interval", "30"}, 0, emptyTable, "")
+	assertRun(t, []string{"--no-rain", "--interval", "30"}, 0, emptyTable, "")
+}
+
+// The watch session: notices print ONCE ahead of the alt screen (never per
+// poll), the loop's returned lines land on stdout, exit 0. The scripted loop
+// polls twice to prove the notice does not repeat.
+func TestE2EWatchSession(t *testing.T) {
+	var termBuf bytes.Buffer
+	constructed := false
+	var stderrAtLoopEntry string
+	var frames []watch.Frame
+	var stderr bytes.Buffer
+	withWatchSeams(t, &termBuf, &constructed, func(ctx context.Context, o watch.Options) []string {
+		constructed = true
+		stderrAtLoopEntry = stderr.String()
+		o.Term.Write([]byte("\x1b[?1049h")) // the loop's first alt-screen byte
+		for i := 0; i < 2; i++ {
+			f := watch.Frame{Compact: false, MaxRows: 15, Width: 100}
+			if i > 0 {
+				f.Prev = map[string]float64{"Claude Code": 0}
+			}
+			lines, _, err := o.Poll(ctx, f)
+			if err != nil {
+				t.Errorf("poll %d: %v", i, err)
+			}
+			frames = append(frames, f)
+			_ = lines
+		}
+		o.Term.Write([]byte("\x1b[?1049l"))
+		return []string{"L1", "L2"}
+	})
+	var stdout bytes.Buffer
+	code := run([]string{"-u", "bob", "-w"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit = %d, stderr = %q", code, stderr.String())
+	}
+	if !constructed {
+		t.Fatal("the terminal seam was never constructed")
+	}
+	const notice = "Warning: -u flag requires multi mode — ignoring.\n"
+	if stderrAtLoopEntry != notice {
+		t.Errorf("stderr at loop entry = %q, want exactly the one notice", stderrAtLoopEntry)
+	}
+	if stderr.String() != notice {
+		t.Errorf("stderr after two polls = %q, want the notice once", stderr.String())
+	}
+	if got := termBuf.String(); got != "\x1b[?1049h\x1b[?1049l" {
+		t.Errorf("terminal stream = %q", got)
+	}
+	if stdout.String() != "L1\nL2\n" {
+		t.Errorf("stdout = %q, want the loop's last lines", stdout.String())
+	}
+	if len(frames) != 2 || frames[0].Prev != nil || frames[1].Prev == nil {
+		t.Errorf("frames = %+v", frames)
+	}
+}
+
+// The lb single-mode gate fires before the alt screen: exit 1, the gate line
+// on stderr, the terminal seam never constructed.
+func TestE2EWatchLeaderboardGate(t *testing.T) {
+	var termBuf bytes.Buffer
+	constructed := false
+	withWatchSeams(t, &termBuf, &constructed, func(ctx context.Context, o watch.Options) []string {
+		t.Error("the loop must not run for lb in single mode")
+		return nil
+	})
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"lb", "-w"}, &stdout, &stderr)
+	if code != 1 {
+		t.Errorf("exit = %d, want 1", code)
+	}
+	if constructed || termBuf.Len() != 0 {
+		t.Errorf("alt screen entered (constructed=%v, %d bytes)", constructed, termBuf.Len())
+	}
+	want := "Error: lb requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo\n"
+	if stderr.String() != want {
+		t.Errorf("stderr = %q, want %q", stderr.String(), want)
+	}
+}
+
+// The Poll closure's Live wiring, exercised end-to-end: Compact + Width from
+// the frame produce the compact pivot (no header row), and MaxRows caps the
+// labels — against the multi-home seeded January window.
+func TestE2EWatchPollCompact(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	if err := harness.StageHome(home, harness.ConfMulti, e2eSeedDir); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+
+	var termBuf bytes.Buffer
+	constructed := false
+	var gotLines []string
+	withWatchSeams(t, &termBuf, &constructed, func(ctx context.Context, o watch.Options) []string {
+		lines, stats, err := o.Poll(ctx, watch.Frame{Compact: true, MaxRows: 2, Width: 59})
+		if err != nil {
+			t.Errorf("poll: %v", err)
+		}
+		gotLines = lines
+		if stats.TotalCost <= 0 {
+			t.Errorf("stats.TotalCost = %v, want > 0 over the untruncated data", stats.TotalCost)
+		}
+		return lines
+	})
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"h", "-w", "--since", "2026-01-01", "--until", "2026-01-31"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit = %d, stderr = %q", code, stderr.String())
+	}
+	joined := strings.Join(gotLines, "\n")
+	if !strings.Contains(joined, "📊 Combined Cost History (daily)") {
+		t.Errorf("compact pivot title missing:\n%s", joined)
+	}
+	if strings.Contains(joined, "Cache Write") || strings.Contains(joined, "─|─") {
+		t.Errorf("compact pivot carries the full table chrome:\n%s", joined)
+	}
+	// MaxRows 2 keeps the last two labels; 2026-01-05 is truncated away.
+	if strings.Contains(joined, "2026-01-05") || !strings.Contains(joined, "2026-01-06") || !strings.Contains(joined, "2026-01-07") {
+		t.Errorf("MaxRows window wrong:\n%s", joined)
+	}
+	if !strings.Contains(joined, "Total") {
+		t.Errorf("compact pivot Total row missing:\n%s", joined)
+	}
+	// Untruncated stats: the full window's cost (all tools, both users' merge).
+	if stdout.Len() == 0 {
+		t.Error("stdout empty — the loop's last lines were not printed")
 	}
 }

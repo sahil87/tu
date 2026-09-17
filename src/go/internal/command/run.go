@@ -39,6 +39,16 @@ type Writer interface {
 	Write(user, machine string, tool fact.Tool, recs []fact.Record) error
 }
 
+// LiveOptions carries the watch-mode per-poll render inputs (B7): the previous
+// poll's per-item values (the delta maps), the compact-table switch (width <
+// 60) and the history row budget. Nil for one-shot runs — every code path
+// with a nil Live is byte-identical to before.
+type LiveOptions struct {
+	Prev    map[string]float64
+	Compact bool
+	MaxRows int
+}
+
 // Deps are Run's external inputs.
 type Deps struct {
 	Source Fetcher
@@ -46,11 +56,23 @@ type Deps struct {
 	Writer Writer           // the own-user day-file write; multi mode only, nil = no write (tests)
 	Now    func() time.Time // time.Now at the edge; fixed in tests
 	Colors ansi.Colors
-	Width  int // stdout TTY width, probed at the edge (80 when piped)
+	Width  int // stdout TTY width, probed at the edge (80 when piped); per-poll under watch
+	// Live is nil for one-shot runs and set per poll by the watch loop's Poll
+	// closure. Render state, not CLI grammar — Request stays the parse tree.
+	Live *LiveOptions
 	// LastSync is the leaderboard footer's staleness text (config.LastSync
 	// evaluated at the edge); evaluated only on the lb path. Nil reads as
 	// "never" (tests).
 	LastSync func() string
+}
+
+// live resolves the watch render options; nil Deps.Live reads as the zero
+// value (no deltas, full tables, no row budget).
+func (d Deps) live() LiveOptions {
+	if d.Live == nil {
+		return LiveOptions{}
+	}
+	return *d.Live
 }
 
 // lastSync resolves the staleness text; a nil Deps.LastSync reads as "never".
@@ -72,7 +94,9 @@ type Result struct {
 }
 
 // ErrUnported marks a recognized-but-unported request; cmd/tu maps it to the
-// scaffold's placeholder line, exit 1.
+// scaffold's placeholder line, exit 1. After B7 (watch), the only trigger left
+// is --skip-brew-update on a data command (the TS silently accepts it — a B8
+// toolkit-flag-family follow-up).
 var ErrUnported = errors.New("not implemented")
 
 // ErrLeaderboardMode is the TS exit-1 guard: the leaderboard is an all-users
@@ -87,9 +111,11 @@ var ErrLeaderboardMode = errors.New("Error: lb requires multi mode — run tu in
 // already cleared it for single and for lb/lbh), --top on the leaderboards
 // (Normalize already cleared it elsewhere), --by-machine on the snapshots,
 // the single-tool history and lb (Normalize already cleared it on the
-// all-tools pivot and on lbh), --sync (the edge consumes it before Run), no
-// non-data command, no version. Still out: watch, dry-run, no-rain,
-// skip-brew-update.
+// all-tools pivot and on lbh), --watch/--no-rain/--interval (the edge runs
+// the watch loop before Run; a watch request that reaches Run renders the
+// ordinary one-shot table, as do bare --no-rain/--interval — DC-03 silent
+// acceptance), --sync (the edge consumes it before Run), no non-data command,
+// no version. Still out: dry-run, skip-brew-update.
 func inScope(req Request) bool {
 	if req.Command != "" || req.Version {
 		return false
@@ -98,7 +124,7 @@ func inScope(req Request) bool {
 		return false
 	}
 	f := req.Flags
-	if f.Watch || f.DryRun || f.NoRain || f.SkipBrewUpdate {
+	if f.DryRun || f.SkipBrewUpdate {
 		return false
 	}
 	return true
@@ -402,7 +428,14 @@ func runSnapshot(req Request, cfg config.Config, raw []fact.Record, errs []*sour
 	case Markdown:
 		res.Lines = markdown.Snapshot(rows, req.Period, bd)
 	default:
-		res.Lines = ansi.Table(view.Snapshot(rows, req.Period, bd, metric), deps.Colors)
+		live := deps.live()
+		if live.Compact {
+			// Watch on a narrow terminal (the TS renderTotal compact branch):
+			// name + metric value only; machine columns and the legend drop.
+			res.Lines = ansi.CompactTable(view.CompactSnapshot(rows, req.Period, metric, live.Prev), deps.Colors)
+			break
+		}
+		res.Lines = ansi.Table(view.Snapshot(rows, req.Period, bd, view.SnapshotOptions{Metric: metric, Prev: live.Prev}), deps.Colors)
 	}
 	return res
 }
@@ -444,12 +477,15 @@ func runHistory(req Request, cfg config.Config, raw []fact.Record, errs []*sourc
 	if req.Flags.Metric == Tokens {
 		metric = view.Tokens
 	}
+	live := deps.live()
 	opts := view.HistoryOptions{
 		Period:    req.Period,
 		Now:       deps.Now(),
 		Width:     deps.Width,
 		CapActive: capActive,
 		Metric:    metric,
+		Prev:      live.Prev,
+		MaxRows:   live.MaxRows,
 	}
 
 	res := Result{Notices: notices, Warnings: errs, CostByItem: make(map[string]float64)}
@@ -468,7 +504,9 @@ func runHistory(req Request, cfg config.Config, raw []fact.Record, errs []*sourc
 
 	single := req.Source != ""
 	var bd *view.Breakdown
-	if single && req.Flags.ByMachine {
+	if single && req.Flags.ByMachine && !live.Compact {
+		// The compact history returns before the machine columns (the TS
+		// compact branch) — building the breakdown would be dead work.
 		bd = buildHistoryBreakdown(req, cfg, raw)
 	}
 	switch {
@@ -478,6 +516,8 @@ func runHistory(req Request, cfg config.Config, raw []fact.Record, errs []*sourc
 		res.Lines = csv.History(series[0], bd)
 	case single && req.Format == Markdown:
 		res.Lines = markdown.History(series[0], req.Period, capActive, bd)
+	case single && live.Compact:
+		res.Lines = ansi.CompactTable(view.CompactHistory(series[0], opts), deps.Colors)
 	case single:
 		res.Lines = ansi.Table(view.History(series[0], opts, bd), deps.Colors)
 	case req.Format == JSON:
@@ -486,6 +526,8 @@ func runHistory(req Request, cfg config.Config, raw []fact.Record, errs []*sourc
 		res.Lines = csv.TotalHistory(series)
 	case req.Format == Markdown:
 		res.Lines = markdown.TotalHistory(series, req.Period, capActive, "Combined Cost History")
+	case live.Compact:
+		res.Lines = ansi.CompactTable(view.CompactTotalHistory(series, opts), deps.Colors)
 	default:
 		res.Lines = ansi.Table(view.TotalHistory(series, opts), deps.Colors)
 	}

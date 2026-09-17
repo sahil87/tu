@@ -89,6 +89,16 @@ func padCell(col view.Column, cell view.Cell) string {
 	return PadLeft(cell.Text, col.Width)
 }
 
+// padDeltaCell pads a text+arrow composite per the column alignment — the
+// DeltaPadsArrow form, where the arrow's escape codes count toward the width
+// (rune count over the colored string, the JS padStart raw-length twin).
+func padDeltaCell(col view.Column, text string) string {
+	if col.Align == view.Left {
+		return PadRight(text, col.Width)
+	}
+	return PadLeft(text, col.Width)
+}
+
 // barGap is the unstyled bar area for a non-bar row under BarAfter: " " +
 // spaces(Scale.Width) (the TS header/total/collapsed rows).
 func barGap(s view.Scale) string {
@@ -103,10 +113,28 @@ func barGap(s view.Scale) string {
 // boldWhite(dim(text))). With a BarAfter column the bar area sits
 // immediately after that column's cell (padded single-zone, full-width
 // two-zone, an unstyled gap when the row carries no bar) and nothing trails.
+//
+// An in-cell delta (Cell.Delta — the snapshot and leaderboard placement)
+// composes per the table's DeltaInCell BEFORE the Dim wrap: DeltaPadsArrow
+// pads Text + arrow together (the JS raw-length padding quirk — the arrow's
+// escape codes count toward the width, so a colored cell renders effectively
+// unpadded) and DeltaAfterPad appends the arrow after the padded text; the
+// exact-zero Dim wrap covers the composite either way.
 func (c Colors) dataRow(t view.Table, row view.Row, barAfter int) string {
 	parts := make([]string, len(row.Cells))
 	for i, cell := range row.Cells {
 		padded := padCell(t.Columns[i], cell)
+		if cell.Delta != view.DeltaNone {
+			arrow := c.Green("↑")
+			if cell.Delta == view.DeltaDown {
+				arrow = c.Red("↓")
+			}
+			if t.DeltaInCell == view.DeltaAfterPad {
+				padded += " " + arrow
+			} else {
+				padded = padDeltaCell(t.Columns[i], cell.Text+" "+arrow)
+			}
+		}
 		switch {
 		case i == 0 && cell.Style == view.Current:
 			padded = c.BoldWhite(padded)

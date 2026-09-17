@@ -32,8 +32,10 @@ const pivotDateWidth = 10
 //
 //   - Title "📊 Combined Cost History ({period}[, last 3 months])", or "Token"
 //     under tokens — or o.Title verbatim when set (lbh).
-//   - Labels are the sorted union of every series' labels; none →
-//     Empty = "  No data".
+//   - Labels are the sorted union of every series' labels, truncated to the
+//     last MaxRows labels (watch) BEFORE the empty check; none →
+//     Empty = "  No data". Significance, widths, the bar scale, the footer
+//     and the legend are computed on the truncated window.
 //   - Visible tools by the significance rule (≥ negligibleAbs AND ≥ 0.001 ×
 //     grand, boundary kept), falling back to nonzero, then to all; with
 //     KeepAllColumns every series is a column, all-zero ones included.
@@ -68,6 +70,9 @@ func TotalHistory(series []Series, o HistoryOptions) Table {
 	t := Table{Title: title}
 
 	labels := LabelUnion(series)
+	if o.MaxRows > 0 && len(labels) > o.MaxRows {
+		labels = labels[len(labels)-o.MaxRows:]
+	}
 	if len(labels) == 0 {
 		t.Empty = emptyHistory
 		return t

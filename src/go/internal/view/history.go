@@ -31,8 +31,12 @@ const (
 
 // HistoryOptions are the two history tables' shared inputs. Prev is the watch
 // delta map, keyed "{Name}:{label}" / "total:{label}"; nil in B2 (B7 fills
-// it). Title, RankColumns, HighlightLeader and KeepAllColumns are the lbh
-// hooks (B5); their zero values reproduce the tool pivot's output.
+// it). MaxRows is the watch row budget (0 = unlimited): History keeps the
+// last MaxRows entries after the empty check, TotalHistory the last MaxRows
+// labels before it — the footer, significance, separators and bar scale are
+// computed on the truncated window. Title, RankColumns, HighlightLeader and
+// KeepAllColumns are the lbh hooks (B5); their zero values reproduce the tool
+// pivot's output.
 type HistoryOptions struct {
 	Period    query.Period
 	Now       time.Time // for CurrentLabel(Period) and the footer's "this month" prefix
@@ -40,6 +44,9 @@ type HistoryOptions struct {
 	CapActive bool      // append ", last 3 months" to the heading
 	Metric    Metric
 	Prev      map[string]float64
+	// MaxRows is the watch mode row budget (the TS maxRows: the constant 15);
+	// 0 renders every entry, byte-identical to the one-shot table.
+	MaxRows int
 	// Title overrides the whole title (parenthetical included); "" = "📊
 	// Combined {Cost,Token} History ({PeriodLabel})". lbh passes "📊
 	// Leaderboard History (…)" / "📊 Leaderboard Token History (…)".
@@ -121,6 +128,9 @@ func barBudget(width, bodyWidth, costWidth, reserve int) (barWidth int, show boo
 //
 //   - Title "📊 {Name} ({period}[, last 3 months])" — metric-independent.
 //   - Empty = "  No data" with no rows when the series has no entries.
+//   - MaxRows (watch): the last MaxRows entries after the empty check;
+//     separators, the bar scale, the Total and the footer are computed on the
+//     truncated window.
 //   - Columns Date 12 Left; Input/Output/Cache Write/Cache Read/Total 14
 //     Right; last column Cost/Tokens Right, data-sized floor 9 (every row's
 //     metric value plus their sum).
@@ -147,6 +157,9 @@ func History(s Series, o HistoryOptions, bd *Breakdown) Table {
 	if len(s.Entries) == 0 {
 		t.Empty = emptyHistory
 		return t
+	}
+	if o.MaxRows > 0 && len(s.Entries) > o.MaxRows {
+		s.Entries = s.Entries[len(s.Entries)-o.MaxRows:]
 	}
 
 	m := o.Metric

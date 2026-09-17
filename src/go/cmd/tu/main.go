@@ -12,10 +12,13 @@
 // guard's stderr lines), the leaderboards lb/lbh in multi mode (user ranking,
 // previous-period deltas, --top, --by-machine on lb, the exit-1 single-mode
 // gate), the setup commands (init-conf, init-metrics, status), the sync
-// surfaces (tu sync, tu sync --dry-run, and --sync on a data command), and
-// the toolkit surfaces (help/-h/--help, help-dump, skill, shell-init, update)
-// for real; everything else (watch and its companions) prints the deliberate
-// not-implemented placeholder the differential harness diffs against.
+// surfaces (tu sync, tu sync --dry-run, and --sync on a data command), the
+// toolkit surfaces (help/-h/--help, help-dump, skill, shell-init, update),
+// and the watch mode (-w on every display, with --no-rain/--interval and the
+// flags' silent acceptance without -w) for real; the only remaining
+// recognized-but-unported request is --skip-brew-update on a data command,
+// which keeps the scaffold's placeholder the differential harness diffs
+// against.
 package main
 
 import (
@@ -23,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"os/user"
@@ -45,6 +49,7 @@ import (
 	"github.com/sahil87/tu/internal/source/metrics"
 	metricsync "github.com/sahil87/tu/internal/sync"
 	"github.com/sahil87/tu/internal/toolkit"
+	"github.com/sahil87/tu/internal/watch"
 )
 
 // version is the binary version, overridden via -ldflags "-X main.version=..." at build time.
@@ -197,6 +202,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
+	// The watch branch (the TS main() watch dispatch): after the reserved-user
+	// guard and the --sync block, before the one-shot command.Run.
+	if req.Flags.Watch {
+		return runWatchBranch(req, cfg, deps, stdout, stderr)
+	}
+
 	res, err := command.Run(context.Background(), req, cfg, deps)
 	if errors.Is(err, command.ErrUnported) {
 		fmt.Fprintln(stderr, notImplementedMsg)
@@ -213,6 +224,75 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	source.WriteWarnings(stderr, res.Warnings)
 	for _, l := range res.Lines {
+		fmt.Fprintln(stdout, l)
+	}
+	return command.ExitOK
+}
+
+// The watch seams (testability): the terminal constructor and the loop
+// itself. Production uses the process's real streams and watch.Run; the e2e
+// tests substitute a fake terminal over their buffers and a scripted loop.
+var (
+	newWatchTerminal = func() watch.Terminal { return watch.NewTerminal(os.Stdout, os.Stdin) }
+	runWatchLoop     = watch.Run
+)
+
+// runWatchBranch is the -w path (the TS watch dispatch in main(), cli.ts
+// 2029–2049). Order: the guard notices print ONCE, ahead of the alt screen
+// (the TS prints them in main() before runWatch); the lb single-mode gate
+// fires the same way (exit 1, no alt screen); then the loop owns the
+// terminal until q/Ctrl-C/SIGINT, and the last rendered lines go to stdout
+// with exit 0.
+func runWatchBranch(req command.Request, cfg config.Config, deps command.Deps, stdout, stderr io.Writer) int {
+	// The notices come from one edge call to Normalize; per-poll
+	// Result.Notices are discarded (the --full notice would otherwise repeat
+	// every poll — Normalize does not clear it).
+	_, notices, _ := command.Normalize(req, cfg.Mode, time.Now())
+	// The polls run the ORIGINAL request — Run normalizes per poll.
+	for _, n := range notices {
+		fmt.Fprintln(stderr, n)
+	}
+	// The leaderboard gate before the alt screen, exactly as the one-shot
+	// path (Run returns it with no notices, no fetch, no lines).
+	if (req.Display == command.Leaderboard || req.Display == command.LeaderboardHistory) && cfg.Mode == config.Single {
+		fmt.Fprintln(stderr, command.ErrLeaderboardMode.Error())
+		return command.ExitOperational
+	}
+
+	poll := func(ctx context.Context, f watch.Frame) ([]string, watch.Stats, error) {
+		d := deps
+		d.Width = f.Width
+		prev := f.Prev
+		if prev == nil && (req.Display == command.Leaderboard || req.Display == command.LeaderboardHistory) {
+			// The TS passes _lastRenderCostMap — a live Map, empty on the
+			// first poll — so the leaderboards reserve the indicator column
+			// from the first frame (a nil map would not).
+			prev = map[string]float64{}
+		}
+		d.Live = &command.LiveOptions{Prev: prev, Compact: f.Compact, MaxRows: f.MaxRows}
+		reqFresh := req
+		reqFresh.Flags.Fresh = true // the TS action(true, …): every poll bypasses the 60 s cache
+		res, err := command.Run(ctx, reqFresh, cfg, d)
+		if err != nil {
+			return nil, watch.Stats{}, err
+		}
+		// The TS fetcher warns on stderr every poll, alt screen or not.
+		source.WriteWarnings(stderr, res.Warnings)
+		return res.Lines, watch.Stats{TotalCost: res.TotalCost, TotalTokens: res.TotalTokens, CostByItem: res.CostByItem}, nil
+	}
+
+	seed := uint64(time.Now().UnixNano())
+	last := runWatchLoop(context.Background(), watch.Options{
+		Interval: req.Flags.Interval,
+		NoRain:   req.Flags.NoRain,
+		Poll:     poll,
+		Term:     newWatchTerminal(),
+		Stderr:   stderr,
+		Colors:   deps.Colors,
+		Now:      time.Now,
+		Rand:     rand.New(rand.NewPCG(seed, ^seed)),
+	})
+	for _, l := range last {
 		fmt.Fprintln(stdout, l)
 	}
 	return command.ExitOK

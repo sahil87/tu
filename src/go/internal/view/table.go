@@ -55,12 +55,32 @@ type Column struct {
 // cell styling (pivot/machine columns) — false everywhere in the snapshot.
 // Style is used only by a Data row's first (Date) cell. Leader wraps the
 // padded cell (after any Dim wrap) in BoldWhite — the lbh per-row leader.
+// Delta is the watch-mode in-cell arrow (the snapshot and leaderboard
+// placement); the table's DeltaInCell selects how it composes with padding.
 type Cell struct {
 	Text   string
 	Dim    bool
 	Style  LabelStyle
 	Leader bool
+	Delta  Delta
 }
+
+// DeltaInCell selects how a Cell.Delta arrow composes with the cell's
+// padding — the TS places the watch arrow three different ways and these are
+// the two in-cell forms (the history tables keep the trailing Row.Delta).
+type DeltaInCell int
+
+const (
+	// DeltaPadsArrow pads text + arrow together: PadLeft(Text + " ↑", width).
+	// The JS padStart measures raw string length, so a colored arrow's escape
+	// codes count toward the width — with color on, the cell renders
+	// effectively unpadded (the snapshot and compact tables).
+	DeltaPadsArrow DeltaInCell = iota
+	// DeltaAfterPad pads the text first, then appends the arrow:
+	// PadLeft(Text, width) + " ↑"; the exact-zero Dim wrap covers the
+	// composite (the leaderboard).
+	DeltaAfterPad
+)
 
 // Delta is a watch-mode delta direction (B7 feeds the Prev map; B2 wires the
 // seam): none, up (green ↑), or down (red ↓).
@@ -123,4 +143,8 @@ type Table struct {
 	// DeltaSpaced selects the delta form: true renders " ↑" (single-tool
 	// history); false renders "↑" abutting the cell (the pivot's width contract).
 	DeltaSpaced bool
+	// DeltaInCell selects the in-cell delta placement (DeltaPadsArrow for the
+	// snapshot, DeltaAfterPad for the leaderboard); only Data-row cells with
+	// Delta != DeltaNone are affected.
+	DeltaInCell DeltaInCell
 }

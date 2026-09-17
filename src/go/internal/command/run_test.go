@@ -215,19 +215,19 @@ func TestRunSourceErrorBecomesWarning(t *testing.T) {
 func TestRunUnported(t *testing.T) {
 	base := Flags{Interval: 10}
 	multiCfg := config.Config{Mode: config.Multi}
+	// B7 admitted the watch surface: --watch/--no-rain/--interval now render
+	// (the edge runs the watch loop; a watch request reaching Run renders the
+	// one-shot table). What remains out of scope: --dry-run misuse and
+	// --skip-brew-update on a data command.
 	cases := []struct {
 		name string
 		req  Request
 		cfg  config.Config
 	}{
-		{"watch", Request{Flags: Flags{Watch: true, Interval: 10}}, singleCfg},
 		{"dry-run", Request{Flags: Flags{DryRun: true, Interval: 10}}, singleCfg},
-		{"no-rain", Request{Flags: Flags{NoRain: true, Interval: 10}}, singleCfg},
 		{"skip-brew-update", Request{Flags: Flags{SkipBrewUpdate: true, Interval: 10}}, singleCfg},
 		{"command", Request{Command: "help", Flags: base}, singleCfg},
 		{"version", Request{Version: true, Flags: base}, singleCfg},
-		{"lb watch", Request{Display: Leaderboard, Flags: Flags{Watch: true, Interval: 10}}, multiCfg},
-		{"multi watch", Request{Flags: Flags{Watch: true, Interval: 10}}, multiCfg},
 		{"multi dry-run", Request{Flags: Flags{DryRun: true, Interval: 10}}, multiCfg},
 	}
 	for _, c := range cases {
@@ -1335,5 +1335,205 @@ func TestRunByMachineAllToolsHistoryWarns(t *testing.T) {
 	}
 	if strings.Contains(joined, "Machines:") {
 		t.Errorf("no legend after the pivot clear:\n%s", joined)
+	}
+}
+
+// --- Watch-mode Live options (B7) ---
+
+// TestRunLiveCompactSnapshot: Live.Compact selects the compact snapshot
+// encoder (name + metric value, no header row) and Prev drives the in-cell
+// delta arrows.
+func TestRunLiveCompactSnapshot(t *testing.T) {
+	f := &fakeFetcher{byTool: map[string][]fact.Record{
+		"cc":    {{Date: "2026-01-06", Tool: "cc", Totals: fakeTotals}},
+		"codex": {{Date: "2026-01-06", Tool: "codex", Totals: fakeTotals}},
+	}}
+	deps := fakeDeps(f)
+	deps.Live = &LiveOptions{Compact: true, Prev: map[string]float64{"Claude Code": 0.4}}
+	res, err := Run(context.Background(), Request{}, singleCfg, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(res.Lines, "\n")
+	if !strings.Contains(joined, "Claude Code") || !strings.Contains(joined, "↑") {
+		t.Errorf("compact snapshot lacks the delta arrow:\n%s", joined)
+	}
+	if strings.Contains(joined, "Tokens") || strings.Contains(joined, "─|─") {
+		t.Errorf("compact snapshot carries full-table chrome:\n%s", joined)
+	}
+	// Stats stay over the full data.
+	if res.TotalCost != 1.0 || res.CostByItem["Codex"] != 0.5 {
+		t.Errorf("stats = %+v", res)
+	}
+}
+
+// TestRunLiveCompactHistoryWindow: the row budget truncates the rendered rows
+// while CostByItem keeps one key per untruncated entry (R16).
+func TestRunLiveCompactHistoryWindow(t *testing.T) {
+	var recs []fact.Record
+	for i := 1; i <= 20; i++ {
+		recs = append(recs, fact.Record{Date: "2026-01-" + padDay(i), Tool: "cc", Totals: fakeTotals})
+	}
+	f := &fakeFetcher{byTool: map[string][]fact.Record{"cc": recs}}
+	deps := fakeDeps(f)
+	deps.Live = &LiveOptions{Compact: true, MaxRows: 15}
+	req := Request{Source: "cc", Display: History, Flags: Flags{Since: "2026-01-01", Until: "2026-01-31"}}
+	res, err := Run(context.Background(), req, singleCfg, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(res.Lines, "\n")
+	if strings.Contains(joined, "2026-01-01") || !strings.Contains(joined, "2026-01-06") {
+		t.Errorf("compact history window wrong:\n%s", joined)
+	}
+	if strings.Contains(joined, "Cache Write") {
+		t.Errorf("compact history carries the full header:\n%s", joined)
+	}
+	rows := strings.Count(joined, "2026-01-")
+	if rows != 15 {
+		t.Errorf("rendered rows = %d, want 15", rows)
+	}
+	if len(res.CostByItem) != 40 { // 20 "{Name}:{label}" + 20 "total:{label}"
+		t.Errorf("CostByItem keys = %d, want 40 (untruncated)", len(res.CostByItem))
+	}
+	if _, ok := res.CostByItem["Claude Code:2026-01-01"]; !ok {
+		t.Errorf("CostByItem lost the truncated-away entry")
+	}
+}
+
+// TestRunLiveMaxRowsFullTable: MaxRows applies to the full history table too
+// (watch at >= 60 columns) — the footer avg divides by the window size.
+func TestRunLiveMaxRowsFullTable(t *testing.T) {
+	var recs []fact.Record
+	for i := 1; i <= 20; i++ {
+		recs = append(recs, fact.Record{Date: "2026-01-" + padDay(i), Tool: "cc", Totals: fakeTotals})
+	}
+	f := &fakeFetcher{byTool: map[string][]fact.Record{"cc": recs}}
+	deps := fakeDeps(f)
+	deps.Live = &LiveOptions{MaxRows: 15}
+	req := Request{Source: "cc", Display: History, Flags: Flags{Since: "2026-01-01", Until: "2026-01-31"}}
+	res, err := Run(context.Background(), req, singleCfg, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(res.Lines, "\n")
+	if !strings.Contains(joined, "avg $0.50/day") {
+		t.Errorf("footer missing from windowed table:\n%s", joined)
+	}
+	if strings.Contains(joined, "2026-01-05") {
+		t.Errorf("truncated-away row rendered:\n%s", joined)
+	}
+	if !strings.Contains(joined, "2026-01-06") || !strings.Contains(joined, "2026-01-20") {
+		t.Errorf("window rows missing:\n%s", joined)
+	}
+}
+
+// TestRunLivePrevFullTable: Prev drives the trailing delta arrows on the
+// history tables (spaced single-tool, abutting pivot) and the in-cell arrows
+// on the snapshot.
+func TestRunLivePrevFullTable(t *testing.T) {
+	recs := []fact.Record{
+		{Date: "2026-01-06", Tool: "cc", Totals: fakeTotals},
+		{Date: "2026-01-07", Tool: "cc", Totals: fakeTotals},
+	}
+	f := &fakeFetcher{byTool: map[string][]fact.Record{"cc": recs}}
+	deps := fakeDeps(f)
+	deps.Live = &LiveOptions{Prev: map[string]float64{"Claude Code:2026-01-07": 0.4}}
+	req := Request{Source: "cc", Display: History, Flags: Flags{Since: "2026-01-06", Until: "2026-01-07"}}
+	res, err := Run(context.Background(), req, singleCfg, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(res.Lines, "\n")
+	if !strings.Contains(joined, "$0.50 \x1b[32m↑\x1b[0m") {
+		t.Errorf("single-tool history lacks the spaced arrow:\n%s", joined)
+	}
+
+	depsAll := fakeDeps(f)
+	depsAll.Live = &LiveOptions{Prev: map[string]float64{"total:2026-01-07": 0.4}}
+	resAll, err := Run(context.Background(), Request{Display: History, Flags: Flags{Since: "2026-01-06", Until: "2026-01-07"}}, singleCfg, depsAll)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if joined := strings.Join(resAll.Lines, "\n"); !strings.Contains(joined, "$0.50\x1b[32m↑\x1b[0m") {
+		t.Errorf("pivot lacks the abutting arrow:\n%s", joined)
+	}
+
+	depsSnap := fakeDeps(f)
+	depsSnap.Live = &LiveOptions{Prev: map[string]float64{"Claude Code": 0.4}}
+	resSnap, err := Run(context.Background(), Request{}, singleCfg, depsSnap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if joined := strings.Join(resSnap.Lines, "\n"); !strings.Contains(joined, "$0.50 \x1b[32m↑\x1b[0m") {
+		t.Errorf("snapshot lacks the in-cell arrow:\n%s", joined)
+	}
+}
+
+// TestRunWatchFlagsOneShot: a bare --no-rain or --interval without --watch
+// renders the ordinary one-shot output (DC-03 silent acceptance); --watch
+// itself is in scope too (the edge intercepts it before Run).
+func TestRunWatchFlagsOneShot(t *testing.T) {
+	for _, flags := range []Flags{
+		{NoRain: true},
+		{Interval: 30},
+		{NoRain: true, Interval: 30},
+	} {
+		f := &fakeFetcher{byTool: map[string][]fact.Record{}}
+		res, err := Run(context.Background(), Request{Flags: flags}, singleCfg, fakeDeps(f))
+		if err != nil {
+			t.Fatalf("Run(%+v) = %v, want the one-shot render", flags, err)
+		}
+		joined := strings.Join(res.Lines, "\n")
+		if !strings.Contains(joined, "No usage") {
+			t.Errorf("Run(%+v) did not render the snapshot:\n%s", flags, joined)
+		}
+	}
+}
+
+// padDay zero-pads a day-of-month into DD.
+func padDay(d int) string {
+	if d < 10 {
+		return "0" + string(rune('0'+d))
+	}
+	return string(rune('0'+d/10)) + string(rune('0'+d%10))
+}
+
+// TestRunLeaderboardLivePrev: the lb path passes Deps.Live.Prev into the view
+// options (the in-cell watch arrow after the padded cost cell, with the bar
+// reserve); lbh passes it as the pivot's Prev and never sets MaxRows.
+func TestRunLeaderboardLivePrev(t *testing.T) {
+	f := &fakeFetcher{}
+	deps := multiDeps(f, seedRepo())
+	deps.Live = &LiveOptions{Prev: map[string]float64{"harness-user": 1.0}, MaxRows: 1}
+	res, err := Run(context.Background(), Request{
+		Display: Leaderboard,
+		Flags:   Flags{Since: "2026-01-01", Until: "2026-01-31", Interval: 10},
+	}, multiCfg, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(res.Lines, "\n")
+	if !strings.Contains(joined, "$1.70 \x1b[32m↑\x1b[0m") {
+		t.Errorf("lb lacks the in-cell delta arrow:\n%s", joined)
+	}
+
+	// lbh: Prev rides the pivot rows ("total:{label}"); MaxRows is not
+	// applied (the TS lbhFormatOptions never carries it).
+	depsH := multiDeps(f, seedRepo())
+	depsH.Live = &LiveOptions{Prev: map[string]float64{"total:2026-01-07": 0.1}, MaxRows: 1}
+	resH, err := Run(context.Background(), Request{
+		Display: LeaderboardHistory,
+		Flags:   Flags{Since: "2026-01-05", Until: "2026-01-07", Interval: 10},
+	}, multiCfg, depsH)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joinedH := strings.Join(resH.Lines, "\n")
+	if !strings.Contains(joinedH, "\x1b[32m↑\x1b[0m") {
+		t.Errorf("lbh lacks the pivot delta arrow:\n%s", joinedH)
+	}
+	if !strings.Contains(joinedH, "2026-01-05") {
+		t.Errorf("lbh applied MaxRows (2026-01-05 truncated away):\n%s", joinedH)
 	}
 }
