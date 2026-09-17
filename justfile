@@ -32,16 +32,34 @@ release-notes tag="":
 # switches this to `git describe` when package.json goes away.
 go_version := `node -p 'require("./package.json").version'`
 
-# Build the Go binary into bin/tu (gitignored; not dist/, which is the shipped Node artifact).
-# The cmp guard is the build-time drift guard for the embedded skill bundle —
-# it fails the build before `go build` when the committed copy drifts from the
-# canonical docs/site/skill.md (mirrors scripts/build.sh's post-build guard for
-# the Node bundle).
-go-build:
-    mkdir -p bin
+# Build-time drift guard for the embedded skill bundle — fails before `go build`
+# when the committed copy drifts from the canonical docs/site/skill.md (mirrors
+# scripts/build.sh's post-build guard for the Node bundle). Shared by go-build
+# and go-build-target.
+_go-skill-guard:
     cmp -s docs/site/skill.md src/go/internal/toolkit/skill.md || { echo "error: src/go/internal/toolkit/skill.md drifted from docs/site/skill.md — run scripts/sync-skill.sh" >&2; exit 1; }
+
+# Build the Go binary into bin/tu (gitignored; not dist/, which is the shipped Node artifact).
+go-build:
+    just _go-skill-guard
+    mkdir -p bin
     cd src/go && go build -ldflags "-X main.version=v{{go_version}}" -o ../../bin/tu ./cmd/tu
     cd src/go && go build -o ../../bin/turepair ./cmd/turepair
+
+# Cross-compile bin for one target into dist/bin/tu-<os>-<arch> (release artifact
+# staging; bin/tu stays the dev binary). Only cmd/tu is cross-compiled — turepair
+# is a maintainer tool, not shipped. CGO_ENABLED=0 for static binaries.
+go-build-target os arch:
+    just _go-skill-guard
+    mkdir -p dist/bin
+    cd src/go && CGO_ENABLED=0 GOOS={{os}} GOARCH={{arch}} go build -ldflags "-X main.version=v{{go_version}}" -o ../../dist/bin/tu-{{os}}-{{arch}} ./cmd/tu
+
+# The four release targets (Homebrew's matrix: darwin/linux x arm64/amd64).
+go-build-all:
+    just go-build-target darwin arm64
+    just go-build-target darwin amd64
+    just go-build-target linux arm64
+    just go-build-target linux amd64
 
 # Run the Go test suite under src/go/.
 go-test:
@@ -82,3 +100,29 @@ go-diff *ARGS: build go-build harness-build
 # reported under bin/harness/report-live/ (plan R14). Exit 1 while any step is red.
 go-live *ARGS: build go-build harness-build
     bin/harness/tudiff live {{ARGS}}
+
+# Package the four tu-go-<os>-<arch>.tar.gz release archives (+ SHA256SUMS, host
+# smoke test) into dist/. Requires go-build-all; fetches the pinned ccusage
+# tarballs from the npm registry by curl (no node/npm in the fetch path).
+go-package:
+    scripts/package-go.sh
+
+# Generate the Go Homebrew formula into dist/tu.rb (written to dist/ and echoed
+# in the release log, NOT pushed to the tap until cutover — plan row X1).
+go-formula tag="":
+    scripts/go-formula.sh {{tag}}
+
+# Local end-to-end release pipeline: everything the release job runs minus the
+# uploads (fab-kit's `dist` recipe shape).
+go-dist: go-build-all
+    just go-package
+    just go-formula
+
+# Install the Go dogfood build from a release's tu-go-* asset into ~/.local
+# (plan rows R1/R2). Default: latest release.
+dogfood-install tag="":
+    scripts/dogfood-install.sh {{tag}}
+
+# Remove the dogfood build so `tu` resolves to the brew binary again.
+dogfood-uninstall:
+    scripts/dogfood-uninstall.sh
