@@ -3,6 +3,7 @@ package sync
 import (
 	"encoding/json"
 	"math"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -103,8 +104,9 @@ func shrinkState(path string, incoming float64) (shrinking bool, existing *float
 }
 
 // jsNumber is the JS Number() coercion the TS applies to existing?.totalCost:
-// a JSON number → itself, null → 0, true/false → 1/0, a string → trimmed
-// (empty → 0, else ParseFloat, failure → NaN); an array or object → NaN.
+// a JSON number → itself, null → 0, true/false → 1/0, a string → the
+// StringNumericLiteral parse (jsNumberString), an array → Number() of its
+// join(",") string ([5] → 5, [] → 0), an object → NaN ("[object Object]").
 func jsNumber(v any) float64 {
 	switch x := v.(type) {
 	case float64:
@@ -117,18 +119,88 @@ func jsNumber(v any) float64 {
 		}
 		return 0
 	case string:
-		s := strings.TrimSpace(x)
-		if s == "" {
-			return 0
-		}
-		f, err := strconv.ParseFloat(s, 64)
-		if err != nil {
-			return math.NaN()
-		}
-		return f
-	default: // array or object
+		return jsNumberString(x)
+	case []any:
+		return jsNumberString(jsJoin(x))
+	default: // object
 		return math.NaN()
 	}
+}
+
+// jsNumberString is Number() on a string: trimmed; empty → 0; a 0x/0X/0o/0O/
+// 0b/0B prefix (no sign allowed — Number("-0x10") is NaN) → the integer in
+// that base, parsed as a big.Float so arbitrarily long digit strings round to
+// the nearest double as JS does (failure → NaN); otherwise strconv.ParseFloat
+// (failure → NaN). ParseFloat is never offered a base-prefixed string — it
+// would accept a hex float like "0x1.8p1" that JS rejects.
+func jsNumberString(s string) float64 {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
+	}
+	if len(s) > 2 && s[0] == '0' {
+		var base int
+		switch s[1] {
+		case 'x', 'X':
+			base = 16
+		case 'o', 'O':
+			base = 8
+		case 'b', 'B':
+			base = 2
+		}
+		if base != 0 {
+			digits := s[2:]
+			for i := 0; i < len(digits); i++ {
+				if strings.IndexByte("0123456789abcdef"[:base], lowerByte(digits[i])) < 0 {
+					return math.NaN() // e.g. the hex float "0x1.8p1" JS rejects
+				}
+			}
+			f, _, err := big.ParseFloat(digits, base, 53, big.ToNearestEven)
+			if err != nil {
+				return math.NaN()
+			}
+			v, _ := f.Float64()
+			return v
+		}
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return math.NaN()
+	}
+	return f
+}
+
+// lowerByte folds ASCII uppercase to lowercase for the base-prefix digit scan.
+func lowerByte(c byte) byte {
+	if 'A' <= c && c <= 'Z' {
+		return c + 'a' - 'A'
+	}
+	return c
+}
+
+// jsJoin is Array.prototype.join(",") for a JSON array: elements are
+// ToString'd — null → "", bool → "true"/"false", number → its shortest
+// round-trip form, string → itself, a nested array → its own join, an object
+// → "[object Object]".
+func jsJoin(arr []any) string {
+	parts := make([]string, len(arr))
+	for i, el := range arr {
+		switch x := el.(type) {
+		case nil:
+			parts[i] = ""
+		case bool:
+			parts[i] = strconv.FormatBool(x)
+		case float64:
+			parts[i] = strconv.FormatFloat(x, 'g', -1, 64)
+		case string:
+			parts[i] = x
+		case []any:
+			parts[i] = jsJoin(x)
+		default: // object
+			parts[i] = "[object Object]"
+		}
+	}
+	return strings.Join(parts, ",")
 }
 
 // Writer adapts the package Write to command.Writer (asserted where cmd/tu

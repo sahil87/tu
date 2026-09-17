@@ -175,6 +175,52 @@ func TestRunMissingBinary(t *testing.T) {
 	}
 }
 
+// A stream overflowing MaxBuffer kills the child and yields Node's maxBuffer
+// message (pinned against Node v24's execFile) — here on stdout with the
+// child exiting 0, matching Node erroring on the overflow regardless.
+func TestRunStdoutMaxBufferExceeded(t *testing.T) {
+	stageFakeGit(t)
+	t.Setenv("FAKEGIT_STDOUT", strings.Repeat("x", 32))
+	_, err := (Exec{MaxBuffer: 16}).Run("/r", "log")
+	want := "git -C /r... failed: stdout maxBuffer length exceeded"
+	if err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+}
+
+// Same on stderr, on a non-zero exit: the overflow message replaces the
+// Command failed text, as in Node.
+func TestRunStderrMaxBufferExceeded(t *testing.T) {
+	stageFakeGit(t)
+	t.Setenv("FAKEGIT_EXIT", "1")
+	t.Setenv("FAKEGIT_STDERR", strings.Repeat("e", 32))
+	_, err := (Exec{MaxBuffer: 16}).Run("/r", "push")
+	want := "git -C /r... failed: stderr maxBuffer length exceeded"
+	if err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+}
+
+// Output at exactly the cap is not an overflow; the default cap is the sync
+// 10 MiB (MaxBufferSync), the repair twin's is MaxBufferRepair.
+func TestRunMaxBufferBoundaries(t *testing.T) {
+	stageFakeGit(t)
+	t.Setenv("FAKEGIT_STDOUT", strings.Repeat("x", 16))
+	stdout, err := (Exec{MaxBuffer: 16}).Run("/r", "status", "--porcelain")
+	if err != nil {
+		t.Fatalf("Run err = %v, want nil at exactly the cap", err)
+	}
+	if len(stdout) != 16 {
+		t.Errorf("len(stdout) = %d, want 16", len(stdout))
+	}
+	if (Exec{}).maxBuffer() != MaxBufferSync {
+		t.Errorf("zero MaxBuffer = %d, want MaxBufferSync %d", (Exec{}).maxBuffer(), MaxBufferSync)
+	}
+	if (Exec{MaxBuffer: MaxBufferRepair}).maxBuffer() != MaxBufferRepair {
+		t.Errorf("MaxBufferRepair not honored")
+	}
+}
+
 // captureProcessStreams swaps os.Stdout/os.Stderr for pipes while fn runs and
 // returns whatever was written to them — CloneQuiet must leave both empty.
 func captureProcessStreams(t *testing.T, fn func()) (stdout, stderr string) {

@@ -2,6 +2,7 @@ package sync
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -395,6 +396,8 @@ func TestWriteDryRunPerEntryBatch(t *testing.T) {
 // TS readShrinkState via Number(existing?.totalCost): existing content empty,
 // garbage, {"label":"x"}, null and 5 are treated as absent (write, no
 // existing cost); {"totalCost":"1.5"} coerces to 1.5, so incoming 1.0 skips.
+// The hex-string and single-element-array rows are Node's Number("0x10") = 16
+// and Number([5]) = 5 — a lower incoming cost must skip there too.
 func TestShrinkStateCoercionTable(t *testing.T) {
 	cases := []struct {
 		name         string
@@ -408,6 +411,10 @@ func TestShrinkStateCoercionTable(t *testing.T) {
 		{"top-level null", "null", ActionWrite, nil},
 		{"top-level number", "5", ActionWrite, nil},
 		{"string totalCost", `{"totalCost":"1.5"}`, ActionSkip, ptrFloat(1.5)},
+		{"hex string totalCost", `{"totalCost":"0x10"}`, ActionSkip, ptrFloat(16)},
+		{"single-element array totalCost", `{"totalCost":[5]}`, ActionSkip, ptrFloat(5)},
+		{"multi-element array totalCost", `{"totalCost":[1,2]}`, ActionWrite, nil},
+		{"object totalCost", `{"totalCost":{}}`, ActionWrite, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -440,6 +447,88 @@ func TestShrinkStateCoercionTable(t *testing.T) {
 }
 
 func ptrFloat(f float64) *float64 { return &f }
+
+// TestJSNumberString pins the string half of the Number() coercion against
+// values verified with Node v24 (Number(s) for each row).
+func TestJSNumberString(t *testing.T) {
+	cases := []struct {
+		in   string
+		want float64
+	}{
+		{"", 0},
+		{"  ", 0},
+		{"1.5", 1.5},
+		{" 5 ", 5},
+		{"0x10", 16},
+		{"0X1F", 31},
+		{"0o17", 15},
+		{"0O17", 15},
+		{"0b101", 5},
+		{"0x", math.NaN()},
+		{"0x1g", math.NaN()},
+		{"-0x10", math.NaN()}, // no sign before a non-decimal literal
+		{"+0x10", math.NaN()},
+		{"0xFFFFFFFFFFFFFFFF", 18446744073709552000},
+		{"0x10000000000000000", 18446744073709552000}, // rounds to the nearest double, not NaN
+		{"0x1.8p1", math.NaN()},                       // JS rejects hex floats; ParseFloat would accept
+		{"017", 17},
+		{"5.", 5},
+		{".5", 0.5},
+		{"5.e3", 5000},
+		{"garbage", math.NaN()},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			got := jsNumberString(tc.in)
+			if math.IsNaN(tc.want) {
+				if !math.IsNaN(got) {
+					t.Errorf("jsNumberString(%q) = %v, want NaN", tc.in, got)
+				}
+			} else if got != tc.want {
+				t.Errorf("jsNumberString(%q) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestJSNumberArray pins the array half against Node v24 (Number(a) per row):
+// Number() of the join(",") string, with null → "", nested arrays joined
+// recursively, and objects → "[object Object]".
+func TestJSNumberArray(t *testing.T) {
+	cases := []struct {
+		in   string // JSON document used as the totalCost value
+		want float64
+	}{
+		{`[5]`, 5},
+		{`[]`, 0},
+		{`[null]`, 0},
+		{`[[5]]`, 5},
+		{`[1,2]`, math.NaN()},
+		{`[true]`, math.NaN()},
+		{`[{}]`, math.NaN()},
+		{`["5"]`, 5},
+		{`["0x10"]`, 16},
+		{`[" "]`, 0},
+		{`[0.5]`, 0.5},
+		{`["1,2"]`, math.NaN()},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			var v any
+			if err := json.Unmarshal([]byte(tc.in), &v); err != nil {
+				t.Fatal(err)
+			}
+			got := jsNumber(v)
+			if math.IsNaN(tc.want) {
+				if !math.IsNaN(got) {
+					t.Errorf("jsNumber(%s) = %v, want NaN", tc.in, got)
+				}
+			} else if got != tc.want {
+				t.Errorf("jsNumber(%s) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}
 
 // T007: the Writer adapter writes in live mode through the package Write.
 func TestWriterAdapter(t *testing.T) {

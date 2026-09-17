@@ -303,12 +303,17 @@ func (lr *liveRunner) runSequence(stdout io.Writer) []harness.Result {
 
 	// d. foreign commit: a third clone of each bare pushes a day-file; each
 	// side then syncs a fresh local change (the one-off alias raises cc
-	// 2026-01-07) and pull --rebase integrates.
+	// 2026-01-07) and pull --rebase integrates. The fetch cache key excludes
+	// TUDIFF_FIXTURES and steps a–c warmed it, so both sides' .tu/cache must go
+	// first — otherwise the alias's raised value is never read and the step
+	// exercises only a clean pull.
 	if err := lr.pushForeignCommit(); err != nil {
 		emit(harnessFailStep("foreign-sync", []string{"sync"}, err))
 	} else {
 		alias := filepath.Join(lr.cfg.tmpRoot, "live-alias")
 		if err := buildLiveAlias(lr.cfg.placeholder, alias, "2026-01-07", 0.9); err != nil {
+			emit(harnessFailStep("foreign-sync", []string{"sync"}, err))
+		} else if err := lr.clearFetchCaches(); err != nil {
 			emit(harnessFailStep("foreign-sync", []string{"sync"}, err))
 		} else {
 			res, _, _ = lr.compareStep("foreign-sync", []string{"sync"}, alias)
@@ -587,6 +592,18 @@ func (lr *liveRunner) pushForeignCommit() error {
 			return err
 		}
 		if _, err := liveGit(lr.baseEnv, clone, "push", "origin", "main"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// clearFetchCaches wipes both sides' $HOME/.tu/cache so a step running under a
+// different TUDIFF_FIXTURES alias re-fetches instead of replaying the records
+// an earlier step cached under the same (tool, period, args) key.
+func (lr *liveRunner) clearFetchCaches() error {
+	for _, side := range []liveSide{lr.node, lr.goSide} {
+		if err := os.RemoveAll(filepath.Join(side.home, ".tu", "cache")); err != nil {
 			return err
 		}
 	}

@@ -38,7 +38,7 @@ func run(args []string, home string, stdout, stderr io.Writer) int {
 		writeLines(stderr, sync.FailLines(failMsg))
 		return 1
 	}
-	out, errLines, exit := sync.Repair(o, sync.Exec{})
+	out, errLines, exit := sync.Repair(o, sync.Exec{MaxBuffer: sync.MaxBufferRepair})
 	writeLines(stdout, out)
 	writeLines(stderr, errLines)
 	return exit

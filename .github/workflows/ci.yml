@@ -110,7 +110,9 @@ jobs:
         if: always()
         with:
           name: tudiff-report
-          path: bin/harness/report/
+          path: |
+            bin/harness/report/
+            bin/harness/report-live/
 
   # Single, stable status-check name for the branch ruleset on main to require.
   # `if: always()` so the gate reports a definitive pass/fail even when
