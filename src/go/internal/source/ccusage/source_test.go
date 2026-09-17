@@ -261,6 +261,57 @@ func TestResolveBinaryPathFallback(t *testing.T) {
 	}
 }
 
+// The shipped tarball and dogfood layouts both put the real binary behind a
+// symlink (Homebrew bin/, ~/.local/bin); the vendored ccusage sits beside the
+// real file. resolveVendor must follow the link and find it.
+func TestResolveVendorThroughSymlink(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real")
+	vendorBin := filepath.Join(real, "vendor", "ccusage", "bin")
+	if err := os.MkdirAll(vendorBin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	vendored := filepath.Join(vendorBin, "ccusage")
+	if err := os.WriteFile(vendored, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	exe := filepath.Join(real, "tu")
+	if err := os.WriteFile(exe, []byte{}, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	binDir := filepath.Join(dir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(binDir, "tu")
+	if err := os.Symlink(filepath.Join("..", "real", "tu"), link); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := resolveVendor(link)
+	if !ok {
+		t.Fatal("resolveVendor(<dir>/bin/tu) = not found, want the vendored ccusage")
+	}
+	// t.TempDir() may sit under a symlinked /tmp; compare resolved paths.
+	want, err := filepath.EvalSymlinks(vendored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Errorf("resolveVendor(<dir>/bin/tu) = %q, want %q", got, want)
+	}
+}
+
+func TestResolveVendorAbsent(t *testing.T) {
+	exe := filepath.Join(t.TempDir(), "tu")
+	if err := os.WriteFile(exe, []byte{}, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := resolveVendor(exe); ok {
+		t.Errorf("resolveVendor(no vendor sibling) = %q, want not found", got)
+	}
+}
+
 func TestFetchAllDaily(t *testing.T) {
 	src := &Source{Binary: fakeBinary, User: "alice", Machine: "ws-1"}
 	records, errs := src.FetchAll(context.Background(), source.PeriodDaily, nil, false)

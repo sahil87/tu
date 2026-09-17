@@ -25,11 +25,7 @@ import (
 // resolution entirely.
 func ResolveBinary() (string, error) {
 	if exe, err := os.Executable(); err == nil {
-		if resolved, rerr := filepath.EvalSymlinks(exe); rerr == nil {
-			exe = resolved
-		}
-		vendor := filepath.Join(filepath.Dir(exe), "vendor", "ccusage", "bin", "ccusage")
-		if _, err := os.Stat(vendor); err == nil {
+		if vendor, ok := resolveVendor(exe); ok {
 			return vendor, nil
 		}
 	}
@@ -37,6 +33,20 @@ func ResolveBinary() (string, error) {
 		return path, nil
 	}
 	return "", fmt.Errorf("ccusage: no ccusage binary found: %w", exec.ErrNotFound)
+}
+
+// resolveVendor returns the vendor/ccusage/bin/ccusage path beside exe, with
+// exe's symlinks resolved so a Homebrew bin/ or ~/.local/bin symlink finds the
+// vendor tree beside the real file. It reports false when no such file exists.
+func resolveVendor(exe string) (string, bool) {
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	vendor := filepath.Join(filepath.Dir(exe), "vendor", "ccusage", "bin", "ccusage")
+	if _, err := os.Stat(vendor); err == nil {
+		return vendor, true
+	}
+	return "", false
 }
 
 // run executes binary with argv (no shell), inheriting the environment and

@@ -71,7 +71,7 @@ The Go port's input layer is five packages under `src/go/internal/`: `fact` is p
 - **THEN** the logged argv is exactly `["claude","daily","--json"]`
 
 ### Requirement: Binary resolution
-`func ResolveBinary() (string, error)` SHALL return, in order: (1) `vendor/ccusage/bin/ccusage` beside the running executable (`os.Executable()`, symlinks resolved via `filepath.EvalSymlinks` so a Homebrew `bin/` symlink finds the vendor tree beside the real file) if it exists; (2) `ccusage` on `PATH`; (3) an error wrapping `exec.ErrNotFound`. It MUST NOT walk to a repo root or probe `node_modules`. `Source.Binary` non-empty bypasses resolution entirely.
+`func ResolveBinary() (string, error)` SHALL return, in order: (1) `vendor/ccusage/bin/ccusage` beside the running executable (`os.Executable()`, symlinks resolved via `filepath.EvalSymlinks` so a Homebrew `bin/` symlink finds the vendor tree beside the real file) if it exists; (2) `ccusage` on `PATH`; (3) an error wrapping `exec.ErrNotFound`. The vendor lookup is the unexported `resolveVendor(exe string) (string, bool)` helper that `ResolveBinary` calls, pinned by the symlink-chain tests `TestResolveVendorThroughSymlink` / `TestResolveVendorAbsent` in `source_test.go` (0118). It MUST NOT walk to a repo root or probe `node_modules`. `Source.Binary` non-empty bypasses resolution entirely.
 
 #### Scenario: No binary anywhere
 - **GIVEN** no vendor sibling and no `ccusage` on `PATH`

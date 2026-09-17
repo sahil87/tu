@@ -70,6 +70,12 @@ jobs:
       - name: Build
         run: just go-build
 
+      # Cross-compile all four release targets (no network) — catches
+      # GOOS-specific compile breaks on every PR. Packaging (registry fetch)
+      # runs at release time and via `just go-dist`, not in the PR gate.
+      - name: Cross-compile
+        run: just go-build-all
+
       - name: Test
         run: just go-test
 
