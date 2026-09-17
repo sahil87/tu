@@ -410,15 +410,22 @@ func runSnapshot(req Request, cfg config.Config, raw []fact.Record, errs []*sour
 		bd = buildSnapshotBreakdown(req, cfg, raw, cur)
 	}
 
+	metric := view.Cost
+	if req.Flags.Metric == Tokens {
+		metric = view.Tokens
+	}
 	res := Result{Notices: notices, Warnings: errs, CostByItem: make(map[string]float64, len(rows))}
 	for _, r := range rows {
 		res.TotalCost += r.TotalCost
 		res.TotalTokens += r.TotalTokens
-		res.CostByItem[r.Name] = r.TotalCost
-	}
-	metric := view.Cost
-	if req.Flags.Metric == Tokens {
-		metric = view.Tokens
+		// CostByItem is the watch delta baseline — valued in the display
+		// metric like every other display path (the TS buildCostMap);
+		// TotalCost stays dollar-valued for the session stats.
+		v := r.TotalCost
+		if metric == view.Tokens {
+			v = float64(r.TotalTokens)
+		}
+		res.CostByItem[r.Name] = v
 	}
 	switch req.Format {
 	case JSON:

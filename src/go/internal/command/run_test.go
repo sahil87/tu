@@ -1367,6 +1367,27 @@ func TestRunLiveCompactSnapshot(t *testing.T) {
 	}
 }
 
+// TestRunSnapshotTokenModeCostByItem: under --tokens the snapshot's
+// CostByItem (the watch delta baseline) is token-valued like every other
+// display path (the TS buildCostMap), while TotalCost stays dollar-valued
+// for the session stats.
+func TestRunSnapshotTokenModeCostByItem(t *testing.T) {
+	f := &fakeFetcher{byTool: map[string][]fact.Record{
+		"cc":    {{Date: "2026-01-06", Tool: "cc", Totals: fakeTotals}},
+		"codex": {{Date: "2026-01-06", Tool: "codex", Totals: fakeTotals}},
+	}}
+	res, err := Run(context.Background(), Request{Flags: Flags{Metric: Tokens}}, singleCfg, fakeDeps(f))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.CostByItem["Codex"] != 24400 || res.CostByItem["Claude Code"] != 24400 {
+		t.Errorf("token-valued CostByItem = %v", res.CostByItem)
+	}
+	if res.TotalCost != 1.0 {
+		t.Errorf("TotalCost = %v, want 1.0 (dollars for the session stats)", res.TotalCost)
+	}
+}
+
 // TestRunLiveCompactHistoryWindow: the row budget truncates the rendered rows
 // while CostByItem keeps one key per untruncated entry (R16).
 func TestRunLiveCompactHistoryWindow(t *testing.T) {
