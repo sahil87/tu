@@ -10,7 +10,7 @@ progress:
     review: done
     hydrate: done
     ship: done
-    review-pr: active
+    review-pr: done
 plan:
     generated: true
     task_count: 14
@@ -34,7 +34,7 @@ stage_metrics:
     review: {started_at: "2026-09-17T00:38:59Z", driver: fab-fff, iterations: 2, completed_at: "2026-09-17T00:44:54Z"}
     hydrate: {started_at: "2026-09-17T00:44:54Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-17T00:53:14Z"}
     ship: {started_at: "2026-09-17T00:53:14Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-17T00:54:36Z"}
-    review-pr: {started_at: "2026-09-17T00:54:36Z", driver: git-pr, iterations: 1}
+    review-pr: {started_at: "2026-09-17T00:54:36Z", driver: git-pr, iterations: 1, completed_at: "2026-09-17T01:15:28Z"}
 prs:
     - https://github.com/sahil87/tu/pull/94
 change_type_source: explicit
@@ -56,4 +56,4 @@ true_impact:
 summary: 'ports the metrics-repo writer and git flow: sync.Write with the never-shrink guard, SyncMetrics/FullSync with the byte-exact dry-run report, the turepair maintainer binary, tu sync/--dry-run/--sync at the edge, the harness tree channel and tudiff live real-git parity'
 # base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-09-17T00:54:36Z
+last_updated: 2026-09-17T01:15:28Z
