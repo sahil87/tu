@@ -58,14 +58,14 @@ func TestTableGoldens(t *testing.T) {
 		golden string
 		lines  []string
 	}{
-		{"populated color", "snapshot_color.golden", Table(view.Snapshot(snapshotRows(), query.Daily, nil, view.Cost), color)},
-		{"populated no-color", "snapshot_nocolor.golden", Table(view.Snapshot(snapshotRows(), query.Daily, nil, view.Cost), Colors{})},
-		{"single row", "snapshot_single.golden", Table(view.Snapshot(snapshotRows()[:1], query.Daily, nil, view.Cost), color)},
-		{"empty", "snapshot_empty.golden", Table(view.Snapshot(nil, query.Daily, nil, view.Cost), color)},
-		{"machines color", "snapshot_machines_color.golden", Table(view.Snapshot(snapshotRows(), query.Daily, snapshotMachines(), view.Cost), color)},
-		{"machines no-color", "snapshot_machines_nocolor.golden", Table(view.Snapshot(snapshotRows(), query.Daily, snapshotMachines(), view.Cost), Colors{})},
-		{"machines tokens", "snapshot_machines_tokens.golden", Table(view.Snapshot(snapshotRows(), query.Daily, snapshotMachines(), view.Tokens), color)},
-		{"machines users", "snapshot_machines_users.golden", Table(view.Snapshot(snapshotRows(), query.Daily, snapshotUsers(), view.Cost), color)},
+		{"populated color", "snapshot_color.golden", Table(view.Snapshot(snapshotRows(), query.Daily, nil, view.SnapshotOptions{Metric: view.Cost}), color)},
+		{"populated no-color", "snapshot_nocolor.golden", Table(view.Snapshot(snapshotRows(), query.Daily, nil, view.SnapshotOptions{Metric: view.Cost}), Colors{})},
+		{"single row", "snapshot_single.golden", Table(view.Snapshot(snapshotRows()[:1], query.Daily, nil, view.SnapshotOptions{Metric: view.Cost}), color)},
+		{"empty", "snapshot_empty.golden", Table(view.Snapshot(nil, query.Daily, nil, view.SnapshotOptions{Metric: view.Cost}), color)},
+		{"machines color", "snapshot_machines_color.golden", Table(view.Snapshot(snapshotRows(), query.Daily, snapshotMachines(), view.SnapshotOptions{Metric: view.Cost}), color)},
+		{"machines no-color", "snapshot_machines_nocolor.golden", Table(view.Snapshot(snapshotRows(), query.Daily, snapshotMachines(), view.SnapshotOptions{Metric: view.Cost}), Colors{})},
+		{"machines tokens", "snapshot_machines_tokens.golden", Table(view.Snapshot(snapshotRows(), query.Daily, snapshotMachines(), view.SnapshotOptions{Metric: view.Tokens}), color)},
+		{"machines users", "snapshot_machines_users.golden", Table(view.Snapshot(snapshotRows(), query.Daily, snapshotUsers(), view.SnapshotOptions{Metric: view.Cost}), color)},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -94,8 +94,8 @@ func TestTableGoldens(t *testing.T) {
 // byte (the TS invariant behind --no-color/NO_COLOR equivalence).
 func TestStripANSIMatchesNoColor(t *testing.T) {
 	for _, tab := range []view.Table{
-		view.Snapshot(snapshotRows(), query.Daily, nil, view.Cost),
-		view.Snapshot(snapshotRows(), query.Daily, snapshotMachines(), view.Cost),
+		view.Snapshot(snapshotRows(), query.Daily, nil, view.SnapshotOptions{Metric: view.Cost}),
+		view.Snapshot(snapshotRows(), query.Daily, snapshotMachines(), view.SnapshotOptions{Metric: view.Cost}),
 	} {
 		color := Table(tab, Colors{Enabled: true})
 		plain := Table(tab, Colors{})
@@ -111,7 +111,7 @@ func TestStripANSIMatchesNoColor(t *testing.T) {
 }
 
 func TestEmptyStateLines(t *testing.T) {
-	got := Table(view.Snapshot(nil, query.Daily, nil, view.Cost), Colors{Enabled: true})
+	got := Table(view.Snapshot(nil, query.Daily, nil, view.SnapshotOptions{Metric: view.Cost}), Colors{Enabled: true})
 	want := []string{"", "\x1b[1;37m📊 Combined Usage (daily)\x1b[0m", "", "  No usage", ""}
 	if len(got) != len(want) {
 		t.Fatalf("got %d lines, want %d: %q", len(got), len(want), got)
@@ -124,7 +124,7 @@ func TestEmptyStateLines(t *testing.T) {
 }
 
 func TestDividerWidth(t *testing.T) {
-	lines := Table(view.Snapshot(snapshotRows(), query.Daily, nil, view.Cost), Colors{})
+	lines := Table(view.Snapshot(snapshotRows(), query.Daily, nil, view.SnapshotOptions{Metric: view.Cost}), Colors{})
 	var div string
 	for _, l := range lines {
 		if strings.Contains(l, "─") {
@@ -183,5 +183,46 @@ func TestPad(t *testing.T) {
 	}
 	if got := PadRight("é", 3); got != "é  " {
 		t.Errorf("PadRight pads by rune count, got %q", got)
+	}
+}
+
+// The watch delta goldens (B7): the snapshot's in-cell arrow under both
+// metrics, colored and NO_COLOR. The colored golden pins the JS raw-length
+// padding quirk — the arrow's escape codes count toward the cell width, so a
+// colored cell renders effectively unpadded — and the no-color twin pins the
+// padded-to-12 form. The StripANSI(color) == no-color invariant deliberately
+// does NOT hold here (the quirk is the divergence), so these tables stay out
+// of TestStripANSIMatchesNoColor.
+func TestSnapshotDeltaGoldens(t *testing.T) {
+	color := Colors{Enabled: true}
+	costPrev := map[string]float64{"Claude Code": 0.40, "Codex": 0.60}
+	tokenPrev := map[string]float64{"Claude Code": 20000, "Codex": 30000}
+	cases := []struct {
+		name   string
+		golden string
+		lines  []string
+	}{
+		{"cost color", "snapshot_delta_cost_color.golden", Table(view.Snapshot(snapshotRows(), query.Daily, nil, view.SnapshotOptions{Metric: view.Cost, Prev: costPrev}), color)},
+		{"cost no-color", "snapshot_delta_cost_nocolor.golden", Table(view.Snapshot(snapshotRows(), query.Daily, nil, view.SnapshotOptions{Metric: view.Cost, Prev: costPrev}), Colors{})},
+		{"tokens color", "snapshot_delta_tokens_color.golden", Table(view.Snapshot(snapshotRows(), query.Daily, nil, view.SnapshotOptions{Metric: view.Tokens, Prev: tokenPrev}), color)},
+		{"tokens no-color", "snapshot_delta_tokens_nocolor.golden", Table(view.Snapshot(snapshotRows(), query.Daily, nil, view.SnapshotOptions{Metric: view.Tokens, Prev: tokenPrev}), Colors{})},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := strings.Join(c.lines, "\n") + "\n"
+			path := filepath.Join("testdata", c.golden)
+			if *update {
+				if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read golden (run with -update to create): %v", err)
+			}
+			if got != string(raw) {
+				t.Errorf("table output differs from %s (-update to regenerate)\ngot:\n%q\nwant:\n%q", c.golden, got, string(raw))
+			}
+		})
 	}
 }

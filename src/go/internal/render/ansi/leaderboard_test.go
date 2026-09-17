@@ -214,3 +214,73 @@ func TestLeaderboardStripANSIInvariant(t *testing.T) {
 		}
 	}
 }
+
+// lbDeltaTable renders lbSix with the watch Prev map (B7): the delta arrow
+// rides the metric cell AFTER the padded text (DeltaAfterPad); the bar budget
+// reserves one column.
+func lbDeltaTable(m view.Metric, width int) view.Table {
+	return view.Leaderboard(lbSix(), view.LeaderboardOptions{
+		Period:      query.Monthly,
+		WindowLabel: "2026-09",
+		DeltaLabel:  "Aug",
+		Metric:      m,
+		PinnedUser:  "sahil",
+		Width:       width,
+		LastSync:    "never",
+		Prev: map[string]float64{
+			"sahil":   12000,   // up
+			"beatriz": 3400,    // down
+			"carlos":  1598.54, // equal: no arrow
+		},
+	})
+}
+
+// lbZeroDeltaRow pins the exact-zero composite: the Dim wrap covers
+// PadLeft("$0.00", w) + " " + arrow together (R13).
+func lbZeroDeltaRow() []view.LeaderboardRow {
+	return withShares([]view.LeaderboardRow{
+		{Rank: 1, User: "sahil", Totals: fact.Totals{TotalCost: 10, TotalTokens: 100}},
+		{Rank: 2, User: "frodo", Totals: fact.Totals{}},
+	}, view.Cost)
+}
+
+func TestLeaderboardDeltaGoldens(t *testing.T) {
+	color := Colors{Enabled: true}
+	zero := view.Leaderboard(lbZeroDeltaRow(), view.LeaderboardOptions{
+		Period: query.Monthly, WindowLabel: "2026-09", DeltaLabel: "Aug",
+		Metric: view.Cost, Width: 80, LastSync: "never",
+		Prev: map[string]float64{"frodo": -1}, // 0 > -1: up arrow on the zero row
+	})
+	cases := []struct {
+		name   string
+		golden string
+		lines  []string
+	}{
+		{"cost color", "leaderboard_delta_color.golden", Table(lbDeltaTable(view.Cost, 80), color)},
+		{"cost no-color", "leaderboard_delta_nocolor.golden", Table(lbDeltaTable(view.Cost, 80), Colors{})},
+		{"tokens color", "leaderboard_delta_tokens.golden", Table(view.Leaderboard(lbSixTokens(), view.LeaderboardOptions{
+			Period: query.Monthly, WindowLabel: "2026-09", DeltaLabel: "Aug",
+			Metric: view.Tokens, PinnedUser: "sahil", Width: 80, LastSync: "never",
+			Prev: map[string]float64{"sahil": 15000000000, "beatriz": 5600000000},
+		}), color)},
+		{"zero cost composite dim", "leaderboard_delta_zero.golden", Table(zero, color)},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := strings.Join(c.lines, "\n") + "\n"
+			path := filepath.Join("testdata", c.golden)
+			if *update {
+				if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read golden (run with -update to create): %v", err)
+			}
+			if got != string(raw) {
+				t.Errorf("table output differs from %s (-update to regenerate)\ngot:\n%q\nwant:\n%q", c.golden, got, string(raw))
+			}
+		})
+	}
+}

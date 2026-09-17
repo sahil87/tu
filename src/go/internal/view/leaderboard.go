@@ -96,6 +96,11 @@ func shareCell(share float64) string {
 //     reserve = 1 when Prev != nil.
 //   - A Divider + Total row (blank rank/share/delta cells) when len(rows) ≥ 2
 //     — the full set, also under --top.
+//   - The watch delta arrow rides the metric cell (Cost under cost, Tokens
+//     under tokens) from Prev[key] (key = user or user/machine), appended
+//     AFTER the padded text (DeltaAfterPad) with the exact-zero Dim wrap
+//     around the composite; the bar budget reserves one column when Prev !=
+//     nil.
 func Leaderboard(rows []LeaderboardRow, o LeaderboardOptions) Table {
 	m := o.Metric
 	byMetric := "cost"
@@ -103,8 +108,9 @@ func Leaderboard(rows []LeaderboardRow, o LeaderboardOptions) Table {
 		byMetric = "tokens"
 	}
 	t := Table{
-		Title:  "Leaderboard (" + o.Period.String() + ") · " + o.WindowLabel + " · by " + byMetric,
-		Footer: leaderboardFooter(o.LastSync),
+		Title:       "Leaderboard (" + o.Period.String() + ") · " + o.WindowLabel + " · by " + byMetric,
+		Footer:      leaderboardFooter(o.LastSync),
+		DeltaInCell: DeltaAfterPad,
 	}
 	if len(rows) == 0 {
 		t.Empty = emptyHistory // "  No data"
@@ -138,7 +144,7 @@ func Leaderboard(rows []LeaderboardRow, o LeaderboardOptions) Table {
 		t.Scale = ComputeScale(metricValues, barWidth)
 	}
 
-	t.Rows = leaderboardRows(visible, collapsedLabel, nameCell, t.Columns, t.Scale, showBars, m)
+	t.Rows = leaderboardRows(visible, collapsedLabel, nameCell, t.Columns, t.Scale, showBars, m, o.Prev)
 	if len(rows) >= 2 {
 		t.Rows = leaderboardTotal(t.Rows, grandCost, grandTokens)
 	}
@@ -223,8 +229,9 @@ func leaderboardColumns(w leaderboardWidths, deltaHeader string) []Column {
 // leaderboardRows assembles the header, divider, data rows (rank, name, dim
 // exact-zero Cost/Tokens cells, the toFixed(1) share, the Math.round delta,
 // the solid bar) and the collapsed "… +k others" row (dim name cell, blank
-// cells, no bar).
-func leaderboardRows(visible []LeaderboardRow, collapsedLabel string, nameCell func(LeaderboardRow) string, columns []Column, scale Scale, showBars bool, m Metric) []Row {
+// cells, no bar). The watch delta arrow rides the metric cell — Cost under
+// cost, Tokens under tokens — from prev[leaderboardKey(row)].
+func leaderboardRows(visible []LeaderboardRow, collapsedLabel string, nameCell func(LeaderboardRow) string, columns []Column, scale Scale, showBars bool, m Metric, prev map[string]float64) []Row {
 	rows := []Row{headerRow(columns), {Kind: Divider}}
 	for _, r := range visible {
 		row := Row{Kind: Data, Cells: []Cell{
@@ -235,8 +242,14 @@ func leaderboardRows(visible []LeaderboardRow, collapsedLabel string, nameCell f
 			{Text: shareCell(r.Share)},
 			{Text: fmtDeltaCell(r.Delta)},
 		}}
+		value := metricValue(r.Totals, m)
+		if m == Tokens {
+			row.Cells[3].Delta = rowDelta(prev, leaderboardKey(r), value)
+		} else {
+			row.Cells[2].Delta = rowDelta(prev, leaderboardKey(r), value)
+		}
 		if showBars {
-			row.Bar = rowBar(metricValue(r.Totals, m), scale, nil)
+			row.Bar = rowBar(value, scale, nil)
 		}
 		rows = append(rows, row)
 	}

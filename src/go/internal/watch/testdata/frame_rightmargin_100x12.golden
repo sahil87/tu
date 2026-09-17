@@ -1,0 +1,25 @@
+[?1049h[?25l[H[2m Elapsed  [0m[1;37m0s[0m           [2mTok/min   [0m[1;37m--[0m
+[2m Session  [0m[1;37m$0.00[0m        [2mRate      [0m[1;37m--[0m
+                       [2mProj. day [0m[1;37m--[0m
+[2m───────────────────────────────────[0m
+
+[1;37m📊 Combined Usage (daily)[0m
+
+[1;36mTool        [0m | [1;36m      Tokens[0m | [1;36m       Input[0m | [1;36m      Output[0m | [1;36m       Cache[0m | [1;36m        Cost[0m
+[2m─────────────|──────────────|──────────────|──────────────|──────────────|─────────────[0m
+                                      [2mLoading...[0m
+[12;1H[K[2mRefreshing...[0m[2m · [0m[2m↵ refresh · q quit[0m=== frame ===
+[H[2m Elapsed  [0m[1;37m0s[0m           [2mTok/min   [0m[1;37m--[0m[K
+[2m Session  [0m[1;37m$0.00[0m        [2mRate      [0m[1;37m--[0m[K
+                       [2mProj. day [0m[1;37m--[0m[K
+[2m───────────────────────────────────[0m[K
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx[K
+row[K
+row[K
+row[K
+row[K
+row[K
+row[K
+row[K
+[J[12;1H[K[2mRefreshing...[0m[2m · [0m[2m↵ refresh · q quit[0m[8;95H[92m1[0m[7;95H[32mk[0m[6;95H[32mｻ[0m[5;95H[32md[0m[4;95H[32mﾘ[0m[3;95H[2;32mT[0m[2;95H[2;32mｼ[0m[11;96H[92mﾄ[0m[10;96H[32mﾐ[0m[9;96H[32mﾒ[0m[8;96H[32mU[0m[7;96H[2;32mR[0m[6;96H[2;32mｦ[0m[12;1H[K[2mNext refresh: 10s[0m[2m · [0m[2m↵ refresh · q quit[0m=== exit ===
+[?25h[?1049l

@@ -183,14 +183,20 @@ func TestCommittedMatrix(t *testing.T) {
 			t.Errorf("axis value %q never occurs", v)
 		}
 	}
-	// No update group, and --watch only in the incompatibility case.
+	// No update group, and --watch only in the deterministic watch-family
+	// cases (the exit-2 incompatibilities and interval bounds — B7; no live
+	// -w session case: a frame is time- and RNG-dependent, see the intake).
+	watchGroups := map[string]bool{
+		"watch-json": true, "watch-csv": true, "watch-md": true,
+		"watch-interval-min": true, "watch-interval-max": true, "watch-interval-nan": true,
+	}
 	for _, g := range m.Cases {
 		for _, a := range g.Args {
 			if a == "update" {
 				t.Errorf("group %q uses update", g.ID)
 			}
-			if (a == "--watch" || a == "-w") && g.ID != "watch-json" {
-				t.Errorf("group %q uses %s outside the watch-json incompatibility case", g.ID, a)
+			if (a == "--watch" || a == "-w") && !watchGroups[g.ID] {
+				t.Errorf("group %q uses %s outside the deterministic watch-family cases", g.ID, a)
 			}
 		}
 	}

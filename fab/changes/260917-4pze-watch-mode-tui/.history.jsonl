@@ -1,0 +1,12 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-17T01:23:59Z"}
+{"args":"Context: fab/plans/sahil/26-09-15-go-port.md, row B7. Read the Decisions and Target architecture sections before writing the intake. Do not change any external surface listed under Goal. Build watch mode (D12): hand-rolled on x/term, no TUI framework. Ticker loop, compositor, panel (burn rate, session stats), rain layer, key handling, resize, compact threshold, -w on every display type. Harness gate: non-interactive --once-style frame capture if feasible, otherwise golden frames from the compositor with a fake clock.","cmd":"fab-new","event":"command","ts":"2026-09-17T01:23:59Z"}
+{"delta":"+4.5","event":"confidence","score":4.5,"trigger":"calc-score","ts":"2026-09-17T01:30:43Z"}
+{"delta":"+0.0","event":"confidence","score":4.5,"trigger":"calc-score","ts":"2026-09-17T01:31:08Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-17T01:32:26Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-17T01:33:04Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-17T02:26:08Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-17T02:35:03Z"}
+{"event":"review","result":"passed","ts":"2026-09-17T02:35:04Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-17T02:45:02Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-09-17T02:46:36Z"}
+{"event":"review","result":"passed","ts":"2026-09-17T02:52:45Z"}

@@ -55,25 +55,22 @@ func TestRunDevFallback(t *testing.T) {
 	}
 }
 
-// TestRunNotImplemented covers the recognized-but-unported surface: non-data
-// commands and unported flags keep the scaffold's placeholder (stderr, exit
-// 1). {} and {"cc"} left this list in V2; {"m","dh","--json"} and {"--csv"}
-// left it in B2 (history + the csv/md encoders) — they now fetch and render
-// (covered end-to-end in e2e_test.go). {"--help"} left it in B8 (the toolkit
-// layer); the multi-mode data cases left it in B3; {"h","--by-machine"} left
-// it in B4 (the flag warns-and-clears on the all-tools pivot and renders);
-// {"lb"} left it in B5 (the leaderboard is real in multi mode — covered
-// end-to-end in e2e_test.go); {"sync"} left it in B6 (the sync command, the
-// --dry-run preview and the --sync flag are all real — covered end-to-end in
-// e2e_test.go). What remains is B7's watch surface, pinned here under a
-// staged MULTI home.
+// TestRunNotImplemented covers the recognized-but-unported surface. {} and
+// {"cc"} left this list in V2; {"m","dh","--json"} and {"--csv"} left it in
+// B2 (history + the csv/md encoders) — they now fetch and render (covered
+// end-to-end in e2e_test.go). {"--help"} left it in B8 (the toolkit layer);
+// the multi-mode data cases left it in B3; {"h","--by-machine"} left it in
+// B4; {"lb"} left it in B5; {"sync"} left it in B6; the watch surface left it
+// in B7 (-w on every display is real — covered in e2e_test.go behind the
+// watch seams). What remains is --skip-brew-update on a data command (the B8
+// toolkit flag family), pinned here under a staged MULTI home.
 func TestRunNotImplemented(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
 	if err := harness.StageHome(home, harness.ConfMulti, e2eSeedDir); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
-	for _, args := range [][]string{{"--watch"}, {"cc", "--watch"}} {
+	for _, args := range [][]string{{"--skip-brew-update"}, {"cc", "--skip-brew-update"}} {
 		var stdout, stderr bytes.Buffer
 		code := run(args, &stdout, &stderr)
 		if code != 1 {
