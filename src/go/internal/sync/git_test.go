@@ -123,6 +123,58 @@ func TestCloneFailure(t *testing.T) {
 	}
 }
 
+// R4: Run returns stdout on exit 0 and issues exactly `-C <dir> <args...>`.
+func TestRunSuccess(t *testing.T) {
+	log := stageFakeGit(t)
+	t.Setenv("FAKEGIT_STDOUT", "stdout-text")
+	stdout, err := (Exec{}).Run("/r", "pull", "--rebase", "origin", "main")
+	if err != nil {
+		t.Fatalf("Run err = %v", err)
+	}
+	if stdout != "stdout-text" {
+		t.Errorf("stdout = %q, want %q", stdout, "stdout-text")
+	}
+	calls := readGitLog(t, log)
+	if len(calls) != 1 || strings.Join(calls[0], " ") != "-C /r pull --rebase origin main" {
+		t.Errorf("calls = %v, want [[-C /r pull --rebase origin main]]", calls)
+	}
+}
+
+// R4: a non-zero exit reproduces Node's "Command failed: <cmd>\n<stderr>"
+// message, the captured stderr verbatim (its trailing newline included).
+func TestRunFailureWithStderr(t *testing.T) {
+	stageFakeGit(t)
+	t.Setenv("FAKEGIT_EXIT", "1")
+	t.Setenv("FAKEGIT_STDERR", "fatal: couldn't find remote ref main\n")
+	_, err := (Exec{}).Run("/r", "pull", "--rebase", "origin", "main")
+	want := "git -C /r... failed: Command failed: git -C /r pull --rebase origin main\nfatal: couldn't find remote ref main\n"
+	if err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+}
+
+// R4: with empty stderr Node's message has no trailing newline (the `\n`
+// separator is added only when stderr is non-empty).
+func TestRunFailureNoStderr(t *testing.T) {
+	stageFakeGit(t)
+	t.Setenv("FAKEGIT_EXIT", "1")
+	_, err := (Exec{}).Run("/r", "status", "--porcelain")
+	want := "git -C /r... failed: Command failed: git -C /r status --porcelain\n"
+	if err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+}
+
+// R4: git missing from PATH reproduces Node's spawn message.
+func TestRunMissingBinary(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	_, err := (Exec{}).Run("/r", "status")
+	want := "git -C /r... failed: spawn git ENOENT"
+	if err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+}
+
 // captureProcessStreams swaps os.Stdout/os.Stderr for pipes while fn runs and
 // returns whatever was written to them — CloneQuiet must leave both empty.
 func captureProcessStreams(t *testing.T, fn func()) (stdout, stderr string) {

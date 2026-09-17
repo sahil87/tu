@@ -1,9 +1,11 @@
 package metrics
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/sahil87/tu/internal/fact"
@@ -199,6 +201,90 @@ func TestReadPathLikeUser(t *testing.T) {
 	for _, user := range []string{"", ".", "..", "../u", `..\u`, "a/b"} {
 		if got := (Source{Dir: dir}).Read(user, ccTool); got != nil {
 			t.Errorf("Read(%q) = %v, want nil", user, got)
+		}
+	}
+}
+
+// R1: marshalling DayFile with encoding/json's defaults reproduces the
+// committed seed file's bytes (minus its trailing newline) — the same key
+// order JSON.stringify(toUsageEntry(...)) produces.
+func TestDayFileMarshalSeedBytes(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(findPackageRoot(t),
+		"harness", "metrics-repo", "harness-user", "2026", "harness-machine", "cc-2026-01-05.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.TrimSpace(string(raw))
+
+	d := DayFile{Label: "2026-01-05", Totals: seedTotals}
+	d.TotalCost = 0.25
+	got, err := json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != want {
+		t.Errorf("Marshal(DayFile) = %s, want %s", got, want)
+	}
+}
+
+// R1: finite doubles marshal exactly as JavaScript prints them (every
+// expected string below verified with `node -p 'JSON.stringify(...)'`):
+// integers without a fraction, shortest round-trip, exponent form only below
+// 1e-6 or at 1e21 and above, and the e-07 → e-7 cleanup.
+func TestDayFileMarshalFloatShapes(t *testing.T) {
+	// 0.1 + 0.2 must be a runtime sum: Go folds untyped constant arithmetic
+	// exactly (0.3), while JavaScript's doubles produce 0.30000000000000004.
+	a, b := 0.1, 0.2
+	shapes := []struct {
+		cost float64
+		want string // Node-verified JSON.stringify output
+	}{
+		{0.5, "0.5"},
+		{211.8, "211.8"},
+		{1e-7, "1e-7"},
+		{1e21, "1e+21"},
+		{a + b, "0.30000000000000004"},
+	}
+	for _, tt := range shapes {
+		got, err := json.Marshal(DayFile{Label: "f", Totals: fact.Totals{TotalCost: tt.cost}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := `{"label":"f","totalCost":` + tt.want +
+			`,"inputTokens":0,"outputTokens":0,"cacheCreationTokens":0,"cacheReadTokens":0,"totalTokens":0}`
+		if string(got) != want {
+			t.Errorf("Marshal(totalCost %v) = %s, want %s", tt.cost, got, want)
+		}
+	}
+}
+
+// R1: Name is "{tool}-{date}.jsonl".
+func TestName(t *testing.T) {
+	if got, want := Name(ccTool, "2026-01-05"), "cc-2026-01-05.jsonl"; got != want {
+		t.Errorf("Name(cc, 2026-01-05) = %q, want %q", got, want)
+	}
+	if got, want := Name(codexTool, "2026-02"), "codex-2026-02.jsonl"; got != want {
+		t.Errorf("Name(codex, 2026-02) = %q, want %q", got, want)
+	}
+}
+
+// R1: Path is {dir}/{user}/{year}/{machine}/{Name}; year is the label's
+// first four characters, or the whole label when shorter (the TS
+// label.slice(0, 4)).
+func TestPath(t *testing.T) {
+	cases := []struct {
+		date string
+		want string
+	}{
+		{"2026-01-05", filepath.Join("/repo", "u", "2026", "m", "cc-2026-01-05.jsonl")},
+		{"2026-02", filepath.Join("/repo", "u", "2026", "m", "cc-2026-02.jsonl")},
+		{"2026", filepath.Join("/repo", "u", "2026", "m", "cc-2026.jsonl")},
+		{"202", filepath.Join("/repo", "u", "202", "m", "cc-202.jsonl")},
+		{"", filepath.Join("/repo", "u", "", "m", "cc-.jsonl")},
+	}
+	for _, tt := range cases {
+		if got := Path("/repo", "u", "m", ccTool, tt.date); got != tt.want {
+			t.Errorf("Path(..., %q) = %q, want %q", tt.date, got, tt.want)
 		}
 	}
 }

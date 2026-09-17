@@ -18,9 +18,12 @@ const (
 	ConfOrg    = "org"
 	ConfLegacy = "legacy"
 
-	EnvDefault = "default"
-	EnvNoColor = "nocolor"
-	EnvEnvrepo = "envrepo"
+	EnvDefault  = "default"
+	EnvNoColor  = "nocolor"
+	EnvEnvrepo  = "envrepo"
+	EnvPullfail = "pullfail"
+	EnvPushfail = "pushfail"
+	EnvDirty    = "dirty"
 
 	IOPipe = "pipe"
 	IOTTY  = "tty"
@@ -79,7 +82,7 @@ type Case struct {
 
 var axisValues = map[string][]string{
 	"conf": {ConfSingle, ConfMulti, ConfOrg, ConfLegacy},
-	"env":  {EnvDefault, EnvNoColor, EnvEnvrepo},
+	"env":  {EnvDefault, EnvNoColor, EnvEnvrepo, EnvPullfail, EnvPushfail, EnvDirty},
 	"io":   {IOPipe, IOTTY},
 	"tz":   {TZFixed, TZAlt},
 }

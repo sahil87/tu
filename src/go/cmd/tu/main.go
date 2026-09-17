@@ -11,10 +11,11 @@
 // metrics repo, the single-mode -u notice, and the metrics-dir auto-clone
 // guard's stderr lines), the leaderboards lb/lbh in multi mode (user ranking,
 // previous-period deltas, --top, --by-machine on lb, the exit-1 single-mode
-// gate), the setup commands (init-conf, init-metrics, status), and the
-// toolkit surfaces (help/-h/--help, help-dump, skill, shell-init, update) for
-// real; everything else (sync, watch) prints the deliberate not-implemented
-// placeholder the differential harness diffs against.
+// gate), the setup commands (init-conf, init-metrics, status), the sync
+// surfaces (tu sync, tu sync --dry-run, and --sync on a data command), and
+// the toolkit surfaces (help/-h/--help, help-dump, skill, shell-init, update)
+// for real; everything else (watch and its companions) prints the deliberate
+// not-implemented placeholder the differential harness diffs against.
 package main
 
 import (
@@ -54,10 +55,14 @@ var version = "dev"
 const notImplementedMsg = "tu: not implemented (Go port in progress)"
 
 // Interface satisfaction at the edge, where the adapters are assigned:
-// *ccusage.Source is the live Fetcher, metrics.Source the metrics-repo Repo.
+// *ccusage.Source is the live Fetcher for both command and sync,
+// metrics.Source the metrics-repo Repo, and sync.Writer the own-user
+// day-file writer command applies before every multi-mode repo read.
 var (
-	_ command.Fetcher = (*ccusage.Source)(nil)
-	_ command.Repo    = metrics.Source{}
+	_ command.Fetcher    = (*ccusage.Source)(nil)
+	_ command.Repo       = metrics.Source{}
+	_ command.Writer     = metricsync.Writer{}
+	_ metricsync.Fetcher = (*ccusage.Source)(nil)
 )
 
 func main() {
@@ -151,12 +156,45 @@ func run(args []string, stdout, stderr io.Writer) int {
 	deps := command.Deps{
 		Source: src,
 		Repo:   metrics.Source{Dir: cfg.MetricsDir},
+		Writer: metricsync.Writer{Dir: cfg.MetricsDir},
 		Now:    time.Now,
 		Colors: ansi.Colors{Enabled: !req.Flags.NoColor && os.Getenv("NO_COLOR") == ""},
 		Width:  terminalWidth(stdout),
 		// The leaderboard footer's staleness text — a closure like Now,
 		// evaluated only by the lb path so no other command reads the file.
 		LastSync: func() string { return config.LastSync(config.StateDir(paths.Home), time.Now()) },
+	}
+
+	// The --sync block (TS main() lines 1931–1938): it sits after the
+	// reserved-user guard and before the normalize notices — the edge prints
+	// it before command.Run, and Run's notices only reach stderr after Run
+	// returns, so the byte order matches. Single mode stays silent (no line,
+	// no git call). The sync's fetch warms the shared cache, so Run's own
+	// fetch makes no new ccusage calls (six total for `tu --sync` on a cold
+	// cache, not twelve).
+	if req.Flags.Sync && cfg.Mode == config.Multi {
+		fmt.Fprint(stderr, "syncing metrics... ")
+		ctx, cancel := syncCtx()
+		out, err := metricsync.FullSync(ctx, metricsync.Inputs{
+			Config:   cfg,
+			StateDir: config.StateDir(paths.Home),
+			Now:      time.Now(),
+			Source:   src,
+			Git:      metricsync.Exec{},
+		}, false)
+		cancel()
+		if err != nil {
+			// A filesystem failure — the TS crashes uncaught; print, exit 1.
+			fmt.Fprintln(stderr, err.Error())
+			return command.ExitOperational
+		}
+		source.WriteWarnings(stderr, out.Warnings)
+		writeLines(stderr, out.Lines)
+		if out.OK {
+			fmt.Fprintln(stderr, "synced.")
+		} else {
+			fmt.Fprintln(stderr, "sync failed — using local data.")
+		}
 	}
 
 	res, err := command.Run(context.Background(), req, cfg, deps)
@@ -182,11 +220,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 // runCommand dispatches a non-data command. The toolkit commands — help,
 // help-dump, skill, shell-init, update — are answered for real BEFORE
-// config.ResolvePaths: none of them needs $HOME. init-conf, init-metrics, and
-// status resolve paths first; every other command (sync, B6's) stays on the
-// scaffold's placeholder. Data flags on a setup command are ignored (DC-02) —
-// Parse sets Command regardless of flags and the handlers never look at
-// Format/Flags.
+// config.ResolvePaths: none of them needs $HOME. init-conf, init-metrics,
+// status, and sync resolve paths first. Data flags on a non-data command are
+// ignored (DC-02) — Parse sets Command regardless of flags and the handlers
+// never look at Format/Flags (sync reads only --dry-run). Every command the
+// grammar names is now handled; the default keeps the scaffold's placeholder
+// as defense.
 func runCommand(req command.Request, env config.Env, stdout, stderr io.Writer) int {
 	switch req.Command {
 	case "help", "-h", "--help":
@@ -205,7 +244,7 @@ func runCommand(req command.Request, env config.Env, stdout, stderr io.Writer) i
 		return runShellInit(req.Args, stdout, stderr)
 	case "update":
 		return runUpdate(req, stdout, stderr)
-	case "init-conf", "init-metrics", "status":
+	case "init-conf", "init-metrics", "status", "sync":
 		// handled below
 	default:
 		fmt.Fprintln(stderr, notImplementedMsg)
@@ -227,6 +266,8 @@ func runCommand(req command.Request, env config.Env, stdout, stderr io.Writer) i
 		}
 		writeLines(stdout, lines)
 		return command.ExitOK
+	case "sync":
+		return runSync(req, env, paths, stdout, stderr)
 	case "status":
 		data, warnings := config.Status(paths, env, time.Now())
 		writeLines(stderr, warnings)
@@ -257,6 +298,81 @@ func runCommand(req command.Request, env config.Env, stdout, stderr io.Writer) i
 		}
 		return command.ExitOK
 	}
+}
+
+// syncCtx is the fetch deadline for both sync entry points — the same
+// source.DefaultTimeout command.Run applies to the data fetch (the TS fetches
+// under the same timeout either way).
+func syncCtx() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), source.DefaultTimeout)
+}
+
+// runSync implements `tu sync` in the TS runSync order (src/node/core/cli.ts):
+// Load (warnings to stderr) → the reserved-user guard (BEFORE the mode check)
+// → the single-mode gate → the metrics-dir guard (a demotion exits 1 with
+// just the guard's lines, so `tu sync --dry-run` with a missing dir still
+// clones first) → the dry-run report on stdout or the live sync. Data flags
+// are ignored (DC-02).
+func runSync(req command.Request, env config.Env, paths config.Paths, stdout, stderr io.Writer) int {
+	cfg, warnings := config.Load(paths, env, config.Overrides{})
+	writeLines(stderr, warnings)
+	if cfg.User == "all" {
+		fmt.Fprintln(stderr, `Error: config user "all" is reserved (used by -u all)`)
+		return command.ExitUsage
+	}
+	if cfg.Mode != config.Multi {
+		writeLines(stderr, []string{
+			"tu sync requires metrics_repo to be set.",
+			"Add metrics_repo to ~/.config/tu/tu.conf, run 'tu init-metrics <repo-url>', or set TU_METRICS_REPO.",
+		})
+		return command.ExitOperational
+	}
+	cfg, guardLines := config.MetricsDirGuard(cfg, config.StateDir(paths.Home), time.Now(), metricsync.Exec{})
+	writeLines(stderr, guardLines)
+	if cfg.Mode != config.Multi {
+		// Auto-clone failed or the metrics dir is still missing (demoted).
+		return command.ExitOperational
+	}
+
+	// The source is built identically to the data path's deps.
+	store, _ := cache.Default()
+	src := &ccusage.Source{Cache: store, User: cfg.User, Machine: cfg.Machine}
+	inputs := metricsync.Inputs{
+		Config:   cfg,
+		StateDir: config.StateDir(paths.Home),
+		Now:      time.Now(),
+		Source:   src,
+		Git:      metricsync.Exec{},
+	}
+	ctx, cancel := syncCtx()
+	defer cancel()
+
+	if req.Flags.DryRun {
+		out, err := metricsync.FullSync(ctx, inputs, true)
+		if err != nil {
+			// A filesystem failure — the TS crashes uncaught; print, exit 1.
+			fmt.Fprintln(stderr, err.Error())
+			return command.ExitOperational
+		}
+		source.WriteWarnings(stderr, out.Warnings)
+		writeLines(stdout, out.Report.Format(paths.Home))
+		return command.ExitOK
+	}
+
+	out, err := metricsync.FullSync(ctx, inputs, false)
+	if err != nil {
+		// A filesystem failure — the TS crashes uncaught; print, exit 1.
+		fmt.Fprintln(stderr, err.Error())
+		return command.ExitOperational
+	}
+	source.WriteWarnings(stderr, out.Warnings)
+	writeLines(stderr, out.Lines)
+	if !out.OK {
+		fmt.Fprintln(stderr, "Error: sync failed — check network and remote config.")
+		return command.ExitOperational
+	}
+	fmt.Fprintln(stdout, "Synced to "+config.Tildefy(cfg.MetricsDir, paths.Home))
+	return command.ExitOK
 }
 
 // cloneExitCode extracts the child's exit code; a non-exit failure (e.g. git

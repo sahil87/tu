@@ -1,16 +1,23 @@
 // Package sync owns the metrics-repo writer and the git driver (Target
-// architecture in fab/plans/sahil/26-09-15-go-port.md). B1 landed the
-// interactive driver and B3 the quiet clone for the auto-clone guard; B6 adds
-// the writer, never-shrink guard, dry-run report, and sync flow.
+// architecture in fab/plans/sahil/26-09-15-go-port.md): the never-shrink
+// guarded day-file writer (writer.go), the commit message, .last-sync and
+// staleness helpers (state.go), the git round trip and full-sync flow with the
+// dry-run report (flow.go, report.go), the Exec git driver (git.go), and the
+// repair-metrics twin behind cmd/turepair (repair.go, localecmp.go). The
+// interactive clone and the auto-clone guard's quiet clone also live here
+// (B1/B3). Nothing in this package prints: flows return their stderr lines
+// and typed warnings for the edge to write.
 package sync
 
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -26,6 +33,40 @@ func (Exec) IsRepo(dir string) bool {
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	return cmd.Run() == nil
+}
+
+// Runner is the one git verb the sync flow needs; Exec satisfies it, tests
+// use a fake or the PATH-first shell-script git (git_test.go's pattern).
+type Runner interface {
+	Run(dir string, args ...string) (stdout string, err error)
+}
+
+// Run executes `git -C <dir> <args...>` with no timeout (the TS has none),
+// stdout and stderr captured separately; stdout is returned on exit 0. On
+// failure the error's text reproduces the TS execFileAsync wrapper in
+// src/node/sync/sync.ts exactly: "{summary}... failed: {message}" where
+// summary = "git -C <dir>" (the binary plus the first two args) and message
+// is Node's — "Command failed: git -C <dir> <args joined by single
+// spaces>\n<stderr>" for a non-zero exit (the newline is unconditional: with
+// empty stderr the message still ends in "\n"), "spawn git ENOENT" when git
+// is not on PATH.
+func (Exec) Run(dir string, args ...string) (string, error) {
+	argv := append([]string{"-C", dir}, args...)
+	summary := "git -C " + dir
+	command := "git " + strings.Join(argv, " ")
+	cmd := exec.Command("git", argv...)
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		var execErr *exec.Error
+		if errors.As(err, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
+			return "", fmt.Errorf("%s... failed: spawn git ENOENT", summary)
+		}
+		message := "Command failed: " + command + "\n" + errBuf.String()
+		return "", fmt.Errorf("%s... failed: %s", summary, message)
+	}
+	return outBuf.String(), nil
 }
 
 // Clone runs `git clone url dir` with the given reader and writers attached to

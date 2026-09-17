@@ -67,6 +67,15 @@ func TestRenderCaseLines(t *testing.T) {
 		t.Errorf("timeout line = %q", got)
 	}
 
+	redTree := mk(StatusRed, "sync-cmd/multi/default/pipe/fixed")
+	redTree.Channel = "tree"
+	redTree.NodeExcerpt = `harness-user/x.jsonl: "1.00}\n"`
+	redTree.GoExcerpt = `harness-user/x.jsonl: "2.00}\n"`
+	wantTree := `RED     sync-cmd/multi/default/pipe/fixed  tree: node=harness-user/x.jsonl: "1.00}\n" go=harness-user/x.jsonl: "2.00}\n"`
+	if got := RenderCaseLine(redTree); got != wantTree {
+		t.Errorf("red tree line = %q", got)
+	}
+
 	marked := mk(StatusRed, "x/single/default/pipe/fixed")
 	marked.Channel = "exit"
 	marked.Unconfirmed = true
@@ -88,7 +97,7 @@ func TestRenderSummary(t *testing.T) {
 	got := strings.Join(RenderSummary(SummarizeResults(results), []string{PlaceholderAlias}), "\n")
 	want := `tudiff: 3 cases — 1 green, 1 red, 1 timeout   (fixtures: _placeholder; 1 cases replayed unconfirmed fixtures)
   by conf:  single 1/1  multi 0/2  org 0/0  legacy 0/0
-  by env:   default 1/2  nocolor 0/1  envrepo 0/0
+  by env:   default 1/2  nocolor 0/1  envrepo 0/0  pullfail 0/0  pushfail 0/0  dirty 0/0
   by io:    pipe 1/2  tty 0/1
   by tz:    fixed 1/2  alt 0/1`
 	if got != want {

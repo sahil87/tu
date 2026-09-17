@@ -102,6 +102,10 @@ jobs:
         run: just go-diff --placeholder
         continue-on-error: true # every case is red until Phase 1 lands; R3 removes this and adds the job to ci-gate
 
+      - name: Live harness (real git)
+        run: just go-live
+        continue-on-error: true # informational like the matrix step above; R3 owns gating it
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

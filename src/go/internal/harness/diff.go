@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -102,6 +103,16 @@ type EnvSpec struct {
 	CallLog    string   // this side's TUDIFF_CALL_LOG path
 }
 
+// gitScripts maps the failure-injection env axis values to their
+// TUDIFF_GIT_SCRIPT rule sets (prefix-matched by the fake git); the JSON text
+// is part of the byte contract. Every other env value leaves the variable
+// unset.
+var gitScripts = map[string]string{
+	EnvPullfail: `[{"match":["pull"],"stderr":"fatal: couldn't find remote ref main\n","exit":1}]`,
+	EnvPushfail: `[{"match":["push"],"stderr":"error: failed to push some refs\n","exit":1}]`,
+	EnvDirty:    `[{"match":["status","--porcelain"],"stdout":" M harness-user/x\n","exit":0}]`,
+}
+
 // BuildEnv constructs the child environment from scratch — nothing is
 // inherited from the harness process beyond PATH, so an exported
 // TU_METRICS_REPO or NO_COLOR in the developer's shell cannot tilt a case.
@@ -124,6 +135,9 @@ func BuildEnv(c Case, spec EnvSpec) []string {
 	if c.Env == EnvEnvrepo {
 		env = append(env, "TU_METRICS_REPO="+MetricsRepoURL)
 	}
+	if script, ok := gitScripts[c.Env]; ok {
+		env = append(env, "TUDIFF_GIT_SCRIPT="+script)
+	}
 	return env
 }
 
@@ -134,20 +148,21 @@ func BuildEnv(c Case, spec EnvSpec) []string {
 func StageOracle(tmpDir, nodePath, defaultConf, fakeCcusage string) (bundlePath string, err error) {
 	dist := filepath.Join(tmpDir, "oracle", "dist")
 	bundlePath = filepath.Join(dist, "tu.mjs")
-	if err := copyFile(nodePath, bundlePath, 0o644); err != nil {
+	if err := CopyFile(nodePath, bundlePath, 0o644); err != nil {
 		return "", fmt.Errorf("tudiff: staging oracle bundle: %w", err)
 	}
-	if err := copyFile(defaultConf, filepath.Join(dist, "tu.default.conf"), 0o644); err != nil {
+	if err := CopyFile(defaultConf, filepath.Join(dist, "tu.default.conf"), 0o644); err != nil {
 		return "", fmt.Errorf("tudiff: staging tu.default.conf: %w", err)
 	}
 	vendor := filepath.Join(dist, "vendor", "ccusage", "bin", "ccusage")
-	if err := copyFile(fakeCcusage, vendor, 0o755); err != nil {
+	if err := CopyFile(fakeCcusage, vendor, 0o755); err != nil {
 		return "", fmt.Errorf("tudiff: staging fake ccusage: %w", err)
 	}
 	return bundlePath, nil
 }
 
-func copyFile(src, dst string, mode os.FileMode) error {
+// CopyFile copies one file to dst (parent dirs created) with the given mode.
+func CopyFile(src, dst string, mode os.FileMode) error {
 	raw, err := os.ReadFile(src)
 	if err != nil {
 		return err
@@ -360,11 +375,11 @@ func firstDivergence(node, goCap []byte) (offset, line int, nodeExcerpt, goExcer
 		}
 	}
 	line = 1 + bytes.Count(node[:offset], []byte{'\n'})
-	return offset, line, excerpt(node, offset), excerpt(goCap, offset)
+	return offset, line, Excerpt(node, offset), Excerpt(goCap, offset)
 }
 
-// excerpt quotes at most 40 bytes of b starting at offset.
-func excerpt(b []byte, offset int) string {
+// Excerpt quotes at most 40 bytes of b starting at offset.
+func Excerpt(b []byte, offset int) string {
 	end := offset + 40
 	if end > len(b) {
 		end = len(b)
@@ -427,4 +442,129 @@ func equalStrings(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// TreeDiff describes the first difference between the written trees of one
+// case's two staged homes: the differing relative path (slash-separated,
+// relative to .tu/metrics_repo, or ".last-sync") and each side's excerpt —
+// "present"/"absent" for a path-set difference, a quoted ≤40-byte excerpt
+// from the first differing byte for a content difference.
+type TreeDiff struct {
+	Path        string
+	NodeExcerpt string
+	GoExcerpt   string
+}
+
+// CompareTrees compares <nodeHome>/.tu and <goHome>/.tu as the sync writer
+// left them: the relative path set of each side's metrics_repo and every
+// file's bytes (day-file content carries no home path, so no normalization),
+// plus the presence — never the content, a wall-clock timestamp — of
+// .last-sync. Nothing under .tu/cache/ is compared (the two cache formats
+// differ by design). A metrics_repo missing on both sides is equal; missing
+// on one side only is a difference naming the directory itself or its first
+// path. A nil *TreeDiff means the trees agree.
+func CompareTrees(nodeHome, goHome string) (*TreeDiff, error) {
+	nodeFiles, nodeHas, err := treeFiles(filepath.Join(nodeHome, ".tu", "metrics_repo"))
+	if err != nil {
+		return nil, err
+	}
+	goFiles, goHas, err := treeFiles(filepath.Join(goHome, ".tu", "metrics_repo"))
+	if err != nil {
+		return nil, err
+	}
+	if nodeHas != goHas {
+		path := "metrics_repo"
+		if nodeHas && len(nodeFiles) > 0 {
+			path = nodeFiles[0]
+		}
+		if goHas && len(goFiles) > 0 {
+			path = goFiles[0]
+		}
+		return presenceDiff(path, nodeHas), nil
+	}
+	if nodeHas {
+		nodeSet := map[string]bool{}
+		for _, p := range nodeFiles {
+			nodeSet[p] = true
+		}
+		goSet := map[string]bool{}
+		for _, p := range goFiles {
+			goSet[p] = true
+		}
+		merged := append(append([]string(nil), nodeFiles...), goFiles...)
+		sort.Strings(merged)
+		for _, p := range merged {
+			if nodeSet[p] != goSet[p] {
+				return presenceDiff(p, nodeSet[p]), nil
+			}
+		}
+		for _, p := range nodeFiles {
+			nodeRaw, err := os.ReadFile(filepath.Join(nodeHome, ".tu", "metrics_repo", filepath.FromSlash(p)))
+			if err != nil {
+				return nil, err
+			}
+			goRaw, err := os.ReadFile(filepath.Join(goHome, ".tu", "metrics_repo", filepath.FromSlash(p)))
+			if err != nil {
+				return nil, err
+			}
+			if !bytes.Equal(nodeRaw, goRaw) {
+				_, _, nodeEx, goEx := firstDivergence(nodeRaw, goRaw)
+				return &TreeDiff{Path: p, NodeExcerpt: p + ": " + nodeEx, GoExcerpt: p + ": " + goEx}, nil
+			}
+		}
+	}
+	nodeSync := filePresent(filepath.Join(nodeHome, ".tu", ".last-sync"))
+	goSync := filePresent(filepath.Join(goHome, ".tu", ".last-sync"))
+	if nodeSync != goSync {
+		return presenceDiff(".last-sync", nodeSync), nil
+	}
+	return nil, nil
+}
+
+// presenceDiff builds the TreeDiff for a path held by one side only.
+func presenceDiff(path string, nodeHas bool) *TreeDiff {
+	d := &TreeDiff{Path: path, NodeExcerpt: path + ": absent", GoExcerpt: path + ": present"}
+	if nodeHas {
+		d.NodeExcerpt, d.GoExcerpt = path+": present", path+": absent"
+	}
+	return d
+}
+
+// treeFiles lists the slash-separated relative paths of every file under dir
+// in sorted order; exists reports whether dir itself is present.
+func treeFiles(dir string) (paths []string, exists bool, err error) {
+	info, err := os.Stat(dir)
+	if os.IsNotExist(err) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if !info.IsDir() {
+		return nil, false, fmt.Errorf("tudiff: %s is not a directory", dir)
+	}
+	err = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			rel, err := filepath.Rel(dir, path)
+			if err != nil {
+				return err
+			}
+			paths = append(paths, filepath.ToSlash(rel))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	sort.Strings(paths)
+	return paths, true, nil
+}
+
+// filePresent reports whether path exists as a regular file.
+func filePresent(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }

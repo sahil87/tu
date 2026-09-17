@@ -87,6 +87,36 @@ func TestBuildEnvAxes(t *testing.T) {
 	}
 }
 
+// R13: the failure-injection env values are the default env plus exactly one
+// TUDIFF_GIT_SCRIPT variable with the byte-contract rule set.
+func TestBuildEnvGitScript(t *testing.T) {
+	scripts := map[string]string{
+		EnvPullfail: `[{"match":["pull"],"stderr":"fatal: couldn't find remote ref main\n","exit":1}]`,
+		EnvPushfail: `[{"match":["push"],"stderr":"error: failed to push some refs\n","exit":1}]`,
+		EnvDirty:    `[{"match":["status","--porcelain"],"stdout":" M harness-user/x\n","exit":0}]`,
+	}
+	base := BuildEnv(baseCase(), baseSpec("/h"))
+	for envValue, script := range scripts {
+		c := baseCase()
+		c.Env = envValue
+		got := BuildEnv(c, baseSpec("/h"))
+		want := append(append([]string(nil), base...), "TUDIFF_GIT_SCRIPT="+script)
+		if strings.Join(got, "\n") != strings.Join(want, "\n") {
+			t.Errorf("%s env =\n%s\nwant =\n%s", envValue, strings.Join(got, "\n"), strings.Join(want, "\n"))
+		}
+	}
+	// The base values never set the variable.
+	for _, envValue := range []string{EnvDefault, EnvNoColor, EnvEnvrepo} {
+		c := baseCase()
+		c.Env = envValue
+		for _, kv := range BuildEnv(c, baseSpec("/h")) {
+			if strings.HasPrefix(kv, "TUDIFF_GIT_SCRIPT=") {
+				t.Errorf("TUDIFF_GIT_SCRIPT present in %s case", envValue)
+			}
+		}
+	}
+}
+
 // R11: the sentinel line and its preceding line break are parsed off the
 // transcript; a missing sentinel is Exit -1 + "no exit sentinel".
 func TestParseTTYExit(t *testing.T) {
@@ -381,5 +411,122 @@ func TestCompareCallLogsHomeNormalized(t *testing.T) {
 	_, _, differ, err = CompareCallLogs(nodeLog, goLog, "/tmp/c/node/home", "/tmp/c/go/home")
 	if err != nil || !differ {
 		t.Errorf("CompareCallLogs differ=%v err=%v, want differ=true", differ, err)
+	}
+}
+
+// writeTreeFile writes body at <root>/<rel> (slash-separated), creating
+// parent directories.
+func writeTreeFile(t *testing.T, root, rel, body string) {
+	t.Helper()
+	path := filepath.Join(root, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// stageTreePair stages two homes whose .tu/metrics_repo each hold the given
+// files (same content on both sides).
+func stageTreePair(t *testing.T, files map[string]string) (nodeHome, goHome string) {
+	t.Helper()
+	root := t.TempDir()
+	nodeHome = filepath.Join(root, "node")
+	goHome = filepath.Join(root, "go")
+	for rel, body := range files {
+		writeTreeFile(t, nodeHome, ".tu/metrics_repo/"+rel, body)
+		writeTreeFile(t, goHome, ".tu/metrics_repo/"+rel, body)
+	}
+	return nodeHome, goHome
+}
+
+// R12: identical trees and matching .last-sync presence stay green.
+func TestCompareTreesGreen(t *testing.T) {
+	files := map[string]string{
+		"harness-user/2026/harness-machine/cc-2026-01-06.jsonl": "{\"label\":\"2026-01-06\"}\n",
+		"docs/README.md": "seed\n",
+	}
+	nodeHome, goHome := stageTreePair(t, files)
+	writeTreeFile(t, nodeHome, ".tu/.last-sync", "2026-09-17T00:00:00Z\n")
+	writeTreeFile(t, goHome, ".tu/.last-sync", "2026-09-17T00:00:01Z\n") // content never compared
+	diff, err := CompareTrees(nodeHome, goHome)
+	if err != nil || diff != nil {
+		t.Errorf("CompareTrees = %+v, %v, want nil", diff, err)
+	}
+
+	// A metrics_repo missing on both sides is equal too.
+	bare1, bare2 := filepath.Join(t.TempDir(), "a"), filepath.Join(t.TempDir(), "b")
+	diff, err = CompareTrees(bare1, bare2)
+	if err != nil || diff != nil {
+		t.Errorf("CompareTrees (both missing) = %+v, %v, want nil", diff, err)
+	}
+}
+
+// R12: an extra file on one side is a tree difference naming that path.
+func TestCompareTreesExtraFile(t *testing.T) {
+	files := map[string]string{"docs/README.md": "seed\n"}
+	nodeHome, goHome := stageTreePair(t, files)
+	writeTreeFile(t, goHome, ".tu/metrics_repo/harness-user/2026/harness-machine/cc-2026-01-07.jsonl", "{}\n")
+	diff, err := CompareTrees(nodeHome, goHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff == nil || diff.Path != "harness-user/2026/harness-machine/cc-2026-01-07.jsonl" {
+		t.Fatalf("diff = %+v", diff)
+	}
+	if diff.NodeExcerpt != diff.Path+": absent" || diff.GoExcerpt != diff.Path+": present" {
+		t.Errorf("excerpts = %q / %q", diff.NodeExcerpt, diff.GoExcerpt)
+	}
+}
+
+// R12: a byte difference in a shared file is a tree difference naming the
+// file, with a byte excerpt from each side.
+func TestCompareTreesByteDiff(t *testing.T) {
+	rel := "harness-user/2026/harness-machine/cc-2026-01-06.jsonl"
+	nodeHome, goHome := stageTreePair(t, map[string]string{rel: "{\"totalCost\":1.00}\n"})
+	writeTreeFile(t, goHome, ".tu/metrics_repo/"+rel, "{\"totalCost\":2.00}\n")
+	diff, err := CompareTrees(nodeHome, goHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff == nil || diff.Path != rel {
+		t.Fatalf("diff = %+v", diff)
+	}
+	wantNode := rel + ": " + `"1.00}\n"`
+	wantGo := rel + ": " + `"2.00}\n"`
+	if diff.NodeExcerpt != wantNode || diff.GoExcerpt != wantGo {
+		t.Errorf("excerpts = %q / %q, want %q / %q", diff.NodeExcerpt, diff.GoExcerpt, wantNode, wantGo)
+	}
+}
+
+// R12: a .last-sync presence mismatch is a tree difference naming it; a
+// metrics_repo missing on one side only is a difference too.
+func TestCompareTreesPresence(t *testing.T) {
+	nodeHome, goHome := stageTreePair(t, map[string]string{"docs/README.md": "seed\n"})
+	writeTreeFile(t, nodeHome, ".tu/.last-sync", "2026-09-17T00:00:00Z\n")
+	diff, err := CompareTrees(nodeHome, goHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff == nil || diff.Path != ".last-sync" {
+		t.Fatalf("diff = %+v", diff)
+	}
+	if diff.NodeExcerpt != ".last-sync: present" || diff.GoExcerpt != ".last-sync: absent" {
+		t.Errorf("excerpts = %q / %q", diff.NodeExcerpt, diff.GoExcerpt)
+	}
+
+	// Metrics repo on the go side only.
+	nodeBare := filepath.Join(t.TempDir(), "home")
+	_, goTree := stageTreePair(t, map[string]string{"docs/README.md": "seed\n"})
+	diff, err = CompareTrees(nodeBare, goTree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff == nil || diff.Path != "docs/README.md" {
+		t.Fatalf("diff = %+v", diff)
+	}
+	if diff.NodeExcerpt != "docs/README.md: absent" || diff.GoExcerpt != "docs/README.md: present" {
+		t.Errorf("excerpts = %q / %q", diff.NodeExcerpt, diff.GoExcerpt)
 	}
 }
