@@ -41,6 +41,7 @@ go-build:
     mkdir -p bin
     cmp -s docs/site/skill.md src/go/internal/toolkit/skill.md || { echo "error: src/go/internal/toolkit/skill.md drifted from docs/site/skill.md — run scripts/sync-skill.sh" >&2; exit 1; }
     cd src/go && go build -ldflags "-X main.version=v{{go_version}}" -o ../../bin/tu ./cmd/tu
+    cd src/go && go build -o ../../bin/turepair ./cmd/turepair
 
 # Run the Go test suite under src/go/.
 go-test:
@@ -76,3 +77,8 @@ harness-capture *ARGS: harness-build
 # Exit 1 while any case is red — the count is the port's burndown, not a gate yet.
 go-diff *ARGS: build go-build harness-build
     bin/harness/tudiff run {{ARGS}}
+
+# Real-git parity: the intake § 10 sync/repair sequence against temp bare repos,
+# reported under bin/harness/report-live/ (plan R14). Exit 1 while any step is red.
+go-live *ARGS: build go-build harness-build
+    bin/harness/tudiff live {{ARGS}}

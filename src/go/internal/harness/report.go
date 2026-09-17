@@ -131,9 +131,12 @@ func RenderCaseLine(r Result) string {
 	case StatusTimeout:
 		line += fmt.Sprintf("  timeout: node=%t go=%t", r.NodeTimeout, r.GoTimeout)
 	case StatusRed:
-		if r.Channel == "exit" {
+		switch r.Channel {
+		case "exit":
 			line += fmt.Sprintf("  exit: node=%d go=%d", r.NodeExit, r.GoExit)
-		} else {
+		case "tree":
+			line += fmt.Sprintf("  tree: node=%s go=%s", r.NodeExcerpt, r.GoExcerpt)
+		default:
 			line += fmt.Sprintf("  %s @%d (line %d): node=%s go=%s",
 				r.Channel, r.Offset, r.Line, r.NodeExcerpt, r.GoExcerpt)
 		}

@@ -1,6 +1,6 @@
 ---
 type: memory
-description: The Go port's multi mode — the metrics-dir auto-clone guard at the edge, command.gather's four record paths (live fetch, the own-user MaxMerge + other-machine sum, the repo-only -u paths — no ccusage calls) returning un-collapsed records the callers Collapse before the tail, the repo-only leaderboards lb/lbh over gatherAllUsers (ranking, lbh's tool-major left fold), float summation order pinned to the TS, the mode-keyed snapshot label rule, the 3-month cap, the read-only-until-B6 stance
+description: The Go port's multi mode — the auto-clone guard at the edge, command.gather's four record paths (live fetch, the own-user never-shrink day-file write via Deps.Writer then MaxMerge + other-machine sum, the repo-only -u paths — no ccusage calls) returning un-collapsed records the callers Collapse before the tail, the repo-only leaderboards lb/lbh over gatherAllUsers (ranking, lbh's tool-major left fold), float summation order pinned to the TS, the mode-keyed snapshot label rule, the 3-month cap
 ---
 # Multi Mode (Go port)
 
@@ -19,7 +19,7 @@ Multi mode turns the per-machine ccusage views into one per-user (and, with `-u 
 `gather(ctx, req, cfg, deps)` iterates tools in registry order (all `fact.Tools`, or the one requested tool) and selects the TS path by mode and `-u`:
 
 - **single** — the live fetch exactly as in single mode: `FetchAll` for all tools or `Fetch` for one, `source.PeriodDaily`, no extra args, `Fresh` honored, errors collected into `Result.Warnings`.
-- **multi, `-u ""` or `-u == cfg.User`** — the live fetch; then per tool `stored := Repo.Read(cfg.User, tool)`, split on `Machine == cfg.Machine` into `own` and `others`; the records are `MaxMerge(live, own)` followed by `others` in walk order. `-u <cfg.User>` is byte-identical to no `-u`.
+- **multi, `-u ""` or `-u == cfg.User`** — the live fetch; then per tool in registry order, `Writer.Write(cfg.User, cfg.Machine, tool, live-by-tool)` when a `Writer` is wired (the never-shrink-guarded own-user day-file write — [metrics-sync](/go-port/metrics-sync.md)), THEN `stored := Repo.Read(cfg.User, tool)`, split on `Machine == cfg.Machine` into `own` and `others`; the records are `MaxMerge(live, own)` followed by `others` in walk order. A write error propagates out of `gather` and `Run` (the TS crash path; the edge prints it, exit 1). `-u <cfg.User>` is byte-identical to no `-u`.
 - **multi, `-u all`** — for each `u` in `Repo.Users()` (ascending), `Repo.Read(u, tool)` per tool; no live fetch, no source errors.
 - **multi, `-u <other>`** — `Repo.Read(user, tool)` per tool; no live fetch, no source errors.
 
@@ -43,7 +43,7 @@ Per key `(Date, Tool, User, Machine)` the own-user path keeps whichever WHOLE re
 The cap (`Normalize` step 3: history ∧ period ≠ monthly ∧ no explicit bound ∧ not `--full` → `Since = ThreeMonthFloor(now)`) defaults the floor before `gather` runs, and `Window` applies to the collapsed daily records after the merge — so repo-sourced records are windowed by the same floor as live ones: a stored day-file older than the floor does not appear in `h` and does appear in `h --full`.
 
 ### Requirement: Seams the later rows build on
-`gather` returns the un-collapsed per-machine/per-user records and the callers run the daily collapse for the main table; `--by-machine` groups the same raw records on `Machine` (or `User` under multi-mode `-u all`) — one `GroupBy(Tool, Date, dim)` pass per table ([command-edge](/go-port/command-edge.md), [query-view-render](/go-port/query-view-render.md)). The leaderboards are the fifth consumer of the repo records (2gbb): both `lb` and `lbh` read `gatherAllUsers(deps.Repo, tools)` directly — repo-only, no live fetch, no ccusage call, no source warnings, no writes — and rank/pivot over `Repo.Users()` with one `GroupBy` per window ([command-edge](/go-port/command-edge.md) owns the gate, windows and run paths). The `lbh` value per user and period label is a left fold in record input order over the windowed, relabelled records (tool-major, walk order within a tool) — DISTINCT from the main table's collapse-then-roll-up association (see the Design Decision below). The sync row (B6) adds the never-shrink day-file writer call in the own-user path before the `Read`, completing the TS write-then-read shape — the only multi-mode seam still open.
+`gather` returns the un-collapsed per-machine/per-user records and the callers run the daily collapse for the main table; `--by-machine` groups the same raw records on `Machine` (or `User` under multi-mode `-u all`) — one `GroupBy(Tool, Date, dim)` pass per table ([command-edge](/go-port/command-edge.md), [query-view-render](/go-port/query-view-render.md)). The leaderboards are the fifth consumer of the repo records (2gbb): both `lb` and `lbh` read `gatherAllUsers(deps.Repo, tools)` directly — repo-only, no live fetch, no ccusage call, no source warnings, no writes — and rank/pivot over `Repo.Users()` with one `GroupBy` per window ([command-edge](/go-port/command-edge.md) owns the gate, windows and run paths). The `lbh` value per user and period label is a left fold in record input order over the windowed, relabelled records (tool-major, walk order within a tool) — DISTINCT from the main table's collapse-then-roll-up association (see the Design Decision below). The own-user path is the TS write-then-read shape in full: the never-shrink day-file writer (`command.Deps.Writer`, satisfied by `sync.Writer{Dir: cfg.MetricsDir}`) runs per tool in registry order after the live fetch and before the `Read` (lsml — [metrics-sync](/go-port/metrics-sync.md)). No multi-mode seam remains open.
 
 ## Design Decisions
 
@@ -53,11 +53,11 @@ The cap (`Normalize` step 3: history ∧ period ≠ monthly ∧ no explicit boun
 **Rejected**: Changing `RollUp` to ignore User/Machine (breaks the per-machine columns, which group the raw records); accepting the association drift (a `2.1500000000000004` is a harness red and a spec violation).
 *Introduced by*: 260916-xivf-metrics-source-and-multi-mode
 
-### Read-only multi mode until B6
-**Decision**: The multi-mode fetch path reads the clone and writes nothing; the TS pre-fetch `writeMetrics` (never-shrink guarded) lands with B6's writer.
-**Why**: The port plan assigns the writer, the never-shrink guard and the day-file layout to B6 under D11 (port faithfully, gate on live-sync parity). The harness compares stdout/stderr/exit and the call multiset, none of which the write touches, and write-then-max-merge is arithmetically identical to max-merge alone for the rendered bytes — a stored file only ever holds a value the never-shrink guard let through, and the guard lets through exactly the values that would win the max. It is a temporary, documented divergence from the spec sentence "a plain `tu` in multi mode is a write", closed by B6.
-**Rejected**: A minimal writer ahead of B6 (splits D11's guarded surface across two rows and two reviews).
-*Introduced by*: 260916-xivf-metrics-source-and-multi-mode
+### Write-then-read on the own-user path
+**Decision**: `gatherOwn` runs the never-shrink-guarded day-file write (per tool in registry order, through `Deps.Writer`) after the live fetch and BEFORE `Repo.Read`; a nil `Writer` means no write (tests).
+**Why**: The TS writes the own machine's day-file on every multi-mode data command — that write is the wire protocol between machines in a mixed fleet. Write-then-max-merge is arithmetically identical to max-merge alone for the rendered bytes: a stored file only ever holds a value the never-shrink guard let through, and the guard lets through exactly the values that win the max.
+**Rejected**: A read-only port as the end state (a Go binary in a mixed fleet would contribute nothing to the shared repo; the plan's worst field failure is a bad sync write, gated by the harness's `tree` channel and `tudiff live`).
+*Introduced by*: 260916-lsml-sync-metrics-writer
 
 ### lbh values as a tool-major left fold
 **Decision**: Per user, the `lbh` series is `GroupBy(Relabel(Window(ByUser(raw, u))), Date)` over the gather-ordered records — one left fold in record input order (tool-major, walk order within a tool) — not `Collapse(Tool, Date)` then `RollUp`.

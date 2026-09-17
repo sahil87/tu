@@ -572,17 +572,24 @@ func loggedCalls(t *testing.T, path, tool string) [][]string {
 }
 
 // R13/R9: the seeded multi variants render the merged window bytes; the
-// legacy variant prefixes its deprecation line.
+// legacy variant prefixes its deprecation line. The own-user fetch also
+// WRITES the day-files before reading (B6's write-then-read shape): 01-05
+// updates to the live $0.50, 01-06 keeps the seeded $0.75 (never-shrink),
+// 01-07 is new — while the rendered bytes stay identical.
 func TestE2EMultiHistoryWindow(t *testing.T) {
 	for _, variant := range []string{"multi", "org", "legacy"} {
 		t.Run(variant, func(t *testing.T) {
-			stageVariant(t, variant)
+			home := stageVariant(t, variant)
 			stderr := ""
 			if variant == "legacy" {
 				stderr = "tu: ~/.tu.conf is deprecated; move it to ~/.config/tu/tu.conf\n"
 			}
 			assertRun(t, []string{"cc", "h", "--since", "2026-01-01", "--until", "2026-01-31"}, 0, e2eMultiCCHWindow, stderr)
 			assertRun(t, []string{"h", "--since", "2026-01-01", "--until", "2026-01-31"}, 0, e2eMultiHWindow, stderr)
+			machineDir := filepath.Join(home, ".tu", "metrics_repo", "harness-user", "2026", "harness-machine")
+			assertDayFile(t, filepath.Join(machineDir, "cc-2026-01-05.jsonl"), "2026-01-05", "0.5")
+			assertDayFile(t, filepath.Join(machineDir, "cc-2026-01-06.jsonl"), "2026-01-06", "0.75")
+			assertDayFile(t, filepath.Join(machineDir, "cc-2026-01-07.jsonl"), "2026-01-07", "0.5")
 		})
 	}
 }
@@ -860,5 +867,362 @@ func TestE2ELeaderboardLastSync(t *testing.T) {
 	want := "\x1b[2msynced 15m ago (" + iso + ") · tu sync to refresh\x1b[0m"
 	if !strings.Contains(stdout.String(), want) {
 		t.Errorf("stdout missing the synced footer %q:\n%s", want, stdout.String())
+	}
+}
+
+// ── B6: the sync writer — tu sync, --dry-run, and --sync on a data command ──
+//
+// Byte references: the node oracle (node v24.15.0) against the committed seed
+// with the harness-staged homes, TZ=UTC, piped, captured 2026-09-17 through
+// the StageOracle layout (the fake ccusage in the vendor slot, the fake git
+// first on PATH). The commit-message date is computed, not pinned: both sides
+// take today's UTC date.
+
+// dayFileBytes is the pinned day-file line for the placeholder corpus's daily
+// record (all six tools carry the same token counts) with the given label and
+// totalCost, plus the trailing newline writeMetrics appends.
+func dayFileBytes(label, cost string) string {
+	return `{"label":"` + label + `","totalCost":` + cost + `,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}` + "\n"
+}
+
+// assertDayFile pins one day-file's bytes.
+func assertDayFile(t *testing.T, path, label, cost string) {
+	t.Helper()
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if want := dayFileBytes(label, cost); string(got) != want {
+		t.Errorf("%s = %q, want %q", path, got, want)
+	}
+}
+
+// assertSyncedTree pins the post-sync state of a staged multi-variant home:
+// the 17 written day-files (cc 01-05 updated to the live $0.50, cc 01-07 and
+// the other five tools' 01-05..07 files new), the never-shrunk cc 01-06, and
+// a .last-sync holding a JavaScript toISOString timestamp plus newline.
+func assertSyncedTree(t *testing.T, home string) {
+	t.Helper()
+	machineDir := filepath.Join(home, ".tu", "metrics_repo", "harness-user", "2026", "harness-machine")
+	for _, tool := range []string{"cc", "codex", "oc", "gemini", "copilot", "kimi"} {
+		for _, day := range []string{"2026-01-05", "2026-01-06", "2026-01-07"} {
+			if tool == "cc" && day == "2026-01-06" {
+				continue // never-shrunk, asserted below
+			}
+			assertDayFile(t, filepath.Join(machineDir, tool+"-"+day+".jsonl"), day, "0.5")
+		}
+	}
+	assertDayFile(t, filepath.Join(machineDir, "cc-2026-01-06.jsonl"), "2026-01-06", "0.75")
+	raw, err := os.ReadFile(filepath.Join(home, ".tu", ".last-sync"))
+	if err != nil {
+		t.Fatalf("read .last-sync: %v", err)
+	}
+	if !strings.HasSuffix(string(raw), "\n") {
+		t.Errorf(".last-sync = %q, want a trailing newline", raw)
+	}
+	if _, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(string(raw))); err != nil {
+		t.Errorf(".last-sync = %q, not an RFC 3339 timestamp: %v", raw, err)
+	}
+}
+
+// syncDryRunReport is the byte-exact `sync --dry-run` stdout on a staged multi
+// home (node oracle, captured 2026-09-17); only the commit-message date moves.
+func syncDryRunReport(now time.Time) string {
+	return "Would write 17 day-file(s) under ~/.tu/metrics_repo/harness-user/:\n" +
+		"  2026/harness-machine/cc-2026-01-05.jsonl  $0.50  (update: $0.25 → $0.50)\n" +
+		"  2026/harness-machine/cc-2026-01-07.jsonl  $0.50  (new)\n" +
+		"  2026/harness-machine/codex-2026-01-05.jsonl  $0.50  (new)\n" +
+		"  2026/harness-machine/codex-2026-01-06.jsonl  $0.50  (new)\n" +
+		"  2026/harness-machine/codex-2026-01-07.jsonl  $0.50  (new)\n" +
+		"  2026/harness-machine/oc-2026-01-05.jsonl  $0.50  (new)\n" +
+		"  2026/harness-machine/oc-2026-01-06.jsonl  $0.50  (new)\n" +
+		"  2026/harness-machine/oc-2026-01-07.jsonl  $0.50  (new)\n" +
+		"  2026/harness-machine/gemini-2026-01-05.jsonl  $0.50  (new)\n" +
+		"  2026/harness-machine/gemini-2026-01-06.jsonl  $0.50  (new)\n" +
+		"  2026/harness-machine/gemini-2026-01-07.jsonl  $0.50  (new)\n" +
+		"  2026/harness-machine/copilot-2026-01-05.jsonl  $0.50  (new)\n" +
+		"  2026/harness-machine/copilot-2026-01-06.jsonl  $0.50  (new)\n" +
+		"  2026/harness-machine/copilot-2026-01-07.jsonl  $0.50  (new)\n" +
+		"  2026/harness-machine/kimi-2026-01-05.jsonl  $0.50  (new)\n" +
+		"  2026/harness-machine/kimi-2026-01-06.jsonl  $0.50  (new)\n" +
+		"  2026/harness-machine/kimi-2026-01-07.jsonl  $0.50  (new)\n" +
+		"Would skip 1 file(s) (never-shrink guard):\n" +
+		"  2026/harness-machine/cc-2026-01-06.jsonl  incoming $0.50 < existing $0.75\n" +
+		"Would commit: \"# harness-user: update " + now.UTC().Format("2006-01-02") + "\", then pull --rebase origin main, then push\n" +
+		"Dry run — nothing written, committed, or pushed.\n"
+}
+
+// R10: `tu sync` in single mode is the two-line gate on stderr, empty stdout,
+// exit 1, no git call — identically for --dry-run.
+func TestE2ESyncSingleMode(t *testing.T) {
+	stageVariant(t, "single")
+	log := filepath.Join(t.TempDir(), "calls.jsonl")
+	t.Setenv("TUDIFF_CALL_LOG", log)
+	want := "tu sync requires metrics_repo to be set.\n" +
+		"Add metrics_repo to ~/.config/tu/tu.conf, run 'tu init-metrics <repo-url>', or set TU_METRICS_REPO.\n"
+	assertRun(t, []string{"sync"}, 1, "", want)
+	assertRun(t, []string{"sync", "--dry-run"}, 1, "", want)
+	if calls := gitCalls(t, log); len(calls) != 0 {
+		t.Errorf("git calls = %v, want none (single mode)", calls)
+	}
+}
+
+// R10: `sync --dry-run` on a multi home prints the report on stdout, exit 0,
+// writes nothing (no day-file, no .last-sync, the seed untouched) and runs
+// exactly one read-only `status --porcelain`.
+func TestE2ESyncDryRun(t *testing.T) {
+	home := stageVariant(t, "multi")
+	log := filepath.Join(t.TempDir(), "calls.jsonl")
+	t.Setenv("TUDIFF_CALL_LOG", log)
+	assertRun(t, []string{"sync", "--dry-run"}, 0, syncDryRunReport(time.Now()), "")
+	dir := filepath.Join(home, ".tu", "metrics_repo")
+	want := [][]string{{"-C", dir, "status", "--porcelain", "harness-user/"}}
+	if calls := gitCalls(t, log); !reflect.DeepEqual(calls, want) {
+		t.Errorf("git calls = %v, want %v", calls, want)
+	}
+	newFile := filepath.Join(dir, "harness-user", "2026", "harness-machine", "cc-2026-01-07.jsonl")
+	if _, err := os.Stat(newFile); !os.IsNotExist(err) {
+		t.Error("dry-run created cc-2026-01-07.jsonl")
+	}
+	if _, err := os.Stat(filepath.Join(home, ".tu", ".last-sync")); !os.IsNotExist(err) {
+		t.Error("dry-run created .last-sync")
+	}
+	// The seeded 01-05 file is byte-identical to the committed seed.
+	got, err := os.ReadFile(filepath.Join(dir, "harness-user", "2026", "harness-machine", "cc-2026-01-05.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed, err := os.ReadFile(filepath.Join(e2eSeedDir, "harness-user", "2026", "harness-machine", "cc-2026-01-05.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, seed) {
+		t.Errorf("dry-run mutated the seeded cc-2026-01-05.jsonl: %q", got)
+	}
+}
+
+// R10: a live `tu sync` on each multi variant: the Synced line on stdout, the
+// add/status/pull/push argv sequence (no commit — the fake git's status is
+// clean), six ccusage calls, and the written tree. `sync --json` ignores the
+// format flag (DC-02) and renders the same plain-text result.
+func TestE2ESyncLive(t *testing.T) {
+	for _, variant := range []string{"multi", "org", "legacy"} {
+		t.Run(variant, func(t *testing.T) {
+			home := stageVariant(t, variant)
+			log := filepath.Join(t.TempDir(), "calls.jsonl")
+			t.Setenv("TUDIFF_CALL_LOG", log)
+			stderr := ""
+			if variant == "legacy" {
+				stderr = "tu: ~/.tu.conf is deprecated; move it to ~/.config/tu/tu.conf\n"
+			}
+			assertRun(t, []string{"sync"}, 0, "Synced to ~/.tu/metrics_repo\n", stderr)
+			dir := filepath.Join(home, ".tu", "metrics_repo")
+			want := [][]string{
+				{"-C", dir, "add", "harness-user/"},
+				{"-C", dir, "status", "--porcelain", "harness-user/"},
+				{"-C", dir, "pull", "--rebase", "origin", "main"},
+				{"-C", dir, "push"},
+			}
+			if calls := gitCalls(t, log); !reflect.DeepEqual(calls, want) {
+				t.Errorf("git calls = %v, want %v", calls, want)
+			}
+			if calls := loggedCalls(t, log, "ccusage"); len(calls) != 6 {
+				t.Errorf("ccusage calls = %v, want six (one per tool)", calls)
+			}
+			assertSyncedTree(t, home)
+		})
+	}
+}
+
+// R10/DC-02: data flags on `sync` are ignored — `sync --json` is a real
+// plain-text sync, byte-identical to `sync`.
+func TestE2ESyncJSONIgnored(t *testing.T) {
+	stageVariant(t, "multi")
+	assertRun(t, []string{"sync", "--json"}, 0, "Synced to ~/.tu/metrics_repo\n", "")
+}
+
+// R10: a dirty `status --porcelain` inserts the commit (today's UTC date)
+// between status and pull.
+func TestE2ESyncDirty(t *testing.T) {
+	home := stageVariant(t, "multi")
+	log := filepath.Join(t.TempDir(), "calls.jsonl")
+	t.Setenv("TUDIFF_CALL_LOG", log)
+	t.Setenv("TUDIFF_GIT_SCRIPT", `[{"match":["status","--porcelain"],"stdout":" M harness-user/x\n","exit":0}]`)
+	assertRun(t, []string{"sync"}, 0, "Synced to ~/.tu/metrics_repo\n", "")
+	dir := filepath.Join(home, ".tu", "metrics_repo")
+	want := [][]string{
+		{"-C", dir, "add", "harness-user/"},
+		{"-C", dir, "status", "--porcelain", "harness-user/"},
+		{"-C", dir, "commit", "-m", "# harness-user: update " + time.Now().UTC().Format("2006-01-02")},
+		{"-C", dir, "pull", "--rebase", "origin", "main"},
+		{"-C", dir, "push"},
+	}
+	if calls := gitCalls(t, log); !reflect.DeepEqual(calls, want) {
+		t.Errorf("git calls = %v, want %v", calls, want)
+	}
+}
+
+// R10: a pull failure warns (the Node-shaped error text, its embedded newline
+// producing the blank line), then the generic error, exit 1; the log shows
+// the rebase --abort recovery after the pull, and no .last-sync is touched.
+func TestE2ESyncPullFail(t *testing.T) {
+	home := stageVariant(t, "multi")
+	log := filepath.Join(t.TempDir(), "calls.jsonl")
+	t.Setenv("TUDIFF_CALL_LOG", log)
+	t.Setenv("TUDIFF_GIT_SCRIPT", `[{"match":["pull"],"stderr":"fatal: couldn't find remote ref main\n","exit":1}]`)
+	dir := filepath.Join(home, ".tu", "metrics_repo")
+	wantStderr := "Warning: sync pull failed — git -C " + dir + "... failed: Command failed: git -C " + dir + " pull --rebase origin main\n" +
+		"fatal: couldn't find remote ref main\n" +
+		"\n" +
+		"Error: sync failed — check network and remote config.\n"
+	assertRun(t, []string{"sync"}, 1, "", wantStderr)
+	want := [][]string{
+		{"-C", dir, "add", "harness-user/"},
+		{"-C", dir, "status", "--porcelain", "harness-user/"},
+		{"-C", dir, "pull", "--rebase", "origin", "main"},
+		{"-C", dir, "rebase", "--abort"},
+	}
+	if calls := gitCalls(t, log); !reflect.DeepEqual(calls, want) {
+		t.Errorf("git calls = %v, want %v", calls, want)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".tu", ".last-sync")); !os.IsNotExist(err) {
+		t.Error(".last-sync created by a failed sync")
+	}
+}
+
+// R10: a push failure retries once (two push calls), then warns and exits 1
+// with the generic error.
+func TestE2ESyncPushFail(t *testing.T) {
+	home := stageVariant(t, "multi")
+	log := filepath.Join(t.TempDir(), "calls.jsonl")
+	t.Setenv("TUDIFF_CALL_LOG", log)
+	t.Setenv("TUDIFF_GIT_SCRIPT", `[{"match":["push"],"stderr":"error: failed to push some refs\n","exit":1}]`)
+	dir := filepath.Join(home, ".tu", "metrics_repo")
+	wantStderr := "Warning: sync push failed after retry — git -C " + dir + "... failed: Command failed: git -C " + dir + " push\n" +
+		"error: failed to push some refs\n" +
+		"\n" +
+		"Error: sync failed — check network and remote config.\n"
+	assertRun(t, []string{"sync"}, 1, "", wantStderr)
+	want := [][]string{
+		{"-C", dir, "add", "harness-user/"},
+		{"-C", dir, "status", "--porcelain", "harness-user/"},
+		{"-C", dir, "pull", "--rebase", "origin", "main"},
+		{"-C", dir, "push"},
+		{"-C", dir, "push"},
+	}
+	if calls := gitCalls(t, log); !reflect.DeepEqual(calls, want) {
+		t.Errorf("git calls = %v, want %v", calls, want)
+	}
+}
+
+// R10: a config user of "all" is the reserved-user line and exit 2 — BEFORE
+// the mode check, so no sync runs.
+func TestE2ESyncReservedUser(t *testing.T) {
+	home := stageVariant(t, "multi")
+	conf := filepath.Join(home, ".config", "tu", "tu.conf")
+	raw, err := os.ReadFile(conf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(conf, bytes.ReplaceAll(raw, []byte("user = harness-user"), []byte("user = all")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	log := filepath.Join(t.TempDir(), "calls.jsonl")
+	t.Setenv("TUDIFF_CALL_LOG", log)
+	assertRun(t, []string{"sync"}, 2, "", `Error: config user "all" is reserved (used by -u all)`+"\n")
+	if calls := gitCalls(t, log); len(calls) != 0 {
+		t.Errorf("git calls = %v, want none (reserved user)", calls)
+	}
+}
+
+// R10: a fresh .clone-failed marker with the metrics dir missing demotes in
+// the guard — the not-available warning only, exit 1, no git call.
+func TestE2ESyncCloneMarker(t *testing.T) {
+	home := stageVariant(t, "multi")
+	if err := os.RemoveAll(filepath.Join(home, ".tu", "metrics_repo")); err != nil {
+		t.Fatal(err)
+	}
+	marker := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	if err := os.WriteFile(filepath.Join(home, ".tu", ".clone-failed"), []byte(marker), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	log := filepath.Join(t.TempDir(), "calls.jsonl")
+	t.Setenv("TUDIFF_CALL_LOG", log)
+	assertRun(t, []string{"sync"}, 1, "",
+		"Warning: metrics repo not available — falling back to single mode.\n")
+	if calls := gitCalls(t, log); len(calls) != 0 {
+		t.Errorf("git calls = %v, want none (fresh marker)", calls)
+	}
+}
+
+// R9: `cc --sync` on a multi home syncs first (stderr exactly the two-part
+// line), then renders the same bytes as `cc` without the flag; the run's own
+// fetch hits the cache the sync warmed, so the log holds exactly SIX ccusage
+// calls plus the four git calls, and the tree + .last-sync are written.
+func TestE2ESyncFlagMulti(t *testing.T) {
+	home := stageVariant(t, "multi")
+	log := filepath.Join(t.TempDir(), "calls.jsonl")
+	t.Setenv("TUDIFF_CALL_LOG", log)
+	assertRun(t, []string{"cc", "--sync"}, 0,
+		"\n\x1b[1;37m📊 Combined Usage (daily)\x1b[0m\n\n  No usage\n\n",
+		"syncing metrics... synced.\n")
+	if calls := loggedCalls(t, log, "ccusage"); len(calls) != 6 {
+		t.Errorf("ccusage calls = %v, want six (the second fetch hits the cache)", calls)
+	}
+	dir := filepath.Join(home, ".tu", "metrics_repo")
+	want := [][]string{
+		{"-C", dir, "add", "harness-user/"},
+		{"-C", dir, "status", "--porcelain", "harness-user/"},
+		{"-C", dir, "pull", "--rebase", "origin", "main"},
+		{"-C", dir, "push"},
+	}
+	if calls := gitCalls(t, log); !reflect.DeepEqual(calls, want) {
+		t.Errorf("git calls = %v, want %v", calls, want)
+	}
+	assertSyncedTree(t, home)
+}
+
+// R9: `cc --sync` with a failing pull warns between the prefix and the
+// failure line (the error's embedded newline making the blank line), then the
+// table still renders from local data, exit 0, and .last-sync is untouched.
+func TestE2ESyncFlagPullFail(t *testing.T) {
+	home := stageVariant(t, "multi")
+	log := filepath.Join(t.TempDir(), "calls.jsonl")
+	t.Setenv("TUDIFF_CALL_LOG", log)
+	t.Setenv("TUDIFF_GIT_SCRIPT", `[{"match":["pull"],"stderr":"fatal: couldn't find remote ref main\n","exit":1}]`)
+	dir := filepath.Join(home, ".tu", "metrics_repo")
+	wantStderr := "syncing metrics... Warning: sync pull failed — git -C " + dir + "... failed: Command failed: git -C " + dir + " pull --rebase origin main\n" +
+		"fatal: couldn't find remote ref main\n" +
+		"\n" +
+		"sync failed — using local data.\n"
+	assertRun(t, []string{"cc", "--sync"}, 0,
+		"\n\x1b[1;37m📊 Combined Usage (daily)\x1b[0m\n\n  No usage\n\n", wantStderr)
+	want := [][]string{
+		{"-C", dir, "add", "harness-user/"},
+		{"-C", dir, "status", "--porcelain", "harness-user/"},
+		{"-C", dir, "pull", "--rebase", "origin", "main"},
+		{"-C", dir, "rebase", "--abort"},
+	}
+	if calls := gitCalls(t, log); !reflect.DeepEqual(calls, want) {
+		t.Errorf("git calls = %v, want %v", calls, want)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".tu", ".last-sync")); !os.IsNotExist(err) {
+		t.Error(".last-sync created by a failed sync")
+	}
+}
+
+// R9: --sync in single mode produces no sync line and no git call — the
+// normal live render only (one ccusage call for the single source).
+func TestE2ESyncFlagSingle(t *testing.T) {
+	stageVariant(t, "single")
+	log := filepath.Join(t.TempDir(), "calls.jsonl")
+	t.Setenv("TUDIFF_CALL_LOG", log)
+	assertRun(t, []string{"cc", "--sync"}, 0,
+		"\n\x1b[1;37m📊 Combined Usage (daily)\x1b[0m\n\n  No usage\n\n", "")
+	if calls := loggedCalls(t, log, "ccusage"); len(calls) != 1 {
+		t.Errorf("ccusage calls = %v, want one (single source, no sync fetch)", calls)
+	}
+	if calls := gitCalls(t, log); len(calls) != 0 {
+		t.Errorf("git calls = %v, want none (single mode)", calls)
 	}
 }

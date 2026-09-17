@@ -32,10 +32,18 @@ type Repo interface {
 	Read(user string, tool fact.Tool) []fact.Record
 }
 
+// Writer is what command needs from the metrics-repo writer: the own-user
+// day-file write that precedes every repo read in multi mode. sync.Writer
+// satisfies it (asserted where cmd/tu assigns it). Nil = no write (tests).
+type Writer interface {
+	Write(user, machine string, tool fact.Tool, recs []fact.Record) error
+}
+
 // Deps are Run's external inputs.
 type Deps struct {
 	Source Fetcher
 	Repo   Repo             // the metrics clone; consulted only in multi mode
+	Writer Writer           // the own-user day-file write; multi mode only, nil = no write (tests)
 	Now    func() time.Time // time.Now at the edge; fixed in tests
 	Colors ansi.Colors
 	Width  int // stdout TTY width, probed at the edge (80 when piped)
@@ -79,8 +87,9 @@ var ErrLeaderboardMode = errors.New("Error: lb requires multi mode — run tu in
 // already cleared it for single and for lb/lbh), --top on the leaderboards
 // (Normalize already cleared it elsewhere), --by-machine on the snapshots,
 // the single-tool history and lb (Normalize already cleared it on the
-// all-tools pivot and on lbh), no non-data command, no version. Still out:
-// watch, sync, dry-run, no-rain, skip-brew-update.
+// all-tools pivot and on lbh), --sync (the edge consumes it before Run), no
+// non-data command, no version. Still out: watch, dry-run, no-rain,
+// skip-brew-update.
 func inScope(req Request) bool {
 	if req.Command != "" || req.Version {
 		return false
@@ -89,7 +98,7 @@ func inScope(req Request) bool {
 		return false
 	}
 	f := req.Flags
-	if f.Watch || f.Sync || f.DryRun || f.NoRain || f.SkipBrewUpdate {
+	if f.Watch || f.DryRun || f.NoRain || f.SkipBrewUpdate {
 		return false
 	}
 	return true
@@ -129,7 +138,10 @@ func Run(ctx context.Context, req Request, cfg config.Config, deps Deps) (Result
 	ctx, cancel := context.WithTimeout(ctx, source.DefaultTimeout)
 	defer cancel()
 
-	recs, errs := gather(ctx, req, cfg, deps)
+	recs, errs, err := gather(ctx, req, cfg, deps)
+	if err != nil {
+		return Result{}, err
+	}
 
 	if req.Display == History {
 		return runHistory(req, cfg, recs, errs, notices, capActive, deps), nil
@@ -222,9 +234,14 @@ func buildHistoryBreakdown(req Request, cfg config.Config, raw []fact.Record) *v
 // errors, choosing the TS path by mode and -u (intake §7.3):
 //
 //	single                           live fetch (as today)
-//	multi, -u "" or -u == cfg.User   live fetch → stored := Read(cfg.User, tool)
-//	                                 per tool → own/others split on Machine ==
-//	                                 cfg.Machine → MaxMerge(live, own) ++ others
+//	multi, -u "" or -u == cfg.User   live fetch → per tool in registry order:
+//	                                 Writer.Write(cfg.User, cfg.Machine, tool,
+//	                                 live-by-tool) when Writer != nil, THEN
+//	                                 stored := Read(cfg.User, tool) → own/others
+//	                                 split on Machine == cfg.Machine →
+//	                                 MaxMerge(live, own) ++ others. A write
+//	                                 error propagates out of Run (the TS crash
+//	                                 path; the edge prints it, exit 1).
 //	multi, -u all                    for u in Repo.Users(): Read(u, tool) per
 //	                                 tool — no live fetch, no source errors
 //	multi, -u <other>                Read(user, tool) per tool — no live fetch,
@@ -238,7 +255,7 @@ func buildHistoryBreakdown(req Request, cfg config.Config, raw []fact.Record) *v
 // machine/user dimension the collapse would drop. Record order is unchanged
 // and load-bearing for --json float bytes: own machine first, then other
 // machines in walk order; for -u all, users ascending then walk order.
-func gather(ctx context.Context, req Request, cfg config.Config, deps Deps) ([]fact.Record, []*source.Error) {
+func gather(ctx context.Context, req Request, cfg config.Config, deps Deps) ([]fact.Record, []*source.Error, error) {
 	tools := fact.Tools
 	if req.Source != "" {
 		tool, _ := fact.Lookup(req.Source)
@@ -246,14 +263,15 @@ func gather(ctx context.Context, req Request, cfg config.Config, deps Deps) ([]f
 	}
 	if cfg.Mode == config.Multi {
 		if req.Flags.User == "all" {
-			return gatherAllUsers(deps.Repo, tools), nil
+			return gatherAllUsers(deps.Repo, tools), nil, nil
 		}
 		if req.Flags.User != "" && req.Flags.User != cfg.User {
-			return gatherUser(deps.Repo, req.Flags.User, tools), nil
+			return gatherUser(deps.Repo, req.Flags.User, tools), nil, nil
 		}
 		return gatherOwn(ctx, req, cfg, deps, tools)
 	}
-	return fetchLive(ctx, req, deps, tools)
+	recs, errs := fetchLive(ctx, req, deps, tools)
+	return recs, errs, nil
 }
 
 // fetchLive is the B2 live fetch: daily only (roll-up is client-side),
@@ -269,11 +287,14 @@ func fetchLive(ctx context.Context, req Request, deps Deps, tools []fact.Tool) (
 	return recs, nil
 }
 
-// gatherOwn is the multi-mode own-user path: the live fetch reconciled with
-// the machine's own stored day-files by whole-record max (never summed — a
-// stored file only ever holds the fullest snapshot), then the other machines'
-// records in walk order.
-func gatherOwn(ctx context.Context, req Request, cfg config.Config, deps Deps, tools []fact.Tool) ([]fact.Record, []*source.Error) {
+// gatherOwn is the multi-mode own-user path, the TS write-then-read shape:
+// after the live fetch, per tool in registry order, the never-shrink day-file
+// write (when a Writer is wired) precedes the repo read, then the machine's
+// own stored day-files reconcile with the live fetch by whole-record max
+// (never summed — a stored file only ever holds the fullest snapshot), and
+// the other machines' records follow in walk order. A write error aborts the
+// run (the TS crash path).
+func gatherOwn(ctx context.Context, req Request, cfg config.Config, deps Deps, tools []fact.Tool) ([]fact.Record, []*source.Error, error) {
 	live, errs := fetchLive(ctx, req, deps, tools)
 	byTool := make(map[string][]fact.Record, len(tools))
 	for _, r := range live {
@@ -281,6 +302,11 @@ func gatherOwn(ctx context.Context, req Request, cfg config.Config, deps Deps, t
 	}
 	var recs []fact.Record
 	for _, tool := range tools {
+		if deps.Writer != nil {
+			if err := deps.Writer.Write(cfg.User, cfg.Machine, tool, byTool[tool.Key]); err != nil {
+				return nil, nil, err
+			}
+		}
 		var own, others []fact.Record
 		for _, r := range deps.Repo.Read(cfg.User, tool) {
 			if r.Machine == cfg.Machine {
@@ -292,7 +318,7 @@ func gatherOwn(ctx context.Context, req Request, cfg config.Config, deps Deps, t
 		recs = append(recs, query.MaxMerge(byTool[tool.Key], own)...)
 		recs = append(recs, others...)
 	}
-	return recs, errs
+	return recs, errs, nil
 }
 
 // gatherUser is the repo-only -u <other> path: the user's records per tool in

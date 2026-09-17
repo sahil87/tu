@@ -123,6 +123,104 @@ func TestCloneFailure(t *testing.T) {
 	}
 }
 
+// R4: Run returns stdout on exit 0 and issues exactly `-C <dir> <args...>`.
+func TestRunSuccess(t *testing.T) {
+	log := stageFakeGit(t)
+	t.Setenv("FAKEGIT_STDOUT", "stdout-text")
+	stdout, err := (Exec{}).Run("/r", "pull", "--rebase", "origin", "main")
+	if err != nil {
+		t.Fatalf("Run err = %v", err)
+	}
+	if stdout != "stdout-text" {
+		t.Errorf("stdout = %q, want %q", stdout, "stdout-text")
+	}
+	calls := readGitLog(t, log)
+	if len(calls) != 1 || strings.Join(calls[0], " ") != "-C /r pull --rebase origin main" {
+		t.Errorf("calls = %v, want [[-C /r pull --rebase origin main]]", calls)
+	}
+}
+
+// R4: a non-zero exit reproduces Node's "Command failed: <cmd>\n<stderr>"
+// message, the captured stderr verbatim (its trailing newline included).
+func TestRunFailureWithStderr(t *testing.T) {
+	stageFakeGit(t)
+	t.Setenv("FAKEGIT_EXIT", "1")
+	t.Setenv("FAKEGIT_STDERR", "fatal: couldn't find remote ref main\n")
+	_, err := (Exec{}).Run("/r", "pull", "--rebase", "origin", "main")
+	want := "git -C /r... failed: Command failed: git -C /r pull --rebase origin main\nfatal: couldn't find remote ref main\n"
+	if err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+}
+
+// R4: with empty stderr Node's message has no trailing newline (the `\n`
+// separator is added only when stderr is non-empty).
+func TestRunFailureNoStderr(t *testing.T) {
+	stageFakeGit(t)
+	t.Setenv("FAKEGIT_EXIT", "1")
+	_, err := (Exec{}).Run("/r", "status", "--porcelain")
+	want := "git -C /r... failed: Command failed: git -C /r status --porcelain\n"
+	if err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+}
+
+// R4: git missing from PATH reproduces Node's spawn message.
+func TestRunMissingBinary(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	_, err := (Exec{}).Run("/r", "status")
+	want := "git -C /r... failed: spawn git ENOENT"
+	if err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+}
+
+// A stream overflowing MaxBuffer kills the child and yields Node's maxBuffer
+// message (pinned against Node v24's execFile) — here on stdout with the
+// child exiting 0, matching Node erroring on the overflow regardless.
+func TestRunStdoutMaxBufferExceeded(t *testing.T) {
+	stageFakeGit(t)
+	t.Setenv("FAKEGIT_STDOUT", strings.Repeat("x", 32))
+	_, err := (Exec{MaxBuffer: 16}).Run("/r", "log")
+	want := "git -C /r... failed: stdout maxBuffer length exceeded"
+	if err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+}
+
+// Same on stderr, on a non-zero exit: the overflow message replaces the
+// Command failed text, as in Node.
+func TestRunStderrMaxBufferExceeded(t *testing.T) {
+	stageFakeGit(t)
+	t.Setenv("FAKEGIT_EXIT", "1")
+	t.Setenv("FAKEGIT_STDERR", strings.Repeat("e", 32))
+	_, err := (Exec{MaxBuffer: 16}).Run("/r", "push")
+	want := "git -C /r... failed: stderr maxBuffer length exceeded"
+	if err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+}
+
+// Output at exactly the cap is not an overflow; the default cap is the sync
+// 10 MiB (MaxBufferSync), the repair twin's is MaxBufferRepair.
+func TestRunMaxBufferBoundaries(t *testing.T) {
+	stageFakeGit(t)
+	t.Setenv("FAKEGIT_STDOUT", strings.Repeat("x", 16))
+	stdout, err := (Exec{MaxBuffer: 16}).Run("/r", "status", "--porcelain")
+	if err != nil {
+		t.Fatalf("Run err = %v, want nil at exactly the cap", err)
+	}
+	if len(stdout) != 16 {
+		t.Errorf("len(stdout) = %d, want 16", len(stdout))
+	}
+	if (Exec{}).maxBuffer() != MaxBufferSync {
+		t.Errorf("zero MaxBuffer = %d, want MaxBufferSync %d", (Exec{}).maxBuffer(), MaxBufferSync)
+	}
+	if (Exec{MaxBuffer: MaxBufferRepair}).maxBuffer() != MaxBufferRepair {
+		t.Errorf("MaxBufferRepair not honored")
+	}
+}
+
 // captureProcessStreams swaps os.Stdout/os.Stderr for pipes while fn runs and
 // returns whatever was written to them — CloneQuiet must leave both empty.
 func captureProcessStreams(t *testing.T, fn func()) (stdout, stderr string) {

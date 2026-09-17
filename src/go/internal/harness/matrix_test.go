@@ -27,6 +27,30 @@ func TestLoadMatrixValid(t *testing.T) {
 	}
 }
 
+// R13: the env axis accepts the scripted-git failure values.
+func TestLoadMatrixEnvAxisValues(t *testing.T) {
+	path := writeMatrix(t, `{"schema":1,"cases":[{"id":"sync","args":["sync"],"env":["default","pullfail","pushfail","dirty"]}]}`)
+	m, err := LoadMatrix(path)
+	if err != nil {
+		t.Fatalf("LoadMatrix: %v", err)
+	}
+	cases := Expand(m)
+	want := []string{
+		"sync/single/default/pipe/fixed",
+		"sync/single/pullfail/pipe/fixed",
+		"sync/single/pushfail/pipe/fixed",
+		"sync/single/dirty/pipe/fixed",
+	}
+	if len(cases) != len(want) {
+		t.Fatalf("Expand produced %d cases, want %d", len(cases), len(want))
+	}
+	for i, c := range cases {
+		if c.ID != want[i] {
+			t.Errorf("cases[%d].ID = %q, want %q", i, c.ID, want[i])
+		}
+	}
+}
+
 func TestLoadMatrixValidationErrors(t *testing.T) {
 	tests := []struct {
 		name string

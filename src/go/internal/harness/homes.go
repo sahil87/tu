@@ -47,7 +47,7 @@ func StageHome(dir, variant, seedDir string) error {
 	default:
 		return fmt.Errorf("tudiff: unknown home variant %q", variant)
 	}
-	return copyTree(seedDir, filepath.Join(dir, ".tu", "metrics_repo"))
+	return CopyTree(seedDir, filepath.Join(dir, ".tu", "metrics_repo"))
 }
 
 func writeHomeConf(path string) error {
@@ -57,10 +57,10 @@ func writeHomeConf(path string) error {
 	return os.WriteFile(path, []byte(HomeConfBody), 0o644)
 }
 
-// copyTree recursively copies src to dst (files 0644, dirs 0755). No .git/ is
+// CopyTree recursively copies src to dst (files 0644, dirs 0755). No .git/ is
 // created — the metrics-dir guard is an existence check and the fake git
 // answers every call.
-func copyTree(src, dst string) error {
+func CopyTree(src, dst string) error {
 	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err

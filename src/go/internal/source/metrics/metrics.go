@@ -45,13 +45,31 @@ func (s Source) Users() []string {
 	return users
 }
 
-// dayFile is the one JSON object a {tool}-{date}.jsonl file holds: the label
-// plus the six pinned totals keys (a missing key decodes as 0 — the TS would
-// propagate NaN through += undefined, but only a hand-corrupted file can lack
-// a key; the never-shrink writer always emits all six).
-type dayFile struct {
+// DayFile is the one JSON object a {tool}-{date}.jsonl file holds, in the
+// exact key order the TS toUsageEntry spread produces (label first, then the
+// six totals in UsageTotals order). The writer marshals it; the reader
+// unmarshals it. A missing totals key decodes as 0 (the TS would propagate
+// NaN through += undefined, but only a hand-corrupted file can lack a key;
+// the never-shrink writer always emits all six).
+type DayFile struct {
 	Label string `json:"label"`
 	fact.Totals
+}
+
+// Name is the day-file basename: "{tool}-{date}.jsonl".
+func Name(tool fact.Tool, date string) string {
+	return tool.Key + "-" + date + ".jsonl"
+}
+
+// Path is the day-file path: {dir}/{user}/{year}/{machine}/{Name} where year
+// is the label's first four characters (the TS label.slice(0, 4); a shorter
+// label is used whole).
+func Path(dir, user, machine string, tool fact.Tool, date string) string {
+	year := date
+	if len(year) > 4 {
+		year = year[:4]
+	}
+	return filepath.Join(dir, user, year, machine, Name(tool, date))
 }
 
 // Read returns user's records for tool across every machine, in walk order:
@@ -135,7 +153,7 @@ func readDayFile(path string) (fact.Record, bool) {
 		// the struct and would surface as a zero record with an empty label.
 		return fact.Record{}, false
 	}
-	var d dayFile
+	var d DayFile
 	if err := json.Unmarshal([]byte(trimmed), &d); err != nil {
 		return fact.Record{}, false
 	}

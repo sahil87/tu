@@ -4,7 +4,9 @@
 // harness/fixtures/<machine-alias>/, `placeholder` writes the schema-derived,
 // committed placeholder corpus (real captures carry spend data and stay
 // local), and `run` byte-diffs node dist/tu.mjs against the Go binary over
-// harness/matrix.json.
+// harness/matrix.json. `live` is the real-git half of the gate: the intake
+// § 10 sync/repair sequence against temp bare repos (the fake git stays
+// unused), reported under bin/harness/report-live/.
 package main
 
 import (
@@ -17,10 +19,11 @@ import (
 	"github.com/sahil87/tu/internal/harness"
 )
 
-const usageText = `usage: tudiff <capture|placeholder|run> [flags]
+const usageText = `usage: tudiff <capture|placeholder|run|live> [flags]
   capture      record real ccusage output into harness/fixtures/<machine-alias>/
   placeholder  write the schema-derived placeholder corpus (all six sources by default)
   run          byte-diff node dist/tu.mjs against the Go binary over harness/matrix.json
+  live         real-git parity: the sync/repair sequence against temp bare repos
 `
 
 func main() {
@@ -41,6 +44,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runPlaceholder(args[1:], stdout, stderr)
 	case "run":
 		return runRun(args[1:], stdout, stderr)
+	case "live":
+		return runLive(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "tudiff: unknown subcommand %q\n%s", args[0], usageText)
 		return 2

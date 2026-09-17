@@ -110,7 +110,14 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 // resolve absolutizes a path flag: an explicit value resolves against the
 // caller's cwd, an untouched default against the repo root.
 func (o *runOptions) resolve(root, name, value string) string {
-	if filepath.IsAbs(value) || o.set[name] {
+	return resolvePathFlag(root, o.set[name], value)
+}
+
+// resolvePathFlag is the flag-resolution rule shared by run and live: an
+// explicit value resolves against the caller's cwd, an untouched default
+// against the repo root.
+func resolvePathFlag(root string, explicit bool, value string) string {
+	if filepath.IsAbs(value) || explicit {
 		if abs, err := filepath.Abs(value); err == nil {
 			return abs
 		}
@@ -332,8 +339,9 @@ type caseSide struct {
 }
 
 // runCase executes one case end to end: two staged $HOMEs, both sides
-// back-to-back (re-run once on a date rollover), comparison, the
-// informational call-log and unconfirmed lookups, and the raw captures.
+// back-to-back (re-run once on a date rollover), the byte comparison and —
+// for cases still green — the written-tree comparison, the informational
+// call-log and unconfirmed lookups, and the raw captures.
 func runCase(c harness.Case, cfg runConfig) (harness.Result, error) {
 	res := harness.Result{Case: c, Status: harness.StatusRed, NodeExit: -1, GoExit: -1}
 	node, goSide, err := stageCase(c, cfg)
@@ -358,6 +366,21 @@ func runCase(c harness.Case, cfg runConfig) (harness.Result, error) {
 
 	res = harness.Compare(c, nodeCap, goCap)
 	res.Rerun = rerun
+	if res.Status == harness.StatusGreen {
+		// The bytes agreed; the written trees must agree too (the sync
+		// writer's half of the case). A tree difference reddens the case on
+		// the "tree" channel; a case already red keeps its first channel.
+		diff, err := harness.CompareTrees(node.home, goSide.home)
+		if err != nil {
+			return res, err
+		}
+		if diff != nil {
+			res.Status = harness.StatusRed
+			res.Channel = "tree"
+			res.NodeExcerpt = diff.NodeExcerpt
+			res.GoExcerpt = diff.GoExcerpt
+		}
+	}
 	if err := annotateCalls(&res, node, goSide, cfg.fixtures); err != nil {
 		return res, err
 	}

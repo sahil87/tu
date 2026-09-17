@@ -221,16 +221,13 @@ func TestRunUnported(t *testing.T) {
 		cfg  config.Config
 	}{
 		{"watch", Request{Flags: Flags{Watch: true, Interval: 10}}, singleCfg},
-		{"sync", Request{Flags: Flags{Sync: true, Interval: 10}}, singleCfg},
 		{"dry-run", Request{Flags: Flags{DryRun: true, Interval: 10}}, singleCfg},
 		{"no-rain", Request{Flags: Flags{NoRain: true, Interval: 10}}, singleCfg},
 		{"skip-brew-update", Request{Flags: Flags{SkipBrewUpdate: true, Interval: 10}}, singleCfg},
 		{"command", Request{Command: "help", Flags: base}, singleCfg},
 		{"version", Request{Version: true, Flags: base}, singleCfg},
 		{"lb watch", Request{Display: Leaderboard, Flags: Flags{Watch: true, Interval: 10}}, multiCfg},
-		{"lb sync", Request{Display: Leaderboard, Flags: Flags{Sync: true, Interval: 10}}, multiCfg},
 		{"multi watch", Request{Flags: Flags{Watch: true, Interval: 10}}, multiCfg},
-		{"multi sync", Request{Flags: Flags{Sync: true, Interval: 10}}, multiCfg},
 		{"multi dry-run", Request{Flags: Flags{DryRun: true, Interval: 10}}, multiCfg},
 	}
 	for _, c := range cases {
@@ -611,17 +608,22 @@ func TestRunHistoryBarsAtWidth120(t *testing.T) {
 // ── B3: metrics-repo source and multi-mode merge ───────────────────────────
 
 // fakeRepo is an in-memory Repo mirroring the committed seed; it records its
-// Read calls as "user/tool".
+// Read calls as "user/tool" and, when log is set, appends "read:user/tool"
+// to the shared log (the write-before-read order pin).
 type fakeRepo struct {
 	users []string
 	recs  map[string]map[string][]fact.Record // user → tool key → records (walk order)
 	calls []string
+	log   *[]string
 }
 
 func (f *fakeRepo) Users() []string { return f.users }
 
 func (f *fakeRepo) Read(user string, tool fact.Tool) []fact.Record {
 	f.calls = append(f.calls, user+"/"+tool.Key)
+	if f.log != nil {
+		*f.log = append(*f.log, "read:"+user+"/"+tool.Key)
+	}
 	return f.recs[user][tool.Key]
 }
 
@@ -985,6 +987,158 @@ func TestRunMultiCapAppliesToStored(t *testing.T) {
 	}
 	if joined := strings.Join(full.Lines, "\n"); !strings.Contains(joined, "2025-10-01") {
 		t.Errorf("h --full must show the stored 2025-10-01 record:\n%s", joined)
+	}
+}
+
+// ── B6: the writer seam ────────────────────────────────────────────────────
+
+// writeCall is one recorded Writer.Write.
+type writeCall struct {
+	user, machine, tool string
+	recs                []fact.Record
+}
+
+// fakeWriter is a recording Writer; log (shared with fakeRepo) pins the
+// write-before-read order across both fakes.
+type fakeWriter struct {
+	err   error
+	calls []writeCall
+	log   *[]string
+}
+
+func (f *fakeWriter) Write(user, machine string, tool fact.Tool, recs []fact.Record) error {
+	f.calls = append(f.calls, writeCall{user, machine, tool.Key, recs})
+	if f.log != nil {
+		*f.log = append(*f.log, "write:"+tool.Key)
+	}
+	return f.err
+}
+
+// R8: the own-user path writes before it reads — multi-mode `cc h` records
+// one Write (user, machine, tool cc, the live records) ordered before that
+// tool's Read; an all-tools run writes per tool in registry order, each write
+// immediately before that tool's read. (The nil-Writer no-op is every B3
+// multi test above — none wires a Writer and their bytes pin the rendered
+// output.)
+func TestRunMultiOwnUserWritesBeforeReads(t *testing.T) {
+	t.Run("cc h", func(t *testing.T) {
+		var log []string
+		f := &fakeFetcher{byTool: liveCorpus()}
+		repo := seedRepo()
+		repo.log = &log
+		w := &fakeWriter{log: &log}
+		deps := multiDeps(f, repo)
+		deps.Writer = w
+		_, err := Run(context.Background(), Request{
+			Source:  "cc",
+			Display: History,
+			Flags:   Flags{Since: "2026-01-01", Until: "2026-01-31", Interval: 10},
+		}, multiCfg, deps)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(w.calls) != 1 {
+			t.Fatalf("writer calls = %+v, want one", w.calls)
+		}
+		got := w.calls[0]
+		if got.user != "harness-user" || got.machine != "harness-machine" || got.tool != "cc" {
+			t.Errorf("write call = %+v, want harness-user/harness-machine/cc", got)
+		}
+		if !reflect.DeepEqual(got.recs, liveCorpus()["cc"]) {
+			t.Errorf("write recs = %+v, want the live cc records", got.recs)
+		}
+		if !reflect.DeepEqual(log, []string{"write:cc", "read:harness-user/cc"}) {
+			t.Errorf("call order = %v, want the write before the read", log)
+		}
+	})
+
+	t.Run("all tools in registry order", func(t *testing.T) {
+		var log []string
+		f := &fakeFetcher{byTool: liveCorpus()}
+		repo := seedRepo()
+		repo.log = &log
+		w := &fakeWriter{log: &log}
+		deps := multiDeps(f, repo)
+		deps.Writer = w
+		if _, err := Run(context.Background(), Request{
+			Display: History,
+			Flags:   Flags{Since: "2026-01-01", Until: "2026-01-31", Interval: 10},
+		}, multiCfg, deps); err != nil {
+			t.Fatal(err)
+		}
+		var want []string
+		for _, tool := range fact.Tools {
+			want = append(want, "write:"+tool.Key, "read:harness-user/"+tool.Key)
+		}
+		if !reflect.DeepEqual(log, want) {
+			t.Errorf("call order = %v, want write-then-read per tool in registry order %v", log, want)
+		}
+	})
+}
+
+// R8: the repo-only paths (-u <other>, -u all, lb) and single mode never
+// call Write.
+func TestRunWriterNeverWritesOffTheOwnUserPath(t *testing.T) {
+	window := Flags{Since: "2026-01-01", Until: "2026-01-31", Interval: 10}
+	other := window
+	other.User = "other-user"
+	all := window
+	all.User = "all"
+	cases := []struct {
+		name string
+		req  Request
+		cfg  config.Config
+	}{
+		{"-u other-user", Request{Display: History, Flags: other}, multiCfg},
+		{"-u all", Request{Display: History, Flags: all}, multiCfg},
+		{"lb", Request{Display: Leaderboard, Flags: window}, multiCfg},
+		{"single mode", Request{Display: History, Flags: window}, singleCfg},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			w := &fakeWriter{}
+			deps := multiDeps(&fakeFetcher{byTool: liveCorpus()}, seedRepo())
+			deps.Writer = w
+			if _, err := Run(context.Background(), c.req, c.cfg, deps); err != nil {
+				t.Fatal(err)
+			}
+			if len(w.calls) != 0 {
+				t.Errorf("writer calls = %+v, want none", w.calls)
+			}
+		})
+	}
+}
+
+// R8: a write error propagates out of Run (the TS crash path; the edge
+// prints it, exit 1).
+func TestRunWriterErrorSurfaces(t *testing.T) {
+	writeErr := errors.New("disk full")
+	w := &fakeWriter{err: writeErr}
+	deps := multiDeps(&fakeFetcher{byTool: liveCorpus()}, seedRepo())
+	deps.Writer = w
+	_, err := Run(context.Background(), Request{
+		Source:  "cc",
+		Display: History,
+		Flags:   Flags{Since: "2026-01-01", Until: "2026-01-31", Interval: 10},
+	}, multiCfg, deps)
+	if !errors.Is(err, writeErr) {
+		t.Errorf("err = %v, want the write error", err)
+	}
+}
+
+// R8: --sync is in scope — the edge consumes it before Run (B6 §7); watch and
+// friends stay out (TestRunUnported).
+func TestRunSyncFlagInScope(t *testing.T) {
+	f := &fakeFetcher{byTool: placeholderCorpus()}
+	res, err := Run(context.Background(), Request{Flags: Flags{Sync: true, Interval: 10}}, singleCfg, historyDeps(f, 80))
+	if err != nil {
+		t.Fatalf("--sync must be in scope: err = %v", err)
+	}
+	if len(f.calls) != 1 || f.calls[0].tool != "" {
+		t.Errorf("calls = %+v, want the daily FetchAll", f.calls)
+	}
+	if joined := strings.Join(res.Lines, "\n"); !strings.Contains(joined, "📊 Combined Usage (daily)") {
+		t.Errorf("the snapshot did not render:\n%s", joined)
 	}
 }
 

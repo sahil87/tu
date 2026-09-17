@@ -63,15 +63,17 @@ func TestRunDevFallback(t *testing.T) {
 // layer); the multi-mode data cases left it in B3; {"h","--by-machine"} left
 // it in B4 (the flag warns-and-clears on the all-tools pivot and renders);
 // {"lb"} left it in B5 (the leaderboard is real in multi mode — covered
-// end-to-end in e2e_test.go). The list runs under a staged MULTI home:
-// {"sync"} pins that B6's command still routes to the placeholder.
+// end-to-end in e2e_test.go); {"sync"} left it in B6 (the sync command, the
+// --dry-run preview and the --sync flag are all real — covered end-to-end in
+// e2e_test.go). What remains is B7's watch surface, pinned here under a
+// staged MULTI home.
 func TestRunNotImplemented(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
 	if err := harness.StageHome(home, harness.ConfMulti, e2eSeedDir); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
-	for _, args := range [][]string{{"sync"}} {
+	for _, args := range [][]string{{"--watch"}, {"cc", "--watch"}} {
 		var stdout, stderr bytes.Buffer
 		code := run(args, &stdout, &stderr)
 		if code != 1 {
