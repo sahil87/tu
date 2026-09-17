@@ -10,7 +10,7 @@ progress:
     review: done
     hydrate: done
     ship: done
-    review-pr: active
+    review-pr: done
 plan:
     generated: true
     task_count: 11
@@ -34,7 +34,7 @@ stage_metrics:
     review: {started_at: "2026-09-17T03:17:34Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-17T03:24:14Z"}
     hydrate: {started_at: "2026-09-17T03:24:14Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-17T03:28:42Z"}
     ship: {started_at: "2026-09-17T03:28:42Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-17T03:30:37Z"}
-    review-pr: {started_at: "2026-09-17T03:30:37Z", driver: git-pr, iterations: 1}
+    review-pr: {started_at: "2026-09-17T03:30:37Z", driver: git-pr, iterations: 1, completed_at: "2026-09-17T03:41:10Z"}
 prs:
     - https://github.com/sahil87/tu/pull/96
 change_type_source: explicit
@@ -56,4 +56,4 @@ true_impact:
 summary: 'adds the Go release pipeline: go-build-target/go-build-all/go-package/go-formula/go-dist recipes, tu-go-* assets with vendored pinned ccusage, dist/tu.rb generation, release.yml upload steps, dogfood install/uninstall'
 # base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-09-17T03:30:37Z
+last_updated: 2026-09-17T03:41:10Z
