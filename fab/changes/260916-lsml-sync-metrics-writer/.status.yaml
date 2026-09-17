@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 14
@@ -33,25 +33,27 @@ stage_metrics:
     apply: {started_at: "2026-09-17T00:35:29Z", driver: fab-fff, iterations: 2, completed_at: "2026-09-17T00:38:59Z"}
     review: {started_at: "2026-09-17T00:38:59Z", driver: fab-fff, iterations: 2, completed_at: "2026-09-17T00:44:54Z"}
     hydrate: {started_at: "2026-09-17T00:44:54Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-17T00:53:14Z"}
-    ship: {started_at: "2026-09-17T00:53:14Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-09-17T00:53:14Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-17T00:54:36Z"}
+    review-pr: {started_at: "2026-09-17T00:54:36Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/tu/pull/94
 change_type_source: explicit
 base_branch: main
 true_impact:
-    added: 0
-    deleted: 0
-    net: 0
+    added: 6764
+    deleted: 109
+    net: 6655
     excluding:
-        added: 0
-        deleted: 0
-        net: 0
+        added: 5743
+        deleted: 74
+        net: 5669
     tests:
-        added: 0
-        deleted: 0
-        net: 0
-    computed_at: "2026-09-17T00:53:14Z"
-    computed_at_stage: hydrate
+        added: 3313
+        deleted: 10
+        net: 3303
+    computed_at: "2026-09-17T00:54:36Z"
+    computed_at_stage: ship
 summary: 'ports the metrics-repo writer and git flow: sync.Write with the never-shrink guard, SyncMetrics/FullSync with the byte-exact dry-run report, the turepair maintainer binary, tu sync/--dry-run/--sync at the edge, the harness tree channel and tudiff live real-git parity'
 # base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-09-17T00:53:14Z
+last_updated: 2026-09-17T00:54:36Z
