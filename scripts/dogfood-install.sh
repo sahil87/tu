@@ -34,18 +34,21 @@ esac
 asset="${ASSET_PREFIX}-${os}-${arch}.tar.gz"
 sums="${ASSET_PREFIX}-SHA256SUMS"
 
-# 3. Download the two assets.
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
-gh release download "$tag" --repo "$REPO" --pattern "$asset" --pattern "$sums" --dir "$tmp" || true
-if [ ! -f "$tmp/$asset" ]; then
+# 3. Download the two assets. Check the release's asset list first so a gh
+# download/auth/network failure aborts loud instead of surfacing as the
+# no-asset error.
+assets=$(gh release view "$tag" --repo "$REPO" --json assets -q '.assets[].name')
+if ! grep -qx "$asset" <<<"$assets"; then
   echo "error: release $tag has no $asset asset — Go assets exist only for releases cut after plan row R1 landed" >&2
   exit 1
 fi
-if [ ! -f "$tmp/$sums" ]; then
+if ! grep -qx "$sums" <<<"$assets"; then
   echo "error: release $tag has no $sums asset — Go assets exist only for releases cut after plan row R1 landed" >&2
   exit 1
 fi
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+gh release download "$tag" --repo "$REPO" --pattern "$asset" --pattern "$sums" --dir "$tmp"
 
 # 4. Verify the sha256 against the sums file; nothing is installed on mismatch.
 expected=$(awk -v f="$asset" '$2 == f {print $1}' "$tmp/$sums")
@@ -86,7 +89,7 @@ while IFS= read -r p; do
   i=$((i + 1))
   case "$p" in
     "$BIN_LINK") note="<- dogfood (Go)" ;;
-    */.linuxbrew/* | */homebrew/* | */Cellar/*) note="<- brew (Node)" ;;
+    */.linuxbrew/* | */homebrew/* | */Cellar/* | /usr/local/bin/tu) note="<- brew (Node)" ;;
     *) note="<- other" ;;
   esac
   printf '  %d. %s  %s\n' "$i" "$p" "$note"

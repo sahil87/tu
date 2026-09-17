@@ -110,7 +110,7 @@ The `go-build-and-test` job MUST gain a `Cross-compile` step running `just go-bu
 ### Resolution verification
 
 #### R11: Vendor-first resolution through a symlinked executable is tested
-`src/go/internal/source/ccusage/exec.go` MUST NOT change. A new test in `src/go/internal/source/ccusage/source_test.go` MUST build a temp tree `<dir>/real/vendor/ccusage/bin/ccusage` (a stub) and assert that the resolver's symlink-following vendor lookup finds it when the executable path is `<dir>/bin/tu → ../real/tu`. Because `ResolveBinary` reads `os.Executable()`, the test MUST exercise the same logic through a small extracted helper (e.g. `resolveVendor(exe string) (string, bool)`) that `ResolveBinary` calls — a pure refactor with identical behavior — rather than by faking `os.Executable`.
+`ResolveBinary`'s resolution behavior in `src/go/internal/source/ccusage/exec.go` MUST NOT change — a pure refactor extracting the vendor lookup is allowed (the test below requires it). A new test in `src/go/internal/source/ccusage/source_test.go` MUST build a temp tree `<dir>/real/vendor/ccusage/bin/ccusage` (a stub) and assert that the resolver's symlink-following vendor lookup finds it when the executable path is `<dir>/bin/tu → ../real/tu`. Because `ResolveBinary` reads `os.Executable()`, the test MUST exercise the same logic through a small extracted helper (e.g. `resolveVendor(exe string) (string, bool)`) that `ResolveBinary` calls — a pure refactor with identical behavior — rather than by faking `os.Executable`.
 
 - **GIVEN** `<dir>/bin/tu` is a symlink to `<dir>/real/tu` and `<dir>/real/vendor/ccusage/bin/ccusage` exists
 - **WHEN** the vendor lookup runs for `<dir>/bin/tu`
