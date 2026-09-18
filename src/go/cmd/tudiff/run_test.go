@@ -397,6 +397,35 @@ func TestRunStaleExpectedExitsOne(t *testing.T) {
 	}
 }
 
+// A harness-channel red (a capture-level failure, not a comparison
+// divergence) is never annotated as expected: a matching entry must not hide
+// a broken harness run behind exit 0.
+func TestRunHarnessChannelRedIsNeverExpected(t *testing.T) {
+	e := newSmokeEnv(t, smokeMatrix)
+	e.withShimmedPATH(t)
+	// A bad shebang passes the preflight executable check (mode bits) but
+	// fails exec with a non-ExitError, so both cases go harness-channel red.
+	writeExe(t, e.goBin, "#!/nonexistent/interpreter\n")
+	expFile := writeFile(t, t.TempDir(), "expected.json",
+		`{"schema":1,"expected":[{"id":"DC-99","cases":["*"],"reason":"smoke"}]}`+"\n")
+	code, stdout, stderr := e.invoke(t, "--expected", expFile)
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1 (stderr: %s)", code, stderr)
+	}
+	for _, sub := range []string{
+		"RED     same/single/default/pipe/fixed  harness @0 (line 0):",
+		"tudiff: 2 cases — 0 green, 2 red (0 expected, 2 unexpected), 0 timeout",
+		"  expected: DC-99  2/2 red",
+	} {
+		if !strings.Contains(stdout, sub) {
+			t.Errorf("stdout lacks %q:\n%s", sub, stdout)
+		}
+	}
+	if strings.Contains(stdout, "[expected DC-99]") {
+		t.Errorf("harness-channel red must not carry the expected marker:\n%s", stdout)
+	}
+}
+
 // R3: --expected preflight — a missing file is its exact one-line message, an
 // invalid file is one `tudiff: expected-diffs: …` line, both exit 2; --list
 // never loads the file.

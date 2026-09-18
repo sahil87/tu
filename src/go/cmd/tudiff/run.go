@@ -404,8 +404,11 @@ func runCase(c harness.Case, cfg runConfig) (harness.Result, error) {
 		return res, err
 	}
 	// A red case may be an intentional divergence: annotate it with the
-	// matching expected-diffs entry (green and timeout cases never carry one).
-	if res.Status == harness.StatusRed {
+	// matching expected-diffs entry. Green, timeout, and harness-channel
+	// cases never carry one — a capture-level failure (a failed exec, a
+	// missing exit sentinel) is not a comparison divergence and must never
+	// be masked as expected.
+	if res.Status == harness.StatusRed && res.Channel != "harness" {
 		if id, ok := cfg.expected.Match(c.ID, c.Group); ok {
 			res.Expected = id
 		}

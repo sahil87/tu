@@ -282,8 +282,10 @@ func (lr *liveRunner) runSequence(stdout io.Writer) []harness.Result {
 	var results []harness.Result
 	emit := func(res harness.Result) {
 		// The single annotation funnel: a red step may be an intentional
-		// divergence (green and timeout steps never carry an expected id).
-		if res.Status == harness.StatusRed {
+		// divergence (green, timeout, and harness-channel steps never carry
+		// an expected id — a capture-level failure is not a comparison
+		// divergence and must never be masked as expected).
+		if res.Status == harness.StatusRed && res.Channel != "harness" {
 			if id, ok := lr.cfg.expected.Match(res.Case.ID, res.Case.Group); ok {
 				res.Expected = id
 			}
