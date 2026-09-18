@@ -1,0 +1,59 @@
+id: 489t
+name: 260918-489t-harness-full-matrix-gate
+created: 2026-09-18T20:17:05Z
+created_by: sahil-noon
+change_type: ci
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
+plan:
+    generated: true
+    task_count: 11
+    acceptance_count: 21
+    acceptance_completed: 21
+confidence:
+    certain: 5
+    confident: 8
+    tentative: 0
+    unresolved: 0
+    score: 3.7
+    fuzzy: true
+    dimensions:
+        signal: 62.3
+        reversibility: 87.7
+        competence: 80.0
+        disambiguation: 70.8
+stage_metrics:
+    intake: {started_at: "2026-09-18T20:17:05Z", driver: fab-new, iterations: 1, completed_at: "2026-09-18T20:21:27Z"}
+    apply: {started_at: "2026-09-18T20:21:27Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-18T20:38:49Z"}
+    review: {started_at: "2026-09-18T20:38:49Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-18T20:40:56Z"}
+    hydrate: {started_at: "2026-09-18T20:40:56Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-18T20:46:32Z"}
+    ship: {started_at: "2026-09-18T20:46:32Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-18T20:50:20Z"}
+    review-pr: {started_at: "2026-09-18T20:50:20Z", driver: git-pr, iterations: 1, completed_at: "2026-09-18T21:05:16Z"}
+prs:
+    - https://github.com/sahil87/tu/pull/97
+change_type_source: explicit
+base_branch: main
+true_impact:
+    added: 1307
+    deleted: 138
+    net: 1169
+    excluding:
+        added: 801
+        deleted: 123
+        net: 678
+    tests:
+        added: 421
+        deleted: 28
+        net: 393
+    computed_at: "2026-09-18T20:50:20Z"
+    computed_at_stage: ship
+summary: 'wired the expected-diffs gate: harness/expected-diffs.json (DC-keyed, empty set), --expected flag + preflight on tudiff run/live, exit 1 on unexpected red/timeout/unconfirmed/stale, report expected lines, and the tudiff CI job now gates ci-gate'
+# base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-09-18T21:05:16Z

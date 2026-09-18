@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -291,4 +292,60 @@ func readLiveFile(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(raw)
+}
+
+// R3: live accepts --expected and its preflight rejects a missing file with
+// the one-line message and exit 2 (the binary checks must pass first).
+func TestLiveExpectedPreflight(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "package.json", "{}\n")
+	writeFile(t, root, "harness/fixtures/_placeholder/manifest.json", "{}\n")
+
+	nodeBundle := writeFile(t, t.TempDir(), "tu.mjs", "// stub\n")
+	binDir := t.TempDir()
+	goBin := filepath.Join(binDir, "tu")
+	writeExe(t, goBin, "#!/bin/sh\nexit 0\n")
+	turepair := filepath.Join(binDir, "turepair")
+	writeExe(t, turepair, "#!/bin/sh\nexit 0\n")
+	harnessBin := t.TempDir()
+	writeExe(t, filepath.Join(harnessBin, "ccusage"), "#!/bin/sh\nexit 0\n")
+	// preflightLive requires node on PATH; a shim suffices (it is never run).
+	shimDir := t.TempDir()
+	writeExe(t, filepath.Join(shimDir, "node"), "#!/bin/sh\nexit 0\n")
+	t.Setenv("PATH", shimDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Chdir(root)
+
+	invoke := func(extra ...string) (int, string) {
+		args := []string{"live",
+			"--node", nodeBundle,
+			"--go", goBin,
+			"--turepair", turepair,
+			"--harness-bin", harnessBin,
+			"--report", filepath.Join(t.TempDir(), "report"),
+		}
+		args = append(args, extra...)
+		var stdout, stderr bytes.Buffer
+		code := run(args, &stdout, &stderr)
+		return code, stderr.String()
+	}
+
+	t.Run("missing file", func(t *testing.T) {
+		code, stderr := invoke("--expected", "/nonexistent")
+		if code != 2 || stderr != "tudiff: /nonexistent not found\n" {
+			t.Errorf("code = %d, stderr = %q", code, stderr)
+		}
+	})
+	t.Run("invalid file", func(t *testing.T) {
+		bad := writeFile(t, t.TempDir(), "bad.json", `{"schema":2,"expected":[]}`+"\n")
+		code, stderr := invoke("--expected", bad)
+		if code != 2 || stderr != "tudiff: expected-diffs: schema must be 1, got 2\n" {
+			t.Errorf("code = %d, stderr = %q", code, stderr)
+		}
+	})
+	t.Run("default missing under the fake root", func(t *testing.T) {
+		code, stderr := invoke()
+		if code != 2 || stderr != "tudiff: harness/expected-diffs.json not found\n" {
+			t.Errorf("code = %d, stderr = %q", code, stderr)
+		}
+	})
 }

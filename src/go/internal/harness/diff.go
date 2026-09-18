@@ -92,6 +92,10 @@ type Result struct {
 	NodeCalls   int
 	GoCalls     int
 	Rerun       bool
+	// Expected is the id of the expected-diffs entry explaining a red case
+	// ("" for a green, timeout, or unexpected-red case). Set by the runner
+	// after the byte and tree comparisons via Expected.Match.
+	Expected string
 }
 
 // EnvSpec parameterizes BuildEnv: everything the child environment needs that

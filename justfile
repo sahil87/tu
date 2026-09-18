@@ -92,12 +92,15 @@ harness-capture *ARGS: harness-build
     bin/harness/tudiff capture {{ARGS}}
 
 # Byte-diff node dist/tu.mjs against bin/tu over harness/matrix.json (plan row P4).
-# Exit 1 while any case is red — the count is the port's burndown, not a gate yet.
+# Gate (plan row R3): exit 1 on an unexpected red case, a timeout, an
+# unconfirmed-fixture replay, or a stale entry in harness/expected-diffs.json.
 go-diff *ARGS: build go-build harness-build
     bin/harness/tudiff run {{ARGS}}
 
 # Real-git parity: the intake § 10 sync/repair sequence against temp bare repos,
-# reported under bin/harness/report-live/ (plan R14). Exit 1 while any step is red.
+# reported under bin/harness/report-live/ (plan R14). Same gate rule as go-diff:
+# exit 1 on an unexpected red step, a timeout, an unconfirmed-fixture replay, or
+# a stale expected-diffs entry.
 go-live *ARGS: build go-build harness-build
     bin/harness/tudiff live {{ARGS}}
 

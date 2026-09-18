@@ -47,9 +47,9 @@ const (
 // liveOptions holds the parsed live flags; set records explicit flags (same
 // resolution rule as run).
 type liveOptions struct {
-	node, goBin, turepair, harnessBin, report string
-	keep                                      bool
-	set                                       map[string]bool
+	node, goBin, turepair, harnessBin, report, expected string
+	keep                                                bool
+	set                                                 map[string]bool
 }
 
 func runLive(args []string, stdout, stderr io.Writer) int {
@@ -61,6 +61,7 @@ func runLive(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&opts.turepair, "turepair", defaultTurepair, "Go repair binary (parried against scripts/repair-metrics.mjs)")
 	fs.StringVar(&opts.harnessBin, "harness-bin", defaultHarnessBin, "directory holding the fake ccusage (the fake git is deliberately unused here)")
 	fs.StringVar(&opts.report, "report", defaultLiveReport, "report directory (wiped at the start of a run)")
+	fs.StringVar(&opts.expected, "expected", defaultExpected, "expected-diffs file (DC-keyed intentional divergences)")
 	fs.BoolVar(&opts.keep, "keep", false, "keep the temp dir (bares, clones, staged homes) for inspection")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -80,11 +81,11 @@ func runLive(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	nodeBin, code := preflightLive(&opts, root, fail)
+	nodeBin, exp, code := preflightLive(&opts, root, fail)
 	if code != 0 {
 		return code
 	}
-	return executeLive(&opts, root, nodeBin, stdout, stderr)
+	return executeLive(&opts, root, nodeBin, exp, stdout, stderr)
 }
 
 // resolve absolutizes a path flag with the shared run/live rule.
@@ -94,13 +95,15 @@ func (o *liveOptions) resolve(root, name, value string) string {
 
 // preflightLive runs the intake § 10.1 checks: real git and node on PATH,
 // the oracle bundle, both Go binaries, the fake ccusage, and the placeholder
-// manifest the fake replays from.
-func preflightLive(opts *liveOptions, root string, fail func(string, ...any) int) (nodeBin string, code int) {
+// manifest the fake replays from, then loads the expected-diffs file (same
+// R3 messages as run: a missing file is a preflight error, never an empty
+// set).
+func preflightLive(opts *liveOptions, root string, fail func(string, ...any) int) (nodeBin string, exp *harness.Expected, code int) {
 	if _, err := exec.LookPath("git"); err != nil {
-		return "", fail("git not found on PATH (live diffs the real git, not the fake)")
+		return "", nil, fail("git not found on PATH (live diffs the real git, not the fake)")
 	}
 	if !fileExists(opts.resolve(root, "node", opts.node)) {
-		return "", fail("%s not found (run npm ci && npm run build)", opts.node)
+		return "", nil, fail("%s not found (run npm ci && npm run build)", opts.node)
 	}
 	for _, b := range []struct{ name, path string }{
 		{"go", opts.goBin},
@@ -108,28 +111,35 @@ func preflightLive(opts *liveOptions, root string, fail func(string, ...any) int
 	} {
 		p := opts.resolve(root, b.name, b.path)
 		if !fileExists(p) {
-			return "", fail("%s not found (run just go-build)", b.path)
+			return "", nil, fail("%s not found (run just go-build)", b.path)
 		}
 		if !executable(p) {
-			return "", fail("%s not executable (run just go-build)", b.path)
+			return "", nil, fail("%s not executable (run just go-build)", b.path)
 		}
 	}
 	cc := filepath.Join(opts.resolve(root, "harness-bin", opts.harnessBin), "ccusage")
 	if !fileExists(cc) {
-		return "", fail("%s not found (run just harness-build)", filepath.Join(opts.harnessBin, "ccusage"))
+		return "", nil, fail("%s not found (run just harness-build)", filepath.Join(opts.harnessBin, "ccusage"))
 	}
 	if !executable(cc) {
-		return "", fail("%s not executable (run just harness-build)", filepath.Join(opts.harnessBin, "ccusage"))
+		return "", nil, fail("%s not executable (run just harness-build)", filepath.Join(opts.harnessBin, "ccusage"))
 	}
 	nodeBin, err := exec.LookPath("node")
 	if err != nil {
-		return "", fail("node not found on PATH (required to run the TS oracle)")
+		return "", nil, fail("node not found on PATH (required to run the TS oracle)")
 	}
 	manifest := filepath.Join(root, "harness", "fixtures", harness.PlaceholderAlias, "manifest.json")
 	if !fileExists(manifest) {
-		return "", fail("harness/fixtures/%s/manifest.json not found", harness.PlaceholderAlias)
+		return "", nil, fail("harness/fixtures/%s/manifest.json not found", harness.PlaceholderAlias)
 	}
-	return nodeBin, 0
+	exp, err = harness.LoadExpected(opts.resolve(root, "expected", opts.expected))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil, fail("%s not found", opts.expected)
+		}
+		return "", nil, fail("expected-diffs: %v", err)
+	}
+	return nodeBin, exp, 0
 }
 
 // liveConfig carries the resolved, per-run constants shared by every step.
@@ -138,6 +148,7 @@ type liveConfig struct {
 	nodeBin, goPath, turepairPath, repairScript string
 	seedDir, placeholder, reportDir             string
 	keep                                        bool
+	expected                                    *harness.Expected
 }
 
 // liveSide holds one side's staged paths.
@@ -157,7 +168,7 @@ type liveRunner struct {
 	goSide  liveSide
 }
 
-func executeLive(opts *liveOptions, root, nodeBin string, stdout, stderr io.Writer) int {
+func executeLive(opts *liveOptions, root, nodeBin string, exp *harness.Expected, stdout, stderr io.Writer) int {
 	cfg := liveConfig{
 		root:         root,
 		nodeBin:      nodeBin,
@@ -168,6 +179,7 @@ func executeLive(opts *liveOptions, root, nodeBin string, stdout, stderr io.Writ
 		placeholder:  filepath.Join(root, "harness", "fixtures", harness.PlaceholderAlias),
 		reportDir:    opts.resolve(root, "report", opts.report),
 		keep:         opts.keep,
+		expected:     exp,
 	}
 	fail := func(format string, a ...any) int {
 		fmt.Fprintf(stderr, "tudiff: "+format+"\n", a...)
@@ -211,28 +223,31 @@ func executeLive(opts *liveOptions, root, nodeBin string, stdout, stderr io.Writ
 	}
 
 	header := harness.ReportHeader{
-		Timestamp:   time.Now().UTC(),
-		NodePath:    opts.node,
-		NodeVersion: firstLine(exec.Command(nodeBin, "--version").Output()),
-		GoPath:      opts.goBin,
-		GoVersion:   firstLine(exec.Command(cfg.goPath, "--version").Output()),
-		Fixtures:    []string{harness.PlaceholderAlias, "live-alias"},
-		MatrixPath:  "live",
+		Timestamp:       time.Now().UTC(),
+		NodePath:        opts.node,
+		NodeVersion:     firstLine(exec.Command(nodeBin, "--version").Output()),
+		GoPath:          opts.goBin,
+		GoVersion:       firstLine(exec.Command(cfg.goPath, "--version").Output()),
+		Fixtures:        []string{harness.PlaceholderAlias, "live-alias"},
+		MatrixPath:      "live",
+		ExpectedPath:    opts.expected,
+		ExpectedEntries: len(exp.Entries),
 	}
 	results := lr.runSequence(stdout)
 	header.Cases = len(results)
-	summary := harness.SummarizeResults(results)
+	summary := harness.SummarizeResults(exp, results)
 	for _, line := range harness.RenderSummary(summary, header.Fixtures) {
 		fmt.Fprintln(stdout, line)
 	}
-	if err := harness.WriteReport(cfg.reportDir, header, results); err != nil {
+	if err := harness.WriteReport(cfg.reportDir, header, exp, results); err != nil {
 		fmt.Fprintf(stderr, "tudiff: writing report: %v\n", err)
 		return 2
 	}
 	if cfg.keep {
 		fmt.Fprintf(stderr, "tudiff: kept temp dir %s\n", tmpRoot)
 	}
-	if summary.Red+summary.Timeout > 0 {
+	// The R5 gate rule, same as run.
+	if summary.Unexpected+summary.Timeout+summary.Unconfirmed > 0 || len(summary.Stale) > 0 {
 		return 1
 	}
 	return 0
@@ -266,6 +281,15 @@ func (lr *liveRunner) stage() error {
 func (lr *liveRunner) runSequence(stdout io.Writer) []harness.Result {
 	var results []harness.Result
 	emit := func(res harness.Result) {
+		// The single annotation funnel: a red step may be an intentional
+		// divergence (green, timeout, and harness-channel steps never carry
+		// an expected id — a capture-level failure is not a comparison
+		// divergence and must never be masked as expected).
+		if res.Status == harness.StatusRed && res.Channel != "harness" {
+			if id, ok := lr.cfg.expected.Match(res.Case.ID, res.Case.Group); ok {
+				res.Expected = id
+			}
+		}
 		results = append(results, res)
 		fmt.Fprintln(stdout, harness.RenderCaseLine(res))
 	}
