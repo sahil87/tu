@@ -18,5 +18,15 @@
     "machine": "dev-ws-sahil02",
     "date": "2026-09-16",
     "ccusage_version": "20.0.19"
+  },
+  "opencode": {
+    "machine": "dev-ws-sahil02",
+    "date": "2026-09-18",
+    "ccusage_version": "20.0.19"
+  },
+  "copilot": {
+    "machine": "dev-ws-sahil02",
+    "date": "2026-09-18",
+    "ccusage_version": "20.0.19"
   }
 }
