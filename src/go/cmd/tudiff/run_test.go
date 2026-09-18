@@ -60,6 +60,7 @@ func newSmokeEnv(t *testing.T, matrixBody string) *smokeEnv {
 	writeFile(t, root, "tu.default.conf", "version = 2\n")
 	writeFile(t, root, "harness/fixtures/_placeholder/manifest.json",
 		`{"schema":1,"machine":"_placeholder","captured_at":"2026-09-16T00:00:00Z","ccusage_version":"20.0.19","ccusage_path":"","platform":"derived","timezone":"","fixtures":[]}`+"\n")
+	writeFile(t, root, "harness/expected-diffs.json", "{\n  \"schema\": 1,\n  \"expected\": []\n}\n")
 	writeFile(t, root, "harness/metrics-repo/docs/README.md", "seed\n")
 
 	e := &smokeEnv{root: root}
@@ -121,7 +122,7 @@ func TestRunEndToEndSmoke(t *testing.T) {
 	for _, sub := range []string{
 		"GREEN   same/single/default/pipe/fixed",
 		"RED     diff/single/default/pipe/fixed  stdout @0 (line 1):",
-		"tudiff: 2 cases — 1 green, 1 red, 0 timeout",
+		"tudiff: 2 cases — 1 green, 1 red (0 expected, 1 unexpected), 0 timeout",
 	} {
 		if !strings.Contains(stdout, sub) {
 			t.Errorf("stdout lacks %q:\n%s", sub, stdout)
@@ -357,4 +358,109 @@ func TestRunScriptGate(t *testing.T) {
 			t.Errorf("code = 2, stderr = %q", stderr)
 		}
 	})
+}
+
+// R5: a red case matched by an expected-diffs entry passes the gate (exit 0)
+// and carries the [expected <id>] marker.
+func TestRunExpectedRedExitsZero(t *testing.T) {
+	e := newSmokeEnv(t, smokeMatrix)
+	e.withShimmedPATH(t)
+	expFile := writeFile(t, t.TempDir(), "expected.json",
+		`{"schema":1,"expected":[{"id":"DC-99","cases":["diff"],"reason":"smoke"}]}`+"\n")
+	code, stdout, stderr := e.invoke(t, "--expected", expFile)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
+	}
+	for _, sub := range []string{
+		"RED     diff/single/default/pipe/fixed  stdout @0 (line 1): node=\"hello\\n\" go=\"different\\n\" [expected DC-99]",
+		"tudiff: 2 cases — 1 green, 1 red (1 expected, 0 unexpected), 0 timeout",
+		"  expected: DC-99  1/1 red",
+	} {
+		if !strings.Contains(stdout, sub) {
+			t.Errorf("stdout lacks %q:\n%s", sub, stdout)
+		}
+	}
+}
+
+// R5: an entry whose matched cases are all green is stale and fails the gate.
+func TestRunStaleExpectedExitsOne(t *testing.T) {
+	e := newSmokeEnv(t, smokeMatrix)
+	e.withShimmedPATH(t)
+	expFile := writeFile(t, t.TempDir(), "expected.json",
+		`{"schema":1,"expected":[{"id":"DC-99","cases":["same"],"reason":"smoke"}]}`+"\n")
+	code, stdout, stderr := e.invoke(t, "--expected", expFile)
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1 (stderr: %s)", code, stderr)
+	}
+	if !strings.Contains(stdout, "  expected: DC-99  0/1 red (stale)") {
+		t.Errorf("stdout lacks the stale line:\n%s", stdout)
+	}
+}
+
+// R3: --expected preflight — a missing file is its exact one-line message, an
+// invalid file is one `tudiff: expected-diffs: …` line, both exit 2; --list
+// never loads the file.
+func TestRunExpectedPreflight(t *testing.T) {
+	t.Run("missing file", func(t *testing.T) {
+		e := newSmokeEnv(t, smokeMatrix)
+		code, _, stderr := e.invoke(t, "--expected", "/nonexistent")
+		if code != 2 || stderr != "tudiff: /nonexistent not found\n" {
+			t.Errorf("code = %d, stderr = %q", code, stderr)
+		}
+	})
+	t.Run("invalid file", func(t *testing.T) {
+		e := newSmokeEnv(t, smokeMatrix)
+		bad := writeFile(t, t.TempDir(), "bad.json", `{"schema":2,"expected":[]}`+"\n")
+		code, _, stderr := e.invoke(t, "--expected", bad)
+		if code != 2 || stderr != "tudiff: expected-diffs: schema must be 1, got 2\n" {
+			t.Errorf("code = %d, stderr = %q", code, stderr)
+		}
+	})
+	t.Run("list does not load the file", func(t *testing.T) {
+		e := newSmokeEnv(t, smokeMatrix)
+		bad := writeFile(t, t.TempDir(), "bad.json", "not json\n")
+		code, stdout, stderr := e.invoke(t, "--list", "--expected", bad)
+		if code != 0 {
+			t.Fatalf("exit = %d, stderr = %q", code, stderr)
+		}
+		want := "same/single/default/pipe/fixed\ndiff/single/default/pipe/fixed\n"
+		if stdout != want {
+			t.Errorf("stdout = %q, want %q", stdout, want)
+		}
+	})
+	t.Run("default missing under the fake root", func(t *testing.T) {
+		e := newSmokeEnv(t, smokeMatrix)
+		if err := os.Remove(filepath.Join(e.root, "harness", "expected-diffs.json")); err != nil {
+			t.Fatal(err)
+		}
+		code, _, stderr := e.invoke(t)
+		if code != 2 || stderr != "tudiff: harness/expected-diffs.json not found\n" {
+			t.Errorf("code = %d, stderr = %q", code, stderr)
+		}
+	})
+}
+
+// R5: a case that replayed an unconfirmed: true fixture fails the gate (exit
+// 1) even with every case green.
+func TestRunUnconfirmedExitsOne(t *testing.T) {
+	e := newSmokeEnv(t, `{"schema":1,"cases":[{"id":"same","args":["ok"]}]}`)
+	e.withShimmedPATH(t)
+	writeFile(t, e.root, "harness/fixtures/_placeholder/manifest.json",
+		`{"schema":1,"machine":"_placeholder","captured_at":"2026-09-16T00:00:00Z","ccusage_version":"20.0.19","ccusage_path":"","platform":"derived","timezone":"","fixtures":[{"source":"claude","period":"daily","args":["--json"],"file":"claude/daily.json","stderr_file":"","exit_code":0,"sha256":"","days":3,"first_date":"2026-01-05","last_date":"2026-01-07","empty":false,"redactions":0,"unconfirmed":true}]}`+"\n")
+	writeExe(t, e.goBin, `#!/bin/sh
+printf '%s\n' '{"tool":"ccusage","argv":["claude","daily","--json"],"cwd":"","matched":"_placeholder/claude/daily.json"}' >> "$TUDIFF_CALL_LOG"
+printf 'hello\n'
+`)
+	code, stdout, stderr := e.invoke(t)
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1 (stderr: %s)", code, stderr)
+	}
+	for _, sub := range []string{
+		"GREEN   same/single/default/pipe/fixed [unconfirmed]",
+		"tudiff: 1 cases — 1 green, 0 red (0 expected, 0 unexpected), 0 timeout   (fixtures: _placeholder; 1 cases replayed unconfirmed fixtures)",
+	} {
+		if !strings.Contains(stdout, sub) {
+			t.Errorf("stdout lacks %q:\n%s", sub, stdout)
+		}
+	}
 }

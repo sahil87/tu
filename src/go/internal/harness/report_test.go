@@ -11,16 +11,18 @@ import (
 
 func testHeader() ReportHeader {
 	return ReportHeader{
-		Timestamp:   time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC),
-		NodePath:    "dist/tu.mjs",
-		NodeVersion: "v24.15.0",
-		GoPath:      "bin/tu",
-		GoVersion:   "tu version v0.11.5",
-		Fixtures:    []string{"dev-ws-sahil02", PlaceholderAlias},
-		Script:      "util-linux",
-		MatrixPath:  "harness/matrix.json",
-		Cases:       3,
-		Filter:      "snap",
+		Timestamp:       time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC),
+		NodePath:        "dist/tu.mjs",
+		NodeVersion:     "v24.15.0",
+		GoPath:          "bin/tu",
+		GoVersion:       "tu version v0.11.5",
+		Fixtures:        []string{"dev-ws-sahil02", PlaceholderAlias},
+		Script:          "util-linux",
+		MatrixPath:      "harness/matrix.json",
+		Cases:           3,
+		Filter:          "snap",
+		ExpectedPath:    "harness/expected-diffs.json",
+		ExpectedEntries: 0,
 	}
 }
 
@@ -31,7 +33,8 @@ node: dist/tu.mjs (v24.15.0)
 go: bin/tu (tu version v0.11.5)
 fixtures: dev-ws-sahil02, _placeholder
 script: util-linux
-matrix: harness/matrix.json (3 cases, filter "snap")`
+matrix: harness/matrix.json (3 cases, filter "snap")
+expected: harness/expected-diffs.json (0 entries)`
 	if got != want {
 		t.Errorf("header =\n%s\nwant =\n%s", got, want)
 	}
@@ -85,17 +88,31 @@ func TestRenderCaseLines(t *testing.T) {
 	if !strings.HasSuffix(got, " [unconfirmed] [calls differ: node=6 go=0]") {
 		t.Errorf("markers = %q", got)
 	}
+
+	// R6: the expected marker sits after the divergence detail and before
+	// [unconfirmed] / [calls differ …].
+	expected := mk(StatusRed, "y/single/default/pipe/fixed")
+	expected.Channel = "stdout"
+	expected.NodeExcerpt, expected.GoExcerpt = `"q"`, `"p"`
+	expected.Expected = "DC-05"
+	expected.Unconfirmed = true
+	expected.CallsDiffer = true
+	expected.NodeCalls, expected.GoCalls = 6, 0
+	got = RenderCaseLine(expected)
+	if !strings.HasSuffix(got, `node="q" go="p" [expected DC-05] [unconfirmed] [calls differ: node=6 go=0]`) {
+		t.Errorf("expected marker placement = %q", got)
+	}
 }
 
-// R14: the summary block format, with green/total per axis value.
+// R14/R6: the summary block format, with green/total per axis value.
 func TestRenderSummary(t *testing.T) {
 	results := []Result{
 		{Case: Case{ID: "a/single/default/pipe/fixed", Conf: ConfSingle, Env: EnvDefault, IO: IOPipe, TZ: TZFixed}, Status: StatusGreen},
 		{Case: Case{ID: "b/multi/default/tty/alt", Conf: ConfMulti, Env: EnvDefault, IO: IOTTY, TZ: TZAlt}, Status: StatusRed, Channel: "stdout"},
 		{Case: Case{ID: "c/multi/nocolor/pipe/fixed", Conf: ConfMulti, Env: EnvNoColor, IO: IOPipe, TZ: TZFixed}, Status: StatusTimeout, Unconfirmed: true},
 	}
-	got := strings.Join(RenderSummary(SummarizeResults(results), []string{PlaceholderAlias}), "\n")
-	want := `tudiff: 3 cases — 1 green, 1 red, 1 timeout   (fixtures: _placeholder; 1 cases replayed unconfirmed fixtures)
+	got := strings.Join(RenderSummary(SummarizeResults(nil, results), []string{PlaceholderAlias}), "\n")
+	want := `tudiff: 3 cases — 1 green, 1 red (0 expected, 1 unexpected), 1 timeout   (fixtures: _placeholder; 1 cases replayed unconfirmed fixtures)
   by conf:  single 1/1  multi 0/2  org 0/0  legacy 0/0
   by env:   default 1/2  nocolor 0/1  envrepo 0/0  pullfail 0/0  pushfail 0/0  dirty 0/0
   by io:    pipe 1/2  tty 0/1
@@ -105,18 +122,47 @@ func TestRenderSummary(t *testing.T) {
 	}
 }
 
-// R14: report.txt and report.json land under the report dir with the
+// R6: with a non-empty set one line per entry follows the axis lines, with
+// the stale / no-executed-case annotations; the expected red count is split
+// out on the first line.
+func TestRenderSummaryWithEntries(t *testing.T) {
+	exp := &Expected{Entries: []ExpectedEntry{
+		{ID: "DC-05", Cases: []string{"b"}, Reason: "x"},
+		{ID: "DC-06", Cases: []string{"a"}, Reason: "y"},
+		{ID: "DC-07", Cases: []string{"zzz"}, Reason: "z"},
+	}}
+	red := Result{Case: Case{ID: "b/single/default/pipe/fixed", Group: "b", Conf: ConfSingle, Env: EnvDefault, IO: IOPipe, TZ: TZFixed}, Status: StatusRed, Channel: "stdout", Expected: "DC-05"}
+	green := Result{Case: Case{ID: "a/single/default/pipe/fixed", Group: "a", Conf: ConfSingle, Env: EnvDefault, IO: IOPipe, TZ: TZFixed}, Status: StatusGreen}
+	got := strings.Join(RenderSummary(SummarizeResults(exp, []Result{green, red}), []string{PlaceholderAlias}), "\n")
+	want := `tudiff: 2 cases — 1 green, 1 red (1 expected, 0 unexpected), 0 timeout   (fixtures: _placeholder; 0 cases replayed unconfirmed fixtures)
+  by conf:  single 1/2  multi 0/0  org 0/0  legacy 0/0
+  by env:   default 1/2  nocolor 0/0  envrepo 0/0  pullfail 0/0  pushfail 0/0  dirty 0/0
+  by io:    pipe 1/2  tty 0/0
+  by tz:    fixed 1/2  alt 0/0
+  expected: DC-05  1/1 red
+  expected: DC-06  0/1 red (stale)
+  expected: DC-07  0/0 red (no executed case)`
+	if got != want {
+		t.Errorf("summary =\n%s\nwant =\n%s", got, want)
+	}
+}
+
+// R14/R6/R7: report.txt and report.json land under the report dir with the
 // specified shapes.
 func TestWriteReport(t *testing.T) {
 	dir := t.TempDir()
 	h := testHeader()
 	h.Filter = ""
+	exp := &Expected{Entries: []ExpectedEntry{
+		{ID: "DC-05", Cases: []string{"b"}, Reason: "x"},
+	}}
+	h.ExpectedEntries = len(exp.Entries)
 	results := []Result{
 		{Case: Case{ID: "a/single/default/pipe/fixed", Group: "a", Args: []string{}, Conf: ConfSingle, Env: EnvDefault, IO: IOPipe, TZ: TZFixed}, Status: StatusGreen},
 		{Case: Case{ID: "b/single/default/pipe/fixed", Group: "b", Args: []string{"h"}, Conf: ConfSingle, Env: EnvDefault, IO: IOPipe, TZ: TZFixed},
-			Status: StatusRed, Channel: "stdout", Offset: 0, Line: 1, NodeExcerpt: `"x"`, GoExcerpt: `""`, NodeExit: 0, GoExit: 0, NodeMs: 12, GoMs: 3},
+			Status: StatusRed, Channel: "stdout", Offset: 0, Line: 1, NodeExcerpt: `"x"`, GoExcerpt: `""`, NodeExit: 0, GoExit: 0, NodeMs: 12, GoMs: 3, Expected: "DC-05"},
 	}
-	if err := WriteReport(dir, h, results); err != nil {
+	if err := WriteReport(dir, h, exp, results); err != nil {
 		t.Fatal(err)
 	}
 
@@ -128,9 +174,11 @@ func TestWriteReport(t *testing.T) {
 	for _, sub := range []string{
 		"tudiff run  2026-09-16T12:00:00Z\n",
 		"matrix: harness/matrix.json (3 cases)\n",
+		"expected: harness/expected-diffs.json (1 entries)\n",
 		"GREEN   a/single/default/pipe/fixed\n",
-		"RED     b/single/default/pipe/fixed  stdout @0 (line 1): node=\"x\" go=\"\"\n",
-		"tudiff: 2 cases — 1 green, 1 red, 0 timeout   (fixtures: dev-ws-sahil02, _placeholder; 0 cases replayed unconfirmed fixtures)\n",
+		"RED     b/single/default/pipe/fixed  stdout @0 (line 1): node=\"x\" go=\"\" [expected DC-05]\n",
+		"tudiff: 2 cases — 1 green, 1 red (1 expected, 0 unexpected), 0 timeout   (fixtures: dev-ws-sahil02, _placeholder; 0 cases replayed unconfirmed fixtures)\n",
+		"  expected: DC-05  1/1 red\n",
 	} {
 		if !strings.Contains(text, sub) {
 			t.Errorf("report.txt lacks %q:\n%s", sub, text)
@@ -147,16 +195,21 @@ func TestWriteReport(t *testing.T) {
 	var doc struct {
 		Schema int `json:"schema"`
 		Header struct {
-			Node     string   `json:"node"`
-			Script   string   `json:"script"`
-			Fixtures []string `json:"fixtures"`
-			Cases    int      `json:"cases"`
+			Node            string   `json:"node"`
+			Script          string   `json:"script"`
+			Fixtures        []string `json:"fixtures"`
+			Cases           int      `json:"cases"`
+			Expected        string   `json:"expected"`
+			ExpectedEntries int      `json:"expected_entries"`
 		} `json:"header"`
 		Summary struct {
-			Total   int `json:"total"`
-			Green   int `json:"green"`
-			Red     int `json:"red"`
-			Timeout int `json:"timeout"`
+			Total      int      `json:"total"`
+			Green      int      `json:"green"`
+			Red        int      `json:"red"`
+			Timeout    int      `json:"timeout"`
+			Expected   int      `json:"expected"`
+			Unexpected int      `json:"unexpected"`
+			Stale      []string `json:"stale"`
 		} `json:"summary"`
 		Cases []struct {
 			ID          string `json:"id"`
@@ -165,6 +218,7 @@ func TestWriteReport(t *testing.T) {
 			NodeMs      int64  `json:"node_ms"`
 			CallsDiffer bool   `json:"calls_differ"`
 			Rerun       bool   `json:"rerun"`
+			Expected    string `json:"expected"`
 		} `json:"cases"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
@@ -173,8 +227,17 @@ func TestWriteReport(t *testing.T) {
 	if doc.Schema != 1 || doc.Summary.Total != 2 || doc.Summary.Red != 1 || doc.Header.Script != "util-linux" || doc.Header.Cases != 3 {
 		t.Errorf("doc = %+v", doc)
 	}
+	if doc.Summary.Expected != 1 || doc.Summary.Unexpected != 0 || doc.Summary.Stale == nil || len(doc.Summary.Stale) != 0 {
+		t.Errorf("summary = %+v (stale must be [], never null)", doc.Summary)
+	}
+	if doc.Header.Expected != "harness/expected-diffs.json" || doc.Header.ExpectedEntries != 1 {
+		t.Errorf("header = %+v", doc.Header)
+	}
 	if len(doc.Cases) != 2 || doc.Cases[1].ID != "b/single/default/pipe/fixed" || doc.Cases[1].Channel != "stdout" || doc.Cases[1].NodeMs != 12 {
 		t.Errorf("cases = %+v", doc.Cases)
+	}
+	if doc.Cases[0].Expected != "" || doc.Cases[1].Expected != "DC-05" {
+		t.Errorf("case expected ids = %q, %q", doc.Cases[0].Expected, doc.Cases[1].Expected)
 	}
 }
 

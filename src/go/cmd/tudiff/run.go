@@ -17,6 +17,7 @@ import (
 // Default flag values; relative defaults resolve against the repo root.
 const (
 	defaultMatrix     = "harness/matrix.json"
+	defaultExpected   = "harness/expected-diffs.json"
 	defaultNode       = "dist/tu.mjs"
 	defaultGo         = "bin/tu"
 	defaultHarnessBin = "bin/harness"
@@ -27,11 +28,11 @@ const (
 // explicitly (relative defaults resolve against the repo root, explicit
 // relative values against the caller's cwd).
 type runOptions struct {
-	matrix, node, goBin, harnessBin, report, filter, fixtures string
-	placeholder, list                                         bool
-	jobs                                                      int
-	timeout                                                   time.Duration
-	set                                                       map[string]bool
+	matrix, expected, node, goBin, harnessBin, report, filter, fixtures string
+	placeholder, list                                                   bool
+	jobs                                                                int
+	timeout                                                             time.Duration
+	set                                                                 map[string]bool
 }
 
 func runRun(args []string, stdout, stderr io.Writer) int {
@@ -39,6 +40,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	opts := runOptions{set: map[string]bool{}}
 	fs.StringVar(&opts.matrix, "matrix", defaultMatrix, "argument matrix file")
+	fs.StringVar(&opts.expected, "expected", defaultExpected, "expected-diffs file (DC-keyed intentional divergences)")
 	fs.StringVar(&opts.node, "node", defaultNode, "TS oracle bundle (run as `node <staged copy>`)")
 	fs.StringVar(&opts.goBin, "go", defaultGo, "Go binary under test")
 	fs.StringVar(&opts.harnessBin, "harness-bin", defaultHarnessBin, "directory holding the fake ccusage and git")
@@ -94,6 +96,17 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 
+	// The expected-diffs file is loaded after the matrix check and after the
+	// --list early return; a missing file is a preflight error, never an
+	// empty set (the harness never reports a vacuous 0).
+	exp, err := harness.LoadExpected(opts.resolve(root, "expected", opts.expected))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fail("%s not found", opts.expected)
+		}
+		return fail("expected-diffs: %v", err)
+	}
+
 	nodeBin, scriptPath, flavor, code := preflightBinaries(&opts, root, cases, fail)
 	if code != 0 {
 		return code
@@ -104,7 +117,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	return executeRun(&opts, root, cases, nodeBin, scriptPath, flavor, aliasDirs, stdout, stderr)
+	return executeRun(&opts, root, cases, exp, nodeBin, scriptPath, flavor, aliasDirs, stdout, stderr)
 }
 
 // resolve absolutizes a path flag: an explicit value resolves against the
@@ -175,25 +188,28 @@ func preflightBinaries(opts *runOptions, root string, cases []harness.Case, fail
 
 // executeRun stages the oracle, runs every case through the worker pool,
 // streams report lines in matrix order, and writes the report.
-func executeRun(opts *runOptions, root string, cases []harness.Case, nodeBin, scriptPath, flavor string, aliasDirs []string, stdout, stderr io.Writer) int {
+func executeRun(opts *runOptions, root string, cases []harness.Case, exp *harness.Expected, nodeBin, scriptPath, flavor string, aliasDirs []string, stdout, stderr io.Writer) int {
 	cfg, cleanup, err := stageRun(opts, root, nodeBin, scriptPath, flavor, aliasDirs)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
 	defer cleanup()
+	cfg.expected = exp
 
 	header := reportHeader(opts, cfg, nodeBin, len(cases))
+	header.ExpectedPath = opts.expected
+	header.ExpectedEntries = len(exp.Entries)
 	for _, line := range harness.RenderHeader(header) {
 		fmt.Fprintln(stdout, line)
 	}
 
 	results, runErr := runAllCases(cases, cfg, opts.jobs, stdout)
-	summary := harness.SummarizeResults(results)
+	summary := harness.SummarizeResults(exp, results)
 	for _, line := range harness.RenderSummary(summary, header.Fixtures) {
 		fmt.Fprintln(stdout, line)
 	}
-	if err := harness.WriteReport(cfg.reportDir, header, results); err != nil {
+	if err := harness.WriteReport(cfg.reportDir, header, exp, results); err != nil {
 		fmt.Fprintf(stderr, "tudiff: writing report: %v\n", err)
 		return 2
 	}
@@ -201,7 +217,9 @@ func executeRun(opts *runOptions, root string, cases []harness.Case, nodeBin, sc
 		fmt.Fprintf(stderr, "tudiff: %v\n", runErr)
 		return 2
 	}
-	if summary.Red+summary.Timeout > 0 {
+	// The R5 gate rule: an expected red case passes; an unexpected red, a
+	// timeout, an unconfirmed-fixture replay, or a stale entry fails.
+	if summary.Unexpected+summary.Timeout+summary.Unconfirmed > 0 || len(summary.Stale) > 0 {
 		return 1
 	}
 	return 0
@@ -269,6 +287,7 @@ type runConfig struct {
 	fixtures                                                         []string
 	timeout                                                          time.Duration
 	scriptPath, flavor                                               string
+	expected                                                         *harness.Expected
 }
 
 // runAllCases executes the cases through a --jobs worker pool. Report lines
@@ -383,6 +402,13 @@ func runCase(c harness.Case, cfg runConfig) (harness.Result, error) {
 	}
 	if err := annotateCalls(&res, node, goSide, cfg.fixtures); err != nil {
 		return res, err
+	}
+	// A red case may be an intentional divergence: annotate it with the
+	// matching expected-diffs entry (green and timeout cases never carry one).
+	if res.Status == harness.StatusRed {
+		if id, ok := cfg.expected.Match(c.ID, c.Group); ok {
+			res.Expected = id
+		}
 	}
 	if err := harness.WriteCaseCaptures(cfg.reportDir, res, nodeCap, goCap); err != nil {
 		return res, err

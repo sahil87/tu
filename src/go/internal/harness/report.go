@@ -22,6 +22,10 @@ type ReportHeader struct {
 	MatrixPath  string    // as given on the command line
 	Cases       int       // expanded, filtered case count
 	Filter      string    // --filter substring, empty when unset
+	// ExpectedPath is the --expected path as given on the command line;
+	// ExpectedEntries is the loaded set's entry count (0 for the empty set).
+	ExpectedPath    string
+	ExpectedEntries int
 }
 
 // AxisStat is the green/total pair for one axis value in the summary block.
@@ -31,22 +35,29 @@ type AxisStat struct {
 	Total int
 }
 
-// Summary is the burndown block at the end of the report.
+// Summary is the burndown block at the end of the report. Expected counts red
+// results carrying an expected-diffs id, Unexpected is Red - Expected (the
+// cutover precondition number), Entries holds one tally per expected-diffs
+// entry, and Stale the ids that matched executed cases but no red one.
 type Summary struct {
 	Total       int
 	Green       int
 	Red         int
 	Timeout     int
 	Unconfirmed int
+	Expected    int
+	Unexpected  int
+	Entries     []ExpectedStat
+	Stale       []string
 	ByConf      []AxisStat
 	ByEnv       []AxisStat
 	ByIO        []AxisStat
 	ByTZ        []AxisStat
 }
 
-// Summarize tallies results; timeouts are listed separately from reds (but
-// both make the run exit 1 — see runRun).
-func SummarizeResults(results []Result) Summary {
+// Summarize tallies results; timeouts are listed separately from reds (both
+// fail the run — see runRun). exp is the loaded expected-diffs set (nil-safe).
+func SummarizeResults(exp *Expected, results []Result) Summary {
 	s := Summary{Total: len(results)}
 	axes := map[string]map[string]*AxisStat{
 		"conf": newAxisStats(axisValues["conf"]),
@@ -66,6 +77,9 @@ func SummarizeResults(results []Result) Summary {
 		if r.Unconfirmed {
 			s.Unconfirmed++
 		}
+		if r.Status == StatusRed && r.Expected != "" {
+			s.Expected++
+		}
 		bump := func(axis, value string) {
 			st := axes[axis][value]
 			st.Total++
@@ -82,6 +96,8 @@ func SummarizeResults(results []Result) Summary {
 	s.ByEnv = axisStatList(axes["env"], axisValues["env"])
 	s.ByIO = axisStatList(axes["io"], axisValues["io"])
 	s.ByTZ = axisStatList(axes["tz"], axisValues["tz"])
+	s.Unexpected = s.Red - s.Expected
+	s.Entries, s.Stale = ExpectedStats(exp, results)
 	return s
 }
 
@@ -119,6 +135,7 @@ func RenderHeader(h ReportHeader) []string {
 		"fixtures: " + strings.Join(h.Fixtures, ", "),
 		"script: " + script,
 		"matrix: " + matrix,
+		fmt.Sprintf("expected: %s (%d entries)", h.ExpectedPath, h.ExpectedEntries),
 	}
 }
 
@@ -141,6 +158,9 @@ func RenderCaseLine(r Result) string {
 				r.Channel, r.Offset, r.Line, r.NodeExcerpt, r.GoExcerpt)
 		}
 	}
+	if r.Expected != "" {
+		line += " [expected " + r.Expected + "]"
+	}
 	if r.Unconfirmed {
 		line += " [unconfirmed]"
 	}
@@ -150,7 +170,11 @@ func RenderCaseLine(r Result) string {
 	return line
 }
 
-// RenderSummary renders the burndown block.
+// RenderSummary renders the burndown block: the gate line (the unexpected
+// count is the cutover precondition), the four axis lines, then one line per
+// expected-diffs entry when the set is non-empty — ` (stale)` when the entry
+// matched executed cases but no red one, ` (no executed case)` when it
+// matched none.
 func RenderSummary(s Summary, fixtures []string) []string {
 	axis := func(label string, stats []AxisStat) string {
 		var pairs []string
@@ -159,18 +183,29 @@ func RenderSummary(s Summary, fixtures []string) []string {
 		}
 		return fmt.Sprintf("  %-8s  %s", label, strings.Join(pairs, "  "))
 	}
-	return []string{
-		fmt.Sprintf("tudiff: %d cases — %d green, %d red, %d timeout   (fixtures: %s; %d cases replayed unconfirmed fixtures)",
-			s.Total, s.Green, s.Red, s.Timeout, strings.Join(fixtures, ", "), s.Unconfirmed),
+	lines := []string{
+		fmt.Sprintf("tudiff: %d cases — %d green, %d red (%d expected, %d unexpected), %d timeout   (fixtures: %s; %d cases replayed unconfirmed fixtures)",
+			s.Total, s.Green, s.Red, s.Expected, s.Unexpected, s.Timeout, strings.Join(fixtures, ", "), s.Unconfirmed),
 		axis("by conf:", s.ByConf),
 		axis("by env:", s.ByEnv),
 		axis("by io:", s.ByIO),
 		axis("by tz:", s.ByTZ),
 	}
+	for _, st := range s.Entries {
+		line := fmt.Sprintf("  expected: %s  %d/%d red", st.ID, st.Red, st.Matched)
+		switch {
+		case st.Matched == 0:
+			line += " (no executed case)"
+		case st.Red == 0:
+			line += " (stale)"
+		}
+		lines = append(lines, line)
+	}
+	return lines
 }
 
 // RenderReport renders the full report.txt body (trailing newline included).
-func RenderReport(h ReportHeader, results []Result) string {
+func RenderReport(h ReportHeader, exp *Expected, results []Result) string {
 	var b strings.Builder
 	for _, line := range RenderHeader(h) {
 		b.WriteString(line + "\n")
@@ -178,7 +213,7 @@ func RenderReport(h ReportHeader, results []Result) string {
 	for _, r := range results {
 		b.WriteString(RenderCaseLine(r) + "\n")
 	}
-	for _, line := range RenderSummary(SummarizeResults(results), h.Fixtures) {
+	for _, line := range RenderSummary(SummarizeResults(exp, results), h.Fixtures) {
 		b.WriteString(line + "\n")
 	}
 	return b.String()
@@ -194,24 +229,29 @@ type reportJSON struct {
 }
 
 type reportHeaderJ struct {
-	Timestamp   string   `json:"timestamp"`
-	Node        string   `json:"node"`
-	NodeVersion string   `json:"node_version"`
-	Go          string   `json:"go"`
-	GoVersion   string   `json:"go_version"`
-	Fixtures    []string `json:"fixtures"`
-	Script      string   `json:"script"`
-	Matrix      string   `json:"matrix"`
-	Cases       int      `json:"cases"`
-	Filter      string   `json:"filter"`
+	Timestamp       string   `json:"timestamp"`
+	Node            string   `json:"node"`
+	NodeVersion     string   `json:"node_version"`
+	Go              string   `json:"go"`
+	GoVersion       string   `json:"go_version"`
+	Fixtures        []string `json:"fixtures"`
+	Script          string   `json:"script"`
+	Matrix          string   `json:"matrix"`
+	Cases           int      `json:"cases"`
+	Filter          string   `json:"filter"`
+	Expected        string   `json:"expected"`
+	ExpectedEntries int      `json:"expected_entries"`
 }
 
 type reportSummaryJ struct {
-	Total       int `json:"total"`
-	Green       int `json:"green"`
-	Red         int `json:"red"`
-	Timeout     int `json:"timeout"`
-	Unconfirmed int `json:"unconfirmed"`
+	Total       int      `json:"total"`
+	Green       int      `json:"green"`
+	Red         int      `json:"red"`
+	Timeout     int      `json:"timeout"`
+	Unconfirmed int      `json:"unconfirmed"`
+	Expected    int      `json:"expected"`
+	Unexpected  int      `json:"unexpected"`
+	Stale       []string `json:"stale"`
 }
 
 type reportCaseJ struct {
@@ -237,36 +277,43 @@ type reportCaseJ struct {
 	NodeCalls   int      `json:"node_calls"`
 	GoCalls     int      `json:"go_calls"`
 	Rerun       bool     `json:"rerun"`
+	Expected    string   `json:"expected"`
 }
 
 // WriteReport writes report.txt and report.json under dir (created as
 // needed; the caller wipes the dir at the start of the run). Raw per-case
 // captures under cases/ are written by WriteCaseCaptures as each case runs.
-func WriteReport(dir string, h ReportHeader, results []Result) error {
+func WriteReport(dir string, h ReportHeader, exp *Expected, results []Result) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "report.txt"), []byte(RenderReport(h, results)), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "report.txt"), []byte(RenderReport(h, exp, results)), 0o644); err != nil {
 		return err
 	}
-	s := SummarizeResults(results)
+	s := SummarizeResults(exp, results)
 	script := h.Script
 	if script == "" {
 		script = "n/a" // match RenderHeader's display of "no TTY cases selected"
 	}
+	stale := s.Stale
+	if stale == nil {
+		stale = []string{} // marshals as [], never null
+	}
 	doc := reportJSON{
 		Schema: 1,
 		Header: reportHeaderJ{
-			Timestamp:   h.Timestamp.UTC().Format(time.RFC3339),
-			Node:        h.NodePath,
-			NodeVersion: h.NodeVersion,
-			Go:          h.GoPath,
-			GoVersion:   h.GoVersion,
-			Fixtures:    h.Fixtures,
-			Script:      script,
-			Matrix:      h.MatrixPath,
-			Cases:       h.Cases,
-			Filter:      h.Filter,
+			Timestamp:       h.Timestamp.UTC().Format(time.RFC3339),
+			Node:            h.NodePath,
+			NodeVersion:     h.NodeVersion,
+			Go:              h.GoPath,
+			GoVersion:       h.GoVersion,
+			Fixtures:        h.Fixtures,
+			Script:          script,
+			Matrix:          h.MatrixPath,
+			Cases:           h.Cases,
+			Filter:          h.Filter,
+			Expected:        h.ExpectedPath,
+			ExpectedEntries: h.ExpectedEntries,
 		},
 		Summary: reportSummaryJ{
 			Total:       s.Total,
@@ -274,6 +321,9 @@ func WriteReport(dir string, h ReportHeader, results []Result) error {
 			Red:         s.Red,
 			Timeout:     s.Timeout,
 			Unconfirmed: s.Unconfirmed,
+			Expected:    s.Expected,
+			Unexpected:  s.Unexpected,
+			Stale:       stale,
 		},
 	}
 	for _, r := range results {
@@ -300,6 +350,7 @@ func WriteReport(dir string, h ReportHeader, results []Result) error {
 			NodeCalls:   r.NodeCalls,
 			GoCalls:     r.GoCalls,
 			Rerun:       r.Rerun,
+			Expected:    r.Expected,
 		})
 	}
 	raw, err := json.MarshalIndent(doc, "", "  ")

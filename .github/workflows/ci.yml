@@ -1,8 +1,9 @@
 name: CI
 
-# Build verification + tests (Node lane `build-and-test` for the shipped
-# src/node/ tree, Go lane `go-build-and-test` for the unshipped src/go/
-# successor — constitution § Go Transition). This workflow runs in two contexts:
+# Build verification + tests in three lanes: Node lane `build-and-test` for
+# the shipped src/node/ tree, Go lane `go-build-and-test` for the unshipped
+# src/go/ successor (constitution § Go Transition), and `tudiff` for the
+# differential harness. This workflow runs in two contexts:
 #   - on pull requests targeting main, to GATE merges (the aggregating
 #     `ci-gate` job below is the stable required status check enforced by a
 #     branch ruleset on main — see scripts/ci-gate-ruleset.sh and README), and
@@ -79,13 +80,13 @@ jobs:
       - name: Test
         run: just go-test
 
-  # Differential harness (plan row P4): byte-diff node dist/tu.mjs against
-  # bin/tu over harness/matrix.json against the placeholder corpus. Every case
-  # is red until Phase 1 lands, so the job is informational: continue-on-error
-  # keeps the red exit 1 from failing the workflow, the report is uploaded as
-  # an artifact, and ci-gate does NOT need this job. Plan row R3 removes
-  # continue-on-error and adds go-diff to ci-gate's needs.
-  go-diff:
+  # Differential harness (plan rows P4/R3): byte-diff node dist/tu.mjs against
+  # bin/tu over harness/matrix.json against the placeholder corpus, then the
+  # real-git live sequence. This job GATES: tudiff exits 1 on an unexpected red
+  # case, a timeout, a replay of an unconfirmed fixture, or a stale expected
+  # entry (expected diffs come from harness/expected-diffs.json). The report is
+  # uploaded as an artifact on every run, and ci-gate needs this job.
+  tudiff:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -106,11 +107,9 @@ jobs:
 
       - name: Differential harness (placeholder matrix)
         run: just go-diff --placeholder
-        continue-on-error: true # every case is red until Phase 1 lands; R3 removes this and adds the job to ci-gate
 
       - name: Live harness (real git)
         run: just go-live
-        continue-on-error: true # informational like the matrix step above; R3 owns gating it
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
@@ -125,7 +124,7 @@ jobs:
   # a required job fails or is cancelled (a skipped required check would
   # otherwise block/hang the PR).
   ci-gate:
-    needs: [build-and-test, go-build-and-test]
+    needs: [build-and-test, go-build-and-test, tudiff]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -137,6 +136,10 @@ jobs:
           fi
           if [ "${{ needs.go-build-and-test.result }}" != "success" ]; then
             echo "go-build-and-test did not succeed (result: ${{ needs.go-build-and-test.result }})"
+            exit 1
+          fi
+          if [ "${{ needs.tudiff.result }}" != "success" ]; then
+            echo "tudiff did not succeed (result: ${{ needs.tudiff.result }})"
             exit 1
           fi
           echo "All required CI jobs passed."
