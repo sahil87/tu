@@ -1,6 +1,6 @@
 ---
 type: memory
-description: Go release pipeline — four cross-compiled tu-go-<os>-<arch>.tar.gz assets (flat: tu + vendored platform ccusage + tu.default.conf) plus tu-go-SHA256SUMS, the CCUSAGE_VERSION pin with a lockfile guard, npm-registry curl fetch, the generated dist/tu.rb formula (libexec + bin symlink, no depends_on) that release.yml copies over the tap's Formula/tu.rb as its last step, the rollback path (a higher-numbered Node release; brew never downgrades), and the dogfood-install/uninstall recipes
+description: "Go release pipeline — four cross-compiled tu-go-<os>-<arch>.tar.gz assets (flat: tu + vendored platform ccusage + tu.default.conf) plus tu-go-SHA256SUMS, the CCUSAGE_VERSION pin with a lockfile guard, npm-registry curl fetch, the generated dist/tu.rb formula (libexec + bin symlink, no depends_on) that release.yml copies over the tap's Formula/tu.rb as its last step, the rollback path (a higher-numbered Node release; brew never downgrades), and the per-PR cross-compile lane"
 ---
 # Go Release Pipeline
 
@@ -8,7 +8,7 @@ description: Go release pipeline — four cross-compiled tu-go-<os>-<arch>.tar.g
 
 ## Overview
 
-The release pipeline for the Go binary the Homebrew formula ships: `just go-build-all` cross-compiles four targets, `just go-package` packs each binary with the target platform's vendored ccusage and `tu.default.conf` into a flat `tu-go-<os>-<arch>.tar.gz`, `just go-formula` renders the Go Homebrew formula into `dist/tu.rb`, and `release.yml` uploads the five assets to the GitHub Release and then copies `dist/tu.rb` over the tap's `Formula/tu.rb` as its last step (plan row X1). Maintainers can still install a specific build with `just dogfood-install [tag]`. The recipes sit beside the dev recipes documented in [toolchain](/build/toolchain.md); the vendor-first resolution the layouts satisfy is in [fact-and-sources](/go-port/fact-and-sources.md).
+The release pipeline for the Go binary the Homebrew formula ships: `just go-build-all` cross-compiles four targets, `just go-package` packs each binary with the target platform's vendored ccusage and `tu.default.conf` into a flat `tu-go-<os>-<arch>.tar.gz`, `just go-formula` renders the Go Homebrew formula into `dist/tu.rb`, and `release.yml` uploads the five assets to the GitHub Release and then copies `dist/tu.rb` over the tap's `Formula/tu.rb` as its last step (plan row X1). Maintainers can install a specific build with `just dogfood-install [tag]`. The recipes sit beside the dev recipes documented in [toolchain](/build/toolchain.md); the vendor-first resolution the layouts satisfy is in [ccusage-adapter](/source/ccusage-adapter.md).
 
 ## Requirements
 
@@ -76,27 +76,6 @@ The `release` job runs `actions/setup-go` (same pinned SHA as `ci.yml`, `go-vers
 - **WHEN** CI runs
 - **THEN** all four release targets compile in the `go-build-and-test` lane
 
-### Requirement: `just dogfood-install [tag]`
-`scripts/dogfood-install.sh` (wrapped by `just dogfood-install tag=""`) requires an authenticated `gh`, plus `tar` and `shasum`. It resolves the tag (`$1`, else `gh release view --repo sahil87/tu --json tagName -q .tagName` — the latest published release) and prints `Release: <tag>`; detects the host (`uname -s` → `darwin`/`linux`, `uname -m` → `x86_64`→`amd64`, `arm64`/`aarch64`→`arm64`; anything else is `error: unsupported host OS: …` / `error: unsupported host arch: …`, exit 1); checks the release's asset list first via `gh release view --json assets` and, when it truly lacks `tu-go-<os>-<arch>.tar.gz` or `tu-go-SHA256SUMS`, fails with `error: release <tag> has no <asset> asset — Go assets exist only for releases cut after plan row R1 landed` (exit 1); otherwise downloads both into a temp dir via `gh release download` (a gh download/auth/network failure aborts loud rather than surfacing as the no-asset error); verifies the tarball's `shasum -a 256` against the matching sums line (mismatch → `error: sha256 mismatch for <asset> (expected <a>, got <b>)`, exit 1, nothing installed); refuses when `~/.local/bin/tu` exists and is not a symlink into `~/.local/lib/tu-go/` (`error: ~/.local/bin/tu exists and is not a dogfood symlink — remove it first`, exit 1 — a hand-installed binary is never clobbered); otherwise replaces `~/.local/lib/tu-go/` with the extracted archive and `ln -sfn ~/.local/lib/tu-go/tu ~/.local/bin/tu`. The symlink is what makes vendor-first resolution work: `ResolveBinary` resolves `~/.local/bin/tu` to the real file and finds `vendor/` beside it. The report is `Installed: ~/.local/bin/tu -> ~/.local/lib/tu-go/tu (<tu --version output>)`, a numbered `PATH order for tu:` list from `which -a tu` annotated `<- dogfood (Go)` / `<- brew (Node)` (linuxbrew/homebrew/Cellar paths and the Intel-Homebrew `/usr/local/bin/tu` symlink) / `<- other`, then either `OK: the dogfood build shadows the brew tu. Run \`hash -r\` (or open a new shell) if \`tu\` still resolves to brew.` (when the first entry is the dogfood symlink) or `WARNING: <first> wins on PATH — the brew tu still runs. Prepend ~/.local/bin to PATH (e.g. in ~/.zshrc) and re-run.` (exit 0 either way — the install succeeded), plus a note that `tu update` on this binary prints the not-installed-via-Homebrew message (the `/Cellar/tu/` gate — see [toolkit-layer](/go-port/toolkit-layer.md)) and that `just dogfood-install` refreshes the build (0118).
-
-#### Scenario: No Go assets on the release
-- **GIVEN** the latest release predates the pipeline
-- **WHEN** `just dogfood-install` runs
-- **THEN** it prints `Release: <tag>` then the no-asset error, exits 1, and nothing under `~/.local` is touched
-
-#### Scenario: Successful install shadows brew
-- **GIVEN** a release with `tu-go-*` assets and a host whose `~/.local/bin` precedes the brew bin on PATH
-- **WHEN** `just dogfood-install <tag>` runs
-- **THEN** the sha verifies, `~/.local/lib/tu-go/{tu,vendor/ccusage/bin/ccusage,tu.default.conf}` exist, `~/.local/bin/tu` is the symlink, and the report ends with the `OK:` line
-
-### Requirement: `just dogfood-uninstall`
-`scripts/dogfood-uninstall.sh` removes `~/.local/bin/tu` **only** when it is a symlink whose target lies under `~/.local/lib/tu-go/` (otherwise it prints `leaving ~/.local/bin/tu in place (not a dogfood symlink)`), removes `~/.local/lib/tu-go/`, and prints `Removed dogfood build; tu now resolves to: <first which -a tu entry>` or `Removed dogfood build; no tu on PATH`. It is idempotent — a second run exits 0 with the same final line (0118).
-
-#### Scenario: Idempotent removal
-- **GIVEN** a dogfood install exists
-- **WHEN** `just dogfood-uninstall` runs twice
-- **THEN** both runs exit 0, the symlink and lib dir are gone after the first, and `tu` resolves to the brew binary
-
 ## Design Decisions
 
 ### Release artifacts live under `dist/`, the dev binary stays in `bin/`
@@ -109,12 +88,6 @@ The `release` job runs `actions/setup-go` (same pinned SHA as `ci.yml`, `go-vers
 **Decision**: `libexec.install "tu", "vendor", "tu.default.conf"` + `bin.install_symlink libexec/"tu"`.
 **Why**: `ccusage.ResolveBinary` resolves symlinks then looks for `vendor/ccusage/bin/ccusage` beside the real file; the `/Cellar/tu/` update gate passes on the libexec path; mirrors the Node formula's libexec layout.
 **Rejected**: `bin.install "tu"` — would need `vendor/` inside Homebrew's `bin/`.
-*Introduced by*: 260917-0118-go-release-pipeline
-
-### Dogfood binary lives in `~/.local/lib/tu-go/` behind a `~/.local/bin/tu` symlink
-**Decision**: Extract the archive to `~/.local/lib/tu-go/` and symlink `~/.local/bin/tu` to its `tu`.
-**Why**: The vendor tree must sit beside the real binary and `~/.local/bin` should hold only the entry point; the symlink is what the resolver follows.
-**Rejected**: Copying `tu` and a `vendor/` directory straight into `~/.local/bin/` — pollutes the bin dir and is hard to uninstall cleanly.
 *Introduced by*: 260917-0118-go-release-pipeline
 
 ### ccusage tarballs come from the npm registry via curl, pinned by `CCUSAGE_VERSION`
