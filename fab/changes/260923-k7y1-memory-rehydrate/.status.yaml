@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: done
 plan:
     generated: true
     task_count: 15
@@ -33,14 +33,16 @@ stage_metrics:
     apply: {started_at: "2026-09-23T07:30:04Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-23T09:13:48Z"}
     review: {started_at: "2026-09-23T09:13:48Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-23T09:46:22Z"}
     hydrate: {started_at: "2026-09-23T09:46:22Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-23T09:59:36Z"}
-    ship: {started_at: "2026-09-23T09:59:36Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-09-23T09:59:36Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-23T10:01:20Z"}
+    review-pr: {started_at: "2026-09-23T10:01:20Z", iterations: 1, completed_at: "2026-09-23T10:17:52Z"}
+prs:
+    - https://github.com/sahil87/tu/pull/100
 change_type_source: explicit
 base_branch: main
 true_impact:
-    added: 0
-    deleted: 0
-    net: 0
+    added: 4287
+    deleted: 2200
+    net: 2087
     excluding:
         added: 0
         deleted: 0
@@ -49,9 +51,9 @@ true_impact:
         added: 0
         deleted: 0
         net: 0
-    computed_at: "2026-09-23T09:59:36Z"
-    computed_at_stage: hydrate
+    computed_at: "2026-09-23T10:01:20Z"
+    computed_at_stage: ship
 summary: Rewrote docs/memory from src/go into twelve package-aligned domains (fact source query view render command sync config watch toolkit + build harness); retired the TS-described cli/configuration/display/watch-mode domains and the go-port transition domain; usage.md data-model fence now Go
 # base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-09-23T09:59:36Z
+last_updated: 2026-09-23T10:17:52Z
