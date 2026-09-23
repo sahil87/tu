@@ -1,6 +1,6 @@
 ---
 type: memory
-description: Go release pipeline — four cross-compiled tu-go-<os>-<arch>.tar.gz assets (flat: tu + vendored platform ccusage + tu.default.conf) plus tu-go-SHA256SUMS, the CCUSAGE_VERSION pin with a lockfile guard, npm-registry curl fetch, the generated dist/tu.rb formula (libexec + bin symlink, no depends_on) that release.yml copies over the tap's Formula/tu.rb as its last step, the rollback path (a higher-numbered Node release, since brew never downgrades), and the dogfood-install/uninstall recipes
+description: Go release pipeline — four cross-compiled tu-go-<os>-<arch>.tar.gz assets (flat: tu + vendored platform ccusage + tu.default.conf) plus tu-go-SHA256SUMS, the CCUSAGE_VERSION pin with a lockfile guard, npm-registry curl fetch, the generated dist/tu.rb formula (libexec + bin symlink, no depends_on) that release.yml copies over the tap's Formula/tu.rb as its last step, the rollback path (a higher-numbered Node release; brew never downgrades), and the dogfood-install/uninstall recipes
 ---
 # Go Release Pipeline
 
