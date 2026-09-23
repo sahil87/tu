@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 4
@@ -33,14 +33,16 @@ stage_metrics:
     apply: {started_at: "2026-09-23T06:56:06Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-23T06:58:43Z"}
     review: {started_at: "2026-09-23T06:58:43Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-23T07:03:48Z"}
     hydrate: {started_at: "2026-09-23T07:03:48Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-23T07:05:02Z"}
-    ship: {started_at: "2026-09-23T07:05:02Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-09-23T07:05:02Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-23T07:05:52Z"}
+    review-pr: {started_at: "2026-09-23T07:05:52Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/tu/pull/99
 change_type_source: explicit
 base_branch: main
 true_impact:
-    added: 0
-    deleted: 0
-    net: 0
+    added: 554
+    deleted: 74
+    net: 480
     excluding:
         added: 0
         deleted: 0
@@ -49,9 +51,9 @@ true_impact:
         added: 0
         deleted: 0
         net: 0
-    computed_at: "2026-09-23T07:05:02Z"
-    computed_at_stage: hydrate
+    computed_at: "2026-09-23T07:05:52Z"
+    computed_at_stage: ship
 summary: 'Constitution v2.0.0: Principles III (Single Static Binary) and IV rewritten for the Go binary, TypeScript Conventions replaced by Go Conventions, Test Runner/Location rewritten for go test and golden files, Go Transition article removed; context.md and code-quality.md updated to the Go stack'
 # base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-09-23T07:05:02Z
+last_updated: 2026-09-23T07:05:52Z
