@@ -2,24 +2,16 @@
 
 ## Stack
 
-- **Language**: TypeScript (strict mode, ES2022 target, NodeNext modules) — the shipped implementation under `src/node/`. A Go successor is being built under `src/go/` (see Go Transition below).
-- **Runtime**: Node.js >= 18
-- **Bundler**: esbuild (single-file ESM bundle to `dist/tu.mjs`)
-- **Test runner**: Node.js built-in (`npm test` → `npx tsx --test` over `src/node/**/__tests__/*.test.ts`)
+- **Language**: Go (`src/go/go.mod`, `module github.com/sahil87/tu`, go 1.26; non-stdlib dependencies `golang.org/x/term` and `golang.org/x/sys` only)
+- **Build**: `just go-build` (dev binary at `bin/tu`), `just go-build-all` (four static cross-compiled targets, `CGO_ENABLED=0`), version via `-ldflags`
+- **Lint / test**: `just go-lint` (`gofmt -l` + `go vet ./...`), `just go-test` (`go test ./... -count=1`); golden files regenerate per package with `go test ./internal/<pkg> -update` (the five golden-bearing packages: `render/{ansi,json,csv,markdown}`, `watch`)
 - **Task runner**: justfile
-- **Distribution**: Homebrew tap (`sahil87/tap`), binary name `tu`
+- **Distribution**: Homebrew tap (`sahil87/tap`), binary name `tu`; prebuilt `tu-go-<os>-<arch>.tar.gz` release assets (binary + vendored ccusage + `tu.default.conf`) behind a generated formula with no runtime dependencies
 - **License**: MIT
 
-## Go Transition
+## Retired TypeScript tree
 
-tu is being ported to Go behind unchanged external contracts (plan: `fab/plans/sahil/26-09-15-go-port.md`). Two implementation trees coexist in `main` during the port:
-
-| Tree | Role | Ships? |
-|------|------|--------|
-| `src/node/` | Current TypeScript implementation | Yes — `dist/tu.mjs` and the Homebrew formula are built from it until cutover |
-| `src/go/` | Successor Go implementation, landing change by change | No — built and tested in CI only, until the cutover change flips the formula |
-
-Go tests are `_test.go` siblings of the code they test (no `__tests__/` under `src/go/`). The constitution's Go Transition article (v1.2.0) is the binding statement; this section is the orientation note.
+`src/node/` is the pre-cutover TypeScript implementation. It no longer ships (the formula flipped at plan row X1, plan: `fab/plans/sahil/26-09-15-go-port.md`) and is frozen: bug fixes only, each paired with a harness fixture and a Go port. It remains in the repo until plan row Z1 (two releases after cutover) as the differential harness's oracle (`node dist/tu.mjs` vs the Go binary via `cmd/tudiff`) and the D10 rollback build. Its toolchain (`npm ci && npm run build && npm test`, esbuild, `__tests__/` co-location) is recorded in `docs/memory/build/toolchain.md`; the constitution no longer governs it.
 
 ## Architecture
 
@@ -28,27 +20,23 @@ CLI tool that aggregates cost/usage data from multiple AI coding assistant tools
 - **Codex** via `ccusage-codex`
 - **OpenCode** via `ccusage-opencode`
 
-### Module layout (`src/node/`)
+### Package layout (`src/go/internal/`)
 
-| Module | Responsibility |
-|--------|---------------|
-| `core/cli.ts` | Entry point, argument parsing, command dispatch |
-| `core/types.ts` | Core data interfaces (`UsageEntry`, `UsageTotals`, `ToolConfig`) |
-| `core/fetcher.ts` | Tool execution, JSON parsing, caching, data aggregation |
-| `core/config.ts` | Config file reading (`~/.config/tu/tu.conf`, org.conf layer) |
-| `core/leaderboard.ts` | Leaderboard (`lb`/`lbh`) data shaping |
-| `core/help-dump.ts` | `tu help-dump` contract document |
-| `core/skill.ts` | `tu skill` agent bundle |
-| `core/completions.ts` | Shell completions |
-| `sync/sync.ts` | Multi-machine metrics sync via git repo |
-| `tui/formatter.ts` | Table rendering (print to stdout, render to string[]) |
-| `tui/watch.ts` | Live polling mode with terminal refresh |
-| `tui/rain.ts` | Matrix rain animation for watch mode |
-| `tui/panel.ts` | Box/panel drawing for TUI output |
-| `tui/compositor.ts` | Terminal compositor for watch layout |
-| `tui/colors.ts` | ANSI color helpers with `--no-color` support |
+| Package | Responsibility |
+|---------|---------------|
+| `fact` | `Record` / `Totals`, the six-tool registry |
+| `source` | Typed `Error`, `WriteWarnings`; adapters `ccusage` (exec + normalize, vendor-first binary resolution), `metrics` (metrics-repo reader), `cache` (hash-keyed JSON, 60 s TTL) |
+| `query` | Pure: window filter, roll-up, `MaxMerge`, `Collapse` over one `GroupBy` |
+| `view` | Pure: query result → ANSI-free table models, bars, deltas, leaderboard |
+| `render` | Encoders to `[]string` / `io.Writer`: `ansi`, `json`, `csv`, `markdown` — nothing prints |
+| `command` | `Request` parsing, `Run` composing source→query→view→render into `Result`; the `Fetcher`/`Repo`/`Writer` seams |
+| `sync` | Metrics-repo writer (never-shrink guard), git driver, dry-run report, repair |
+| `config` | `tu.conf` / `org.conf` cascade, config-home, `init-conf`, `status`; embeds `tu.default.conf` |
+| `watch` | `x/term` TUI loop, compositor, rain, panel |
+| `toolkit` | `--version`, `help-dump`, `update`, `shell-init`, `skill` (embedded), completions |
+| `harness` | `tudiff` matrix, fixtures, expected-diff ledger (maintainer tooling) |
 
-Tests are co-located in `__tests__/` folders within each subdirectory (`core/__tests__/`, `sync/__tests__/`, `tui/__tests__/`).
+`cmd/tu` is the only shipped binary and the only place the process streams are opened (`watch` writes through the `Terminal` it is handed); `cmd/turepair`, `cmd/tudiff`, `cmd/fakeccusage`, `cmd/fakegit` are maintainer/harness tools. Tests are `_test.go` siblings; golden files sit in each package's `testdata/`.
 
 ### Modes
 
