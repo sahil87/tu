@@ -4,7 +4,7 @@
 
 - **Language**: Go (`src/go/go.mod`, `module github.com/sahil87/tu`, go 1.26; non-stdlib dependencies `golang.org/x/term` and `golang.org/x/sys` only)
 - **Build**: `just go-build` (dev binary at `bin/tu`), `just go-build-all` (four static cross-compiled targets, `CGO_ENABLED=0`), version via `-ldflags`
-- **Lint / test**: `just go-lint` (`gofmt -l` + `go vet ./...`), `just go-test` (`go test ./... -count=1`); golden files regenerate with `go test ./... -update`
+- **Lint / test**: `just go-lint` (`gofmt -l` + `go vet ./...`), `just go-test` (`go test ./... -count=1`); golden files regenerate per package with `go test ./internal/<pkg> -update` (the five golden-bearing packages: `render/{ansi,json,csv,markdown}`, `watch`)
 - **Task runner**: justfile
 - **Distribution**: Homebrew tap (`sahil87/tap`), binary name `tu`; prebuilt `tu-go-<os>-<arch>.tar.gz` release assets (binary + vendored ccusage + `tu.default.conf`) behind a generated formula with no runtime dependencies
 - **License**: MIT
@@ -36,7 +36,7 @@ CLI tool that aggregates cost/usage data from multiple AI coding assistant tools
 | `toolkit` | `--version`, `help-dump`, `update`, `shell-init`, `skill` (embedded), completions |
 | `harness` | `tudiff` matrix, fixtures, expected-diff ledger (maintainer tooling) |
 
-`cmd/tu` is the only writer to stdout/stderr and the only shipped binary; `cmd/turepair`, `cmd/tudiff`, `cmd/fakeccusage`, `cmd/fakegit` are maintainer/harness tools. Tests are `_test.go` siblings; golden files sit in each package's `testdata/`.
+`cmd/tu` is the only shipped binary and the only place the process streams are opened (`watch` writes through the `Terminal` it is handed); `cmd/turepair`, `cmd/tudiff`, `cmd/fakeccusage`, `cmd/fakegit` are maintainer/harness tools. Tests are `_test.go` siblings; golden files sit in each package's `testdata/`.
 
 ### Modes
 

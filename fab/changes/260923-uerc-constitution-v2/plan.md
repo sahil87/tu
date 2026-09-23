@@ -39,7 +39,7 @@ The section MUST be retitled and its body MUST carry, as MUST/SHOULD rules: gofm
 - **AND** the heading reads `## Go Conventions`
 
 #### R5: Test Runner and Test Location are rewritten for Go
-`### Test Runner` MUST name `go test ./...` from `src/go/` (`just go-test`, `-count=1`), discourage assertion/mocking frameworks, describe golden files (`testdata/*.golden`, byte-for-byte, regenerated only by `go test ./... -update`, each golden test declaring `var update = flag.Bool("update", …)`), tie a golden change to Output Stability, and name the differential harness (`cmd/tudiff`, `harness/`, the `tudiff` CI lane) as complementary. `### Test Location` MUST require `_test.go` siblings in the same package directory, `testdata/` for goldens/fixtures, MUST forbid `__tests__/` anywhere under `src/go/`, and MUST place binary-level tests beside `main.go` in `src/go/cmd/tu/`. Neither clause may say "For `src/node/`:" or reference the Go Transition article.
+`### Test Runner` MUST name `go test ./...` from `src/go/` (`just go-test`, `-count=1`), discourage assertion/mocking frameworks, describe golden files (`testdata/*.golden`, byte-for-byte, regenerated only by a per-package `-update` run, each golden-bearing package declaring one package-level `var update = flag.Bool("update", …)`), tie a golden change to Output Stability, and name the differential harness (`cmd/tudiff`, `harness/`, the `tudiff` CI lane) as complementary. `### Test Location` MUST require `_test.go` siblings in the same package directory, `testdata/` for goldens/fixtures, MUST forbid `__tests__/` anywhere under `src/go/`, and MUST place binary-level tests beside `main.go` in `src/go/cmd/tu/`. Neither clause may say "For `src/node/`:" or reference the Go Transition article.
 
 - **GIVEN** the two constraints
 - **WHEN** read by an agent adding a Go test
@@ -146,7 +146,7 @@ The `## Go Transition` heading and its entire body MUST be deleted with no repla
 
 - [x] A-016 Pattern consistency: New constitution clauses use RFC 2119 keywords and the same heading levels as the v1.2.0 sections they replace
 - [x] A-017 No unnecessary duplication: The retired-TS role is stated once in `context.md` and not repeated in the constitution
-- [x] A-018 Scope: `git diff origin/main --stat` lists only `fab/project/constitution.md`, `fab/project/code-quality.md`, `fab/project/context.md`, and files under `fab/changes/260923-uerc-constitution-v2/`
+- [x] A-018 Scope: `git diff origin/main --stat` lists only `fab/project/constitution.md`, `fab/project/code-quality.md`, `fab/project/context.md`, files under `fab/changes/260923-uerc-constitution-v2/`, and (after hydrate) `docs/memory/build/toolchain.md` + `docs/memory/build/index.md`
 
 ## Notes
 
