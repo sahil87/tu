@@ -1,6 +1,6 @@
 ---
 type: memory
-description: Go release pipeline — four cross-compiled tu-go-<os>-<arch>.tar.gz assets (flat: tu + vendored platform ccusage + tu.default.conf) plus tu-go-SHA256SUMS, the CCUSAGE_VERSION pin with a lockfile guard, npm-registry curl fetch, the generated dist/tu.rb formula (libexec + bin symlink, no depends_on) that release.yml copies over the tap's Formula/tu.rb as its last step, the one-tap-commit rollback, and the dogfood-install/uninstall recipes
+description: Go release pipeline — four cross-compiled tu-go-<os>-<arch>.tar.gz assets (flat: tu + vendored platform ccusage + tu.default.conf) plus tu-go-SHA256SUMS, the CCUSAGE_VERSION pin with a lockfile guard, npm-registry curl fetch, the generated dist/tu.rb formula (libexec + bin symlink, no depends_on) that release.yml copies over the tap's Formula/tu.rb as its last step, the rollback path (a higher-numbered Node release, since brew never downgrades), and the dogfood-install/uninstall recipes
 ---
 # Go Release Pipeline
 
@@ -60,13 +60,13 @@ The `release` job runs `actions/setup-go` (same pinned SHA as `ci.yml`, `go-vers
 - **WHEN** the `release` job runs
 - **THEN** the Go build/package/formula steps run before `gh release create`, the Release carries the five `tu-go-*` assets, and the tap's `Formula/tu.rb` equals the run's `dist/tu.rb` — `version "<v>"`, four sha256s equal to `tu-go-SHA256SUMS`, no `depends_on`
 
-### Requirement: Rollback is one tap commit
-Reverting the cutover for users is a single commit in `sahil87/homebrew-tap` restoring the Node `Formula/tu.rb` (git-tag URL `tag: "v0.12.0"`, `depends_on "node"`, from-source `npm run build` install), after which `tu update` reinstalls the Node build; `src/node/` stays buildable for this purpose until plan row Z1 (D10, D13). Because every release re-pushes `dist/tu.rb`, a rollback that must hold across a release also requires reverting the tap-copy step in `release.yml` or holding releases (jmh4).
+### Requirement: Rollback needs a higher-numbered Node release, not a tap revert alone
+`tu update` runs `brew upgrade tu`, and Homebrew never downgrades an installed keg: reverting the tap's `Formula/tu.rb` to the Node formula at `tag: "v0.12.0"` leaves every machine that already installed 0.13.0 on the Go binary (the upgrade is a no-op that reports success). Rolling users back through the normal update path therefore requires a **release whose version is higher than the Go one and whose tap formula is the Node formula**: restore the `sed` tag-bump line in place of `cp dist/tu.rb` in `release.yml`'s tap step (`sed -i "s|tag: \"v.*\"|tag: \"v${version}\"|" /tmp/tap/Formula/tu.rb` against a tap `tu.rb` reverted to the Node formula), cut `just release` (e.g. 0.13.1), and `tu update` then installs the Node build from that tag. `src/node/` stays buildable for exactly this until plan row Z1 (D10). A tap revert on its own only protects machines that have not yet upgraded; a machine already on 0.13.0 needs an explicit `brew reinstall tu` after the revert (jmh4).
 
 #### Scenario: Field divergence after cutover
 - **GIVEN** a divergence found in the Go binary after 0.13.0 shipped
-- **WHEN** the tap's `Formula/tu.rb` is reverted to the Node formula
-- **THEN** the next `tu update` on any machine installs the Node build, and the next tu release would push the Go formula again unless `release.yml` is also reverted
+- **WHEN** the tap's `Formula/tu.rb` is reverted to the Node formula but no higher-numbered Node release is cut
+- **THEN** `tu update` on a machine already at 0.13.0 leaves the Go binary installed (`brew upgrade` does not downgrade); only `brew reinstall tu` — or a 0.13.1 Node release pushed through the restored `sed` step — moves it back
 
 ### Requirement: CI cross-compiles on every PR
 `ci.yml`'s `go-build-and-test` lane runs a `Cross-compile` step (`just go-build-all`) after `just go-build` — no network — so GOOS-specific compile breaks surface on every PR. The network-dependent packaging runs at release time and via `just go-dist` locally, not in the PR gate (a registry hiccup must not block merges). `go-diff` and `ci-gate` are unchanged (0118).

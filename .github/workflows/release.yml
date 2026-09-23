@@ -226,6 +226,12 @@ jobs:
       # Ship the Go formula generated above (plan row X1): dist/tu.rb replaces
       # the tap's Formula/tu.rb wholesale. Last on purpose — the tarball URLs it
       # carries resolve only once the GitHub Release above exists.
+      # Rollback note: `tu update` runs `brew upgrade tu`, which never downgrades,
+      # so reverting the tap alone does not move an already-upgraded machine back.
+      # To roll users back, restore the Node formula in the tap AND swap this `cp`
+      # for the old tag bump (sed -i "s|tag: \"v.*\"|tag: \"v${version}\"|"
+      # /tmp/tap/Formula/tu.rb), then cut a higher-numbered release (D10 keeps
+      # src/node/ buildable until Z1). See docs/memory/build/go-release-pipeline.md.
       - name: Update Homebrew tap
         env:
           TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
