@@ -1,0 +1,57 @@
+id: jmh4
+name: 260923-jmh4-cutover-formula
+created: 2026-09-23T05:37:00Z
+created_by: sahil-noon
+change_type: ci
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
+    review-pr: pending
+plan:
+    generated: true
+    task_count: 4
+    acceptance_count: 12
+    acceptance_completed: 12
+confidence:
+    certain: 6
+    confident: 3
+    tentative: 0
+    unresolved: 0
+    score: 4.2
+    fuzzy: true
+    dimensions:
+        signal: 62.8
+        reversibility: 89.4
+        competence: 78.9
+        disambiguation: 77.2
+stage_metrics:
+    intake: {started_at: "2026-09-23T05:37:00Z", driver: fab-new, iterations: 1, completed_at: "2026-09-23T05:41:41Z"}
+    apply: {started_at: "2026-09-23T05:41:41Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-23T05:44:15Z"}
+    review: {started_at: "2026-09-23T05:44:15Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-23T05:47:30Z"}
+    hydrate: {started_at: "2026-09-23T05:47:30Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-23T05:50:45Z"}
+    ship: {started_at: "2026-09-23T05:50:45Z", driver: fab-fff, iterations: 1}
+prs: []
+change_type_source: explicit
+base_branch: main
+true_impact:
+    added: 0
+    deleted: 0
+    net: 0
+    excluding:
+        added: 0
+        deleted: 0
+        net: 0
+    tests:
+        added: 0
+        deleted: 0
+        net: 0
+    computed_at: "2026-09-23T05:50:45Z"
+    computed_at_stage: hydrate
+summary: release.yml's tap step now copies the generated Go formula dist/tu.rb over the tap's Formula/tu.rb (prebuilt tarballs, no depends_on node) as the last release step; cutover release is 0.13.0 since 0.12.0 shipped as Node
+# base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-09-23T05:50:45Z

@@ -22,8 +22,10 @@ release bump="patch":
 release-notes tag="":
     scripts/release-notes.sh {{tag}}
 
-# ── Go successor (src/go/) — built and tested in CI, NOT shipped until cutover ──
-# Constitution v1.2.0 § Go Transition; plan: fab/plans/sahil/26-09-15-go-port.md.
+# ── Go successor (src/go/) — what the Homebrew formula ships from the first release
+# after the cutover (plan row X1); src/node/ stays the harness oracle and the D10
+# rollback build until Z1 removes it. Constitution v1.2.0 § Go Transition; plan:
+# fab/plans/sahil/26-09-15-go-port.md.
 
 # Version stamp for the Go binary. package.json is the single version anchor
 # during the transition (release.sh bumps it; the v* tag is derived from it),
@@ -110,8 +112,8 @@ go-live *ARGS: build go-build harness-build
 go-package:
     scripts/package-go.sh
 
-# Generate the Go Homebrew formula into dist/tu.rb (written to dist/ and echoed
-# in the release log, NOT pushed to the tap until cutover — plan row X1).
+# Generate the Go Homebrew formula into dist/tu.rb (echoed in the release log;
+# release.yml pushes it to the tap as the last release step — plan row X1).
 go-formula tag="":
     scripts/go-formula.sh {{tag}}
 

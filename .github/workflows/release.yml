@@ -102,9 +102,11 @@ jobs:
   #   1. a real v* tag push        → startsWith(github.ref, 'refs/tags/v')
   #   2. workflow_dispatch         → manual bump-and-tag in-place
   #   3. a release-merge to main   → tag-on-release-merge resolved is_release=true
-  # From plan row R1 the release also builds and uploads the tu-go-* Go assets
-  # (four tarballs + SHA256SUMS, D8); the Homebrew formula still ships the Node
-  # build until the cutover (row X1).
+  # The release builds and uploads the tu-go-* Go assets (four tarballs +
+  # SHA256SUMS, plan row R1 / D8) and, from the cutover (plan row X1), pushes the
+  # generated Go formula (dist/tu.rb — prebuilt tarballs, no `depends_on "node"`)
+  # to the Homebrew tap. The Node build still runs below as the fail-loud check
+  # that the D10 rollback artifact builds until src/node/ is removed (row Z1).
   # `needs: tag-on-release-merge` lets us read that job's outputs, but a needed
   # job that is SKIPPED would normally skip this job too — so we gate with
   # always() and tolerate `needs.tag-on-release-merge.result == 'skipped'`
@@ -179,6 +181,10 @@ jobs:
       # Homebrew tap update means a build failure aborts the run BEFORE those
       # external side effects are applied — avoiding a partially-applied release
       # (release/tap published but the bundle failed to build).
+      # npm ci stays after the cutover: scripts/package-go.sh (CCUSAGE_VERSION
+      # lockfile guard, host smoke test) and the justfile's go_version read
+      # package.json / package-lock.json via `node -p`. npm run build stays as
+      # the proof that the Node rollback build (D10) still compiles until Z1.
       - name: Install dependencies
         run: npm ci
 
@@ -186,16 +192,17 @@ jobs:
         run: npm run build
 
       # Go asset steps (plan row R1): cross-compile, package the tu-go-*
-      # tarballs, and generate the Go formula into dist/tu.rb. All before
-      # "Create GitHub Release" — a Go failure aborts before any external side
-      # effect (the fail-loud-first ordering above).
+      # tarballs, and generate the Go formula into dist/tu.rb (pushed to the tap
+      # in the last step). All before "Create GitHub Release" — a Go failure
+      # aborts before any external side effect (the fail-loud-first ordering
+      # above).
       - name: Cross-compile Go binaries
         run: just go-build-all
 
       - name: Package tu-go assets
         run: just go-package
 
-      - name: Generate Go formula (dist/tu.rb — not pushed until cutover, plan row X1)
+      - name: Generate Go formula (dist/tu.rb — pushed to the tap below)
         run: |
           just go-formula "${{ steps.version.outputs.tag }}"
           cat dist/tu.rb
@@ -216,13 +223,16 @@ jobs:
             dist/tu-go-linux-amd64.tar.gz \
             dist/tu-go-SHA256SUMS
 
+      # Ship the Go formula generated above (plan row X1): dist/tu.rb replaces
+      # the tap's Formula/tu.rb wholesale. Last on purpose — the tarball URLs it
+      # carries resolve only once the GitHub Release above exists.
       - name: Update Homebrew tap
         env:
           TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           version="${{ steps.version.outputs.version }}"
           git clone "https://x-access-token:${TAP_TOKEN}@github.com/sahil87/homebrew-tap.git" /tmp/tap
-          sed -i "s|tag: \"v.*\"|tag: \"v${version}\"|" /tmp/tap/Formula/tu.rb
+          cp dist/tu.rb /tmp/tap/Formula/tu.rb
           cd /tmp/tap
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
