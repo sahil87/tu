@@ -2,7 +2,7 @@
 
 > How the `tu` CLI works: commands, argument grammar, data flow, output modes, configuration, and the toolkit contracts it honors.
 >
-> This file and [layouts.md](layouts.md) are the complete external contract for `tu`: every observable behavior of the shipped binary (v0.11.5, reconciled 2026-09-16 against the 18 memory files and the installed binary — capture set in `fab/changes/260915-2y3l-spec-reconciliation/reconciliation.md`). Internal mechanisms stay in `docs/memory/`. A trailing `(DC-NN)` on a line means the behavior is specified as it exists today **and** proposed for a keep/drop decision in the **Drop at cutover** ledger at the end of this file.
+> This file and [layouts.md](layouts.md) are the complete external contract for `tu`: every observable behavior of the shipped binary — the Go build from `src/go/` (repository at v0.12.1; cutover release 0.13.0). The contract was reconciled 2026-09-16 against the then-shipped v0.11.5 Node binary and the memory tree of that date (capture set in `fab/changes/260915-2y3l-spec-reconciliation/reconciliation.md`). Internal mechanisms stay in `docs/memory/`. A trailing `(DC-NN)` on a line means the behavior is specified as it exists today **and** proposed for a keep/drop decision in the **Drop at cutover** ledger at the end of this file.
 
 ## CLI Grammar
 
@@ -187,20 +187,24 @@ Diagnostics on any error path go to stderr; stdout carries data only (principle 
 
 ## Data Model
 
-All data flows through two core interfaces:
+All data flows through two core types:
 
-```typescript
-interface UsageTotals {
-  totalCost: number;
-  inputTokens: number;
-  outputTokens: number;
-  cacheCreationTokens: number;
-  cacheReadTokens: number;
-  totalTokens: number;
+```go
+type Totals struct {
+	TotalCost           float64 `json:"totalCost"`
+	InputTokens         int64   `json:"inputTokens"`
+	OutputTokens        int64   `json:"outputTokens"`
+	CacheCreationTokens int64   `json:"cacheCreationTokens"`
+	CacheReadTokens     int64   `json:"cacheReadTokens"`
+	TotalTokens         int64   `json:"totalTokens"`
 }
 
-interface UsageEntry extends UsageTotals {
-  label: string; // ISO date "YYYY-MM-DD" (daily; also the week's Sunday for weekly) or month "YYYY-MM"
+type Record struct {
+	Date    string // ISO label: "YYYY-MM-DD" or "YYYY-MM"
+	Tool    string // registry key: cc, codex, oc, gemini, copilot, kimi
+	User    string
+	Machine string
+	Totals
 }
 ```
 

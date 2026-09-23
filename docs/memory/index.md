@@ -20,11 +20,16 @@ fkf_version: "0.1"
 
 | Domain | Description |
 |--------|-------------|
-| [build](build/index.md) | — |
-| [cli](cli/index.md) | — |
-| [configuration](configuration/index.md) | — |
-| [display](display/index.md) | — |
-| [go-port](go-port/index.md) | — |
-| [harness](harness/index.md) | — |
-| [sync](sync/index.md) | — |
-| [watch-mode](watch-mode/index.md) | — |
+| [_shared](_shared/index.md) | Cross-cutting records that map to no single domain: removal records for retired memory domains and files. |
+| [build](build/index.md) | Build and release tooling: the Go toolchain and CI lanes, the release pipeline that packages the Go binary and pushes the Homebrew formula, and the maintainer dogfood install. |
+| [command](command/index.md) | Command layer: request grammar and flag parsing, guard normalization, the Run pipeline and Result, multi-mode gathering, and the cmd/tu entry point. |
+| [config](config/index.md) | Configuration: the five-layer cascade, setup commands, status output, and the metrics-dir auto-clone guard. |
+| [fact](fact/index.md) | Core data model: the fact.Record/fact.Totals types all usage and cost data flows through, and the six-tool registry. |
+| [harness](harness/index.md) | The differential harness: fixture and placeholder corpora, the fake ccusage/git replayers, the tudiff argument matrix and staging, the run driver, and the comparison, expected-diffs and live real-git gate. |
+| [query](query/index.md) | Pure query layer over fact records: periods and label formats, since/until windows, roll-up, grouping, collapse and max-merge. |
+| [render](render/index.md) | Output encoders for view models: number formatting and rounding, ANSI colored tables, pinned JSON shapes, CSV and Markdown encoders. |
+| [source](source/index.md) | Data-source adapters: the ccusage exec adapter, ccusage JSON shapes, the metrics day-file reader, the on-disk fetch cache, and typed errors/warnings. |
+| [sync](sync/index.md) | Metrics-repo sync: the never-shrink day-file writer, the git add/commit/pull/push flow with auto-sync, the dry-run report, and the repair tool. |
+| [toolkit](toolkit/index.md) | Toolkit integration: version and help-dump output, the brew update flow, shell completions, the embedded skill bundle, and the shll standards audit. |
+| [view](view/index.md) | View models built from query results: tables and compact tables, snapshot, history and pivot, leaderboard, bars and deltas, machine/user breakdowns. |
+| [watch](watch/index.md) | Watch mode: the terminal event loop and raw-mode terminal seam, the frame compositor, and the stats panel with rain effect. |
