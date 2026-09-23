@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Generate the Go Homebrew formula into dist/tu.rb (NOT pushed to the tap until
-# cutover, plan row X1).
+# Generate the Go Homebrew formula into dist/tu.rb — release.yml pushes it to
+# sahil87/homebrew-tap (plan row X1).
 # Called by: just go-formula [tag]
 # Requires: just go-package (tu-go archives must exist in dist/)
 
