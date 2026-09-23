@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 4
@@ -33,25 +33,27 @@ stage_metrics:
     apply: {started_at: "2026-09-23T05:41:41Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-23T05:44:15Z"}
     review: {started_at: "2026-09-23T05:44:15Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-23T05:47:30Z"}
     hydrate: {started_at: "2026-09-23T05:47:30Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-23T05:50:45Z"}
-    ship: {started_at: "2026-09-23T05:50:45Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-09-23T05:50:45Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-23T05:52:27Z"}
+    review-pr: {started_at: "2026-09-23T05:52:27Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/tu/pull/98
 change_type_source: explicit
 base_branch: main
 true_impact:
-    added: 0
-    deleted: 0
-    net: 0
+    added: 365
+    deleted: 35
+    net: 330
     excluding:
-        added: 0
-        deleted: 0
-        net: 0
+        added: 26
+        deleted: 14
+        net: 12
     tests:
         added: 0
         deleted: 0
         net: 0
-    computed_at: "2026-09-23T05:50:45Z"
-    computed_at_stage: hydrate
+    computed_at: "2026-09-23T05:52:27Z"
+    computed_at_stage: ship
 summary: release.yml's tap step now copies the generated Go formula dist/tu.rb over the tap's Formula/tu.rb (prebuilt tarballs, no depends_on node) as the last release step; cutover release is 0.13.0 since 0.12.0 shipped as Node
 # base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-09-23T05:50:45Z
+last_updated: 2026-09-23T05:52:27Z
