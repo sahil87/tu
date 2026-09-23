@@ -13,7 +13,7 @@ description: "The harness replayer binaries — fakeccusage serving fixture byte
 ## Requirements
 
 ### Requirement: Fake ccusage
-`src/go/cmd/fakeccusage` (built as `bin/harness/ccusage`) SHALL be a static binary configured only by environment variables, because its argv belongs to tu. `TUDIFF_FIXTURES` (required) is an OS-path-list of fixture alias directories searched in order, first hit wins; unset or empty prints `fakeccusage: TUDIFF_FIXTURES not set` to stderr and exits 2. argv parses as `<source> <period> [flags…]`; the key is `(source, period, sorted flags)` and must equal a manifest entry's `(source, period, args)` exactly. On a hit the fake writes the fixture file bytes verbatim to stdout, the recorded stderr (if any) to stderr, and exits with the recorded `exit_code`. On a miss it prints `fakeccusage: no fixture for argv […]` to stderr and exits 2 — deliberately loud, because a Go port sending ccusage an argv the TypeScript binary never sent is itself a divergence the harness must surface. `--version`/`-v` as the sole argument prints `ccusage <ccusage_version>` from the first manifest found and exits 0 (no manifest found → exit 2).
+`src/go/cmd/fakeccusage` (built as `bin/harness/ccusage`) SHALL be a static binary configured only by environment variables, because its argv belongs to tu. `TUDIFF_FIXTURES` (required) is an OS-path-list of fixture alias directories searched in order, first hit wins; unset or empty prints `fakeccusage: TUDIFF_FIXTURES not set` to stderr and exits 2. argv parses as `<source> <period> [flags…]`; the key is `(source, period, sorted flags)` and must equal a manifest entry's `(source, period, args)` exactly. On a hit the fake writes the fixture file bytes verbatim to stdout, the recorded stderr (if any) to stderr, and exits with the recorded `exit_code`. On a miss it prints `fakeccusage: no fixture for argv […]` to stderr and exits 2 — deliberately loud, because tu sending ccusage an argv the oracle never sent is itself a divergence the harness must surface. `--version`/`-v` as the sole argument prints `ccusage <ccusage_version>` from the first manifest found and exits 0 (no manifest found → exit 2).
 
 #### Scenario: Verbatim replay and loud miss
 - **GIVEN** `TUDIFF_FIXTURES=harness/fixtures/<local-capture>:harness/fixtures/_placeholder` (or `_placeholder` alone on a machine without a local capture)
@@ -42,13 +42,13 @@ Both fakes SHALL append one JSON line per invocation to the file named by `TUDIF
 - **WHEN** the fake ccusage is invoked once
 - **THEN** the file has 3 lines and the last decodes with `tool == "ccusage"` and a 3-element `argv`
 
-### Requirement: TS-side staging of the fake ccusage
-The TypeScript fetcher does NOT look `ccusage` up on `PATH` — it execs the fixed path `dist/vendor/ccusage/bin/ccusage` when `dist/vendor/` exists, else `node_modules/.bin/ccusage`. Staging the fake for the TS side therefore means copying the self-contained `bin/harness/ccusage` binary to `<staged-dist>/vendor/ccusage/bin/ccusage` (what `StageOracle` does into `<tmp>/oracle/dist/`); the Go side resolves vendor-first relative to `os.Executable()` then `PATH`. The fake git needs no staging — `PATH`-first placement suffices because both sides reach `git` through `PATH`.
+### Requirement: Oracle-side staging of the fake ccusage
+The oracle fetcher does NOT look `ccusage` up on `PATH` — it execs the fixed path `dist/vendor/ccusage/bin/ccusage` when `dist/vendor/` exists, else `node_modules/.bin/ccusage`. Staging the fake for the oracle side therefore means copying the self-contained `bin/harness/ccusage` binary to `<staged-dist>/vendor/ccusage/bin/ccusage` (what `StageOracle` does into `<tmp>/oracle/dist/`); the shipped binary resolves vendor-first relative to `os.Executable()` then `PATH`. The fake git needs no staging — `PATH`-first placement suffices because both sides reach `git` through `PATH`.
 
 ## Design Decisions
 
 ### Fakes are separate env-configured Go binaries
 **Decision**: `cmd/fakeccusage` and `cmd/fakegit`, built under the impersonated names into `bin/harness/`, configured only by `TUDIFF_*` env vars.
-**Why**: Their argv belongs to tu; separate mains read better than an argv[0]-dispatch trick; a static binary can be copied into the TS side's fixed `dist/vendor/ccusage/bin/ccusage` slot, which a shell shim could not do portably.
+**Why**: Their argv belongs to tu; separate mains read better than an argv[0]-dispatch trick; a static binary can be copied into the oracle's fixed `dist/vendor/ccusage/bin/ccusage` slot, which a shell shim could not do portably.
 **Rejected**: Busybox-style single binary dispatching on `os.Args[0]`; shell shims exec'ing `tudiff fake-…`.
 *Introduced by*: 260915-r7dh-harness-fixture-capture
