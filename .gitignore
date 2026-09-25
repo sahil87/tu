@@ -4,7 +4,8 @@ bin/
 # Transient help-dump artifact — `tu help-dump` emits the contract JSON; shll.ai
 # pulls it via its own cron (shll.ai is the source of truth). `tu help-dump >
 # help/tu.json` writes this locally for inspection; never committed here.
-help/
+# Root-anchored: an unanchored `help/` would also swallow harness/golden/run/help/.
+/help/
 
 .fab-status.yaml
 
