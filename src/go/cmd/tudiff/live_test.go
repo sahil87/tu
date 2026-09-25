@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -477,4 +478,29 @@ func TestLiveExpectedPreflight(t *testing.T) {
 			t.Errorf("code = %d, stderr = %q", code, stderr)
 		}
 	})
+}
+
+// failStep makes a pre-step harness failure fatal in update mode, so a golden
+// that was never captured can never ship under a freshly written manifest; in
+// compare mode it only builds the red step result.
+func TestFailStepFatalInUpdateMode(t *testing.T) {
+	lr := &liveRunner{cfg: liveConfig{update: true}}
+	res := lr.failStep("foreign-sync", []string{"sync"}, errors.New("push failed"))
+	if lr.fatal == nil || !strings.Contains(lr.fatal.Error(), "foreign-sync") {
+		t.Errorf("fatal = %v, want the step failure", lr.fatal)
+	}
+	if res.Status != harness.StatusRed || res.Channel != "harness" {
+		t.Errorf("result = %v/%s, want red harness", res.Status, res.Channel)
+	}
+	// The first failure sticks; later ones do not overwrite it.
+	lr.failStep("pull-failure", []string{"sync"}, errors.New("set-url failed"))
+	if !strings.Contains(lr.fatal.Error(), "foreign-sync") {
+		t.Errorf("fatal = %v, want the first failure kept", lr.fatal)
+	}
+
+	cmp := &liveRunner{cfg: liveConfig{}}
+	cmp.failStep("rebase-recovery", []string{"sync"}, errors.New("fabricate failed"))
+	if cmp.fatal != nil {
+		t.Errorf("compare-mode fatal = %v, want nil", cmp.fatal)
+	}
 }

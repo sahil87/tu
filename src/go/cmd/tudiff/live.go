@@ -403,7 +403,8 @@ var (
 // runSequence runs the intake § 10.3 sequence plus the repair flow against
 // the one staged side, streaming one report line per step in compare mode.
 // Update modes write each step's golden instead and abort on the first
-// capture failure (lr.fatal; the manifest is never written after one).
+// capture or pre-step harness failure (lr.fatal; the manifest is never
+// written after one).
 func (lr *liveRunner) runSequence(stdout io.Writer) ([]harness.Result, error) {
 	var results []harness.Result
 	emit := func(res harness.Result) {
@@ -447,7 +448,7 @@ func (lr *liveRunner) runSequence(stdout io.Writer) ([]harness.Result, error) {
 	// sync recovers and proceeds.
 	if lr.fatal == nil {
 		if err := fabricateRebaseMerge(lr.side.repo, lr.baseEnv); err != nil {
-			emit(harnessFailStep("rebase-recovery", []string{"sync"}, err))
+			emit(lr.failStep("rebase-recovery", []string{"sync"}, err))
 		} else {
 			res, oracleCap, cap := lr.runStep("rebase-recovery", []string{"sync"}, lr.aliasOrPlaceholder(), pinStatus)
 			checkStderrContains(&res, oracleCap, cap, rebaseRecoveryNeedle)
@@ -462,7 +463,7 @@ func (lr *liveRunner) runSequence(stdout io.Writer) ([]harness.Result, error) {
 	if lr.fatal == nil {
 		missing := filepath.Join(lr.cfg.tmpRoot, "missing.git")
 		if _, err := liveGit(lr.baseEnv, lr.side.repo, "remote", "set-url", "origin", missing); err != nil {
-			emit(harnessFailStep("pull-failure", []string{"sync"}, err))
+			emit(lr.failStep("pull-failure", []string{"sync"}, err))
 		} else {
 			res, _, _ := lr.runStep("pull-failure", []string{"sync"}, lr.aliasOrPlaceholder(), stepPins{})
 			checkExit(&res, 1)
@@ -480,7 +481,7 @@ func (lr *liveRunner) runSequence(stdout io.Writer) ([]harness.Result, error) {
 	if lr.fatal == nil {
 		repo, err := lr.stageRepairRepo()
 		if err != nil {
-			emit(harnessFailStep("repair-dry-run", []string{"repair"}, err))
+			emit(lr.failStep("repair-dry-run", []string{"repair"}, err))
 		} else {
 			emit(lr.repairStep("repair-dry-run", repo, false))
 			emit(lr.repairStep("repair-write", repo, true))
@@ -494,14 +495,14 @@ func (lr *liveRunner) runSequence(stdout io.Writer) ([]harness.Result, error) {
 // the one-off raised-cost alias built, the fetch caches wiped, then the sync.
 func (lr *liveRunner) foreignSyncStep() harness.Result {
 	if err := lr.pushForeignCommit(); err != nil {
-		return harnessFailStep("foreign-sync", []string{"sync"}, err)
+		return lr.failStep("foreign-sync", []string{"sync"}, err)
 	}
 	alias := filepath.Join(lr.cfg.tmpRoot, "live-alias")
 	if err := buildLiveAlias(lr.cfg.placeholder, alias, "2026-01-07", 0.9); err != nil {
-		return harnessFailStep("foreign-sync", []string{"sync"}, err)
+		return lr.failStep("foreign-sync", []string{"sync"}, err)
 	}
 	if err := lr.clearFetchCaches(); err != nil {
-		return harnessFailStep("foreign-sync", []string{"sync"}, err)
+		return lr.failStep("foreign-sync", []string{"sync"}, err)
 	}
 	return lr.runStepN("foreign-sync", []string{"sync"}, alias, pinStatusLog)
 }
@@ -515,6 +516,17 @@ func (lr *liveRunner) aliasOrPlaceholder() string {
 		return alias
 	}
 	return lr.cfg.placeholder
+}
+
+// failStep is harnessFailStep plus the update-mode fatal: a harness-level
+// failure before the side ran means that step's golden was never captured, so
+// update modes must abort exactly like a capture failure — otherwise the
+// manifest would be written over a partial corpus.
+func (lr *liveRunner) failStep(id string, args []string, err error) harness.Result {
+	if lr.cfg.update && lr.fatal == nil {
+		lr.fatal = fmt.Errorf("step %s: %w", id, err)
+	}
+	return harnessFailStep(id, args, err)
 }
 
 // harnessFailStep builds the red result for a step that could not run (a
