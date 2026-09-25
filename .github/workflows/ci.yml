@@ -1,19 +1,17 @@
 name: CI
 
-# Build verification + tests in three lanes: Node lane `build-and-test` for
-# the shipped src/node/ tree, Go lane `go-build-and-test` for the unshipped
-# src/go/ successor (constitution § Go Transition), and `tudiff` for the
-# differential harness. This workflow runs in two contexts:
+# Build verification + tests in two lanes: `go-build-and-test` (lint, build,
+# cross-compile, unit tests over src/go/) and `tudiff` (the differential
+# harness: bin/tu against the committed golden corpus, matrix plus live). This
+# workflow runs in two contexts:
 #   - on pull requests targeting main, to GATE merges (the aggregating
 #     `ci-gate` job below is the stable required status check enforced by a
 #     branch ruleset on main — see scripts/ci-gate-ruleset.sh and README), and
-#   - on pushes to main, to verify the merge commit (including the
-#     release-merge path) after it lands.
+#   - on pushes to main, to verify the merge commit after it lands.
 # This is intentionally separate from release.yml: it does NOT publish anything
 # (GitHub Release, Homebrew tap) — those external side effects live in
-# release.yml (whose release job runs on a v* tag push, on workflow_dispatch,
-# and on a release-labeled merge to main); this workflow only verifies the
-# build and runs the test suite.
+# release.yml (whose release job runs on a v* tag push or workflow_dispatch);
+# this workflow only verifies the build and runs the test suites.
 on:
   pull_request:
     branches: [main]
@@ -24,33 +22,13 @@ permissions:
   contents: read
 
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-    steps:
-      # SHAs pinned to match release.yml exactly.
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 20
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build bundle
-        run: npm run build
-
-      - name: Run tests
-        run: npm test
-
-  # Go successor lane (src/go/). Built, linted, and tested on every PR/push but
-  # NOT shipped — the formula still ships dist/tu.mjs until cutover (constitution
-  # v1.2.0 § Go Transition; plan fab/plans/sahil/26-09-15-go-port.md). Runs the
-  # `just go-*` recipes so "what lint means" has exactly one definition.
   go-build-and-test:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth 0 so `git describe` (the justfile's go_version) sees tags.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
@@ -80,9 +58,10 @@ jobs:
       - name: Test
         run: just go-test
 
-  # Differential harness (plan rows P4/R3): byte-diff node dist/tu.mjs against
-  # bin/tu over harness/matrix.json against the placeholder corpus, then the
-  # real-git live sequence. This job GATES: tudiff exits 1 on an unexpected red
+  # Differential harness (plan row Z1): byte-diff bin/tu against the committed
+  # golden corpus (harness/golden/) over harness/matrix.json against the
+  # placeholder corpus, then the real-git live sequence against
+  # harness/golden/live/. This job GATES: tudiff exits 1 on an unexpected red
   # case, a timeout, a replay of an unconfirmed fixture, or a stale expected
   # entry (expected diffs come from harness/expected-diffs.json). The report is
   # uploaded as an artifact on every run, and ci-gate needs this job.
@@ -90,10 +69,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 20
+          fetch-depth: 0
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
@@ -101,9 +78,6 @@ jobs:
           cache: false
 
       - uses: extractions/setup-just@dd310ad5a97d8e7b41793f8ef055398d51ad4de6 # v2
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Differential harness (placeholder matrix)
         run: just go-diff --placeholder
@@ -124,16 +98,12 @@ jobs:
   # a required job fails or is cancelled (a skipped required check would
   # otherwise block/hang the PR).
   ci-gate:
-    needs: [build-and-test, go-build-and-test, tudiff]
+    needs: [go-build-and-test, tudiff]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Verify required jobs passed
         run: |
-          if [ "${{ needs.build-and-test.result }}" != "success" ]; then
-            echo "build-and-test did not succeed (result: ${{ needs.build-and-test.result }})"
-            exit 1
-          fi
           if [ "${{ needs.go-build-and-test.result }}" != "success" ]; then
             echo "go-build-and-test did not succeed (result: ${{ needs.go-build-and-test.result }})"
             exit 1

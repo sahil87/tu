@@ -1,0 +1,6 @@
+Usage: tu shell-init <bash|zsh|fish>
+
+Install:
+  bash: echo 'eval "$(tu shell-init bash)"' >> ~/.bashrc
+  zsh:  echo 'eval "$(tu shell-init zsh)"' >> ~/.zshrc
+  fish: tu shell-init fish > ~/.config/fish/completions/tu.fish

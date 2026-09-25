@@ -13,8 +13,9 @@ import (
 
 // lbSix is the layouts §5 / oracle-captured six-user window (2026-09 vs Aug),
 // shares computed over the ranked set exactly as buildLeaderboard folds them.
-// The fixture's costs, shares and deltas are the node oracle's raw doubles
-// (env -i HOME=<staged> TZ=UTC node dist/tu.mjs m lb --json, 2026-09-16).
+// The fixture's costs, shares and deltas are the retired TypeScript
+// implementation's raw doubles (captured 2026-09-16 with
+// env -i HOME=<staged> TZ=UTC, `m lb --json`).
 func lbSix() []view.LeaderboardRow {
 	d := func(v float64) *float64 { return &v }
 	rows := []view.LeaderboardRow{

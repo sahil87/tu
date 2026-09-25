@@ -61,13 +61,13 @@ Nothing below `cmd/tu` touches `os.Stdout`/`os.Stderr` or calls `os.Exit`. `run(
 
 ### Warning detail mimics Node's error.message
 **Decision**: `Detail` reproduces the `Command failed: {cmd}\n{stderr}` and `spawn {binary} ENOENT` shapes.
-**Why**: the stderr warning is a byte-compared surface — parity with the frozen `src/node/` oracle (until plan row Z1).
+**Why**: the stderr warning is a byte-compared surface — parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes).
 **Rejected**: Go-native error text (guarantees a diff on every failure case).
 *Introduced by*: 260916-v0as-fact-source-ccusage
 
 ### Parse failures stay silent
 **Decision**: `KindParse` never warns; malformed JSON yields zero records with no stderr line.
-**Why**: the compared stderr surface carries only exec and timeout failures — parity with the frozen `src/node/` oracle (until plan row Z1).
+**Why**: the compared stderr surface carries only exec and timeout failures — parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes).
 **Rejected**: warning on parse failures (adds a line the compared surface never emits).
 *Introduced by*: 260916-v0as-fact-source-ccusage
 

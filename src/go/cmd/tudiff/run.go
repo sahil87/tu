@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -18,7 +19,6 @@ import (
 const (
 	defaultMatrix     = "harness/matrix.json"
 	defaultExpected   = "harness/expected-diffs.json"
-	defaultNode       = "dist/tu.mjs"
 	defaultGo         = "bin/tu"
 	defaultHarnessBin = "bin/harness"
 	defaultReport     = "bin/harness/report"
@@ -28,11 +28,12 @@ const (
 // explicitly (relative defaults resolve against the repo root, explicit
 // relative values against the caller's cwd).
 type runOptions struct {
-	matrix, expected, node, goBin, harnessBin, report, filter, fixtures string
-	placeholder, list                                                   bool
-	jobs                                                                int
-	timeout                                                             time.Duration
-	set                                                                 map[string]bool
+	matrix, expected, goBin, harnessBin, report, filter, fixtures string
+	golden, now                                                   string
+	placeholder, list, update                                     bool
+	jobs                                                          int
+	timeout                                                       time.Duration
+	set                                                           map[string]bool
 }
 
 func runRun(args []string, stdout, stderr io.Writer) int {
@@ -41,16 +42,18 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	opts := runOptions{set: map[string]bool{}}
 	fs.StringVar(&opts.matrix, "matrix", defaultMatrix, "argument matrix file")
 	fs.StringVar(&opts.expected, "expected", defaultExpected, "expected-diffs file (DC-keyed intentional divergences)")
-	fs.StringVar(&opts.node, "node", defaultNode, "TS oracle bundle (run as `node <staged copy>`)")
 	fs.StringVar(&opts.goBin, "go", defaultGo, "Go binary under test")
 	fs.StringVar(&opts.harnessBin, "harness-bin", defaultHarnessBin, "directory holding the fake ccusage and git")
-	fs.StringVar(&opts.fixtures, "fixtures", "", "comma-separated fixture aliases under harness/fixtures/ (default: automatic D7 resolution)")
+	fs.StringVar(&opts.fixtures, "fixtures", "", "comma-separated fixture aliases under harness/fixtures/ (only with --update and a non-default --golden)")
 	fs.BoolVar(&opts.placeholder, "placeholder", false, "force the _placeholder corpus only (what CI passes)")
 	fs.StringVar(&opts.report, "report", defaultReport, "report directory (wiped at the start of a run)")
 	fs.StringVar(&opts.filter, "filter", "", "run only cases whose expanded ID contains this substring")
 	fs.BoolVar(&opts.list, "list", false, "print the expanded case IDs and exit 0 without running")
 	fs.IntVar(&opts.jobs, "jobs", 4, "cases run concurrently (each case is fully isolated)")
 	fs.DurationVar(&opts.timeout, "timeout", 60*time.Second, "per-side wall-clock bound; a timeout is a red case")
+	fs.StringVar(&opts.golden, "golden", harness.DefaultGoldenDir, "golden corpus directory (manifest.json plus run/<case>/ captures)")
+	fs.BoolVar(&opts.update, "update", false, "rewrite the goldens from the Go side instead of comparing")
+	fs.StringVar(&opts.now, "now", "", "pin the golden clock (zone-less 2006-01-02T15:04:05) for --update")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -61,9 +64,15 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	// Preflight, in R2 order.
+	// Preflight, in R3 order.
 	if opts.fixtures != "" && opts.placeholder {
 		return fail("--fixtures and --placeholder are mutually exclusive")
+	}
+	// Golden mode compares against placeholder-only goldens; a real-fixture
+	// run against them is meaningless. The one exception: --update targeting
+	// a non-default --golden dir (a local golden set for real captures).
+	if opts.fixtures != "" && !(opts.update && opts.golden != harness.DefaultGoldenDir) {
+		return fail("--fixtures needs an oracle; goldens are placeholder-only")
 	}
 	if opts.jobs < 1 {
 		return fail("--jobs must be >= 1")
@@ -78,7 +87,8 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	m, err := harness.LoadMatrix(opts.resolve(root, "matrix", opts.matrix))
+	matrixPath := opts.resolve(root, "matrix", opts.matrix)
+	m, err := harness.LoadMatrix(matrixPath)
 	if err != nil {
 		return fail("matrix: %v", err)
 	}
@@ -107,17 +117,27 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		return fail("expected-diffs: %v", err)
 	}
 
-	nodeBin, scriptPath, flavor, code := preflightBinaries(&opts, root, cases, fail)
+	goldenDir := opts.resolve(root, "golden", opts.golden)
+	manifest, code := preflightGolden(&opts, goldenDir, matrixPath, cases, fail)
+	if code != 0 {
+		return code
+	}
+	scriptPath, flavor, code := preflightBinaries(&opts, root, cases, fail)
 	if code != 0 {
 		return code
 	}
 	hostname, _ := os.Hostname()
-	aliasDirs, err := harness.ResolveFixtures(root, splitComma(opts.fixtures), opts.placeholder, hostname)
+	// Golden mode resolves _placeholder only (no hostname alias); an explicit
+	// --fixtures list is reachable only through the --update exception above.
+	aliasDirs, err := harness.ResolveFixtures(root, splitComma(opts.fixtures), true, hostname)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	return executeRun(&opts, root, cases, exp, nodeBin, scriptPath, flavor, aliasDirs, stdout, stderr)
+	if opts.update {
+		return executeUpdate(&opts, root, cases, manifest, goldenDir, matrixPath, scriptPath, flavor, aliasDirs, stdout, stderr)
+	}
+	return executeRun(&opts, root, cases, exp, manifest, goldenDir, scriptPath, flavor, aliasDirs, stdout, stderr)
 }
 
 // resolve absolutizes a path flag: an explicit value resolves against the
@@ -139,32 +159,58 @@ func resolvePathFlag(root string, explicit bool, value string) string {
 	return filepath.Join(root, value)
 }
 
-// preflightBinaries runs the R2 binary/environment checks after the matrix
-// has loaded: --node, --go, the fakes, node on PATH, script for tty cases,
-// and the placeholder manifest.
-func preflightBinaries(opts *runOptions, root string, cases []harness.Case, fail func(string, ...any) int) (nodeBin, scriptPath, flavor string, code int) {
-	if !fileExists(opts.resolve(root, "node", opts.node)) {
-		return "", "", "", fail("%s not found (run npm ci && npm run build)", opts.node)
+// preflightGolden loads the golden manifest and runs the golden-mode drift
+// guards. Compare mode requires a valid manifest whose matrix hash matches
+// the current matrix and a golden dir for every expanded case; --update
+// treats a missing manifest as the bootstrap case and skips both guards.
+func preflightGolden(opts *runOptions, goldenDir, matrixPath string, cases []harness.Case, fail func(string, ...any) int) (*harness.GoldenManifest, int) {
+	m, err := harness.LoadGoldenManifest(goldenDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			if opts.update {
+				return nil, 0
+			}
+			return nil, fail("%s not found (run tudiff run --update)", filepath.Join(opts.golden, "manifest.json"))
+		}
+		return nil, fail("%s: %v", filepath.Join(opts.golden, "manifest.json"), err)
 	}
+	if opts.update {
+		return m, 0
+	}
+	sum, err := harness.MatrixSHA256(matrixPath)
+	if err != nil {
+		return nil, fail("matrix: %v", err)
+	}
+	if sum != m.MatrixSHA256 {
+		return nil, fail("%s changed since the goldens were captured (run tudiff run --update and review the diff)", opts.matrix)
+	}
+	for _, c := range cases {
+		if info, err := os.Stat(harness.GoldenCaseDir(goldenDir, c.ID)); err != nil || !info.IsDir() {
+			return nil, fail("no golden for %s (run tudiff run --update)", c.ID)
+		}
+	}
+	return m, 0
+}
+
+// preflightBinaries runs the binary/environment checks after the golden
+// guards: --go, the fakes, script for tty cases, and the placeholder
+// manifest.
+func preflightBinaries(opts *runOptions, root string, cases []harness.Case, fail func(string, ...any) int) (scriptPath, flavor string, code int) {
 	goPath := opts.resolve(root, "go", opts.goBin)
 	if !fileExists(goPath) {
-		return "", "", "", fail("%s not found (run just go-build)", opts.goBin)
+		return "", "", fail("%s not found (run just go-build)", opts.goBin)
 	}
 	if !executable(goPath) {
-		return "", "", "", fail("%s not executable (run just go-build)", opts.goBin)
+		return "", "", fail("%s not executable (run just go-build)", opts.goBin)
 	}
 	for _, fake := range []string{"ccusage", "git"} {
 		p := opts.resolve(root, "harness-bin", opts.harnessBin)
 		if !fileExists(filepath.Join(p, fake)) {
-			return "", "", "", fail("%s not found (run just harness-build)", filepath.Join(opts.harnessBin, fake))
+			return "", "", fail("%s not found (run just harness-build)", filepath.Join(opts.harnessBin, fake))
 		}
 		if !executable(filepath.Join(p, fake)) {
-			return "", "", "", fail("%s not executable (run just harness-build)", filepath.Join(opts.harnessBin, fake))
+			return "", "", fail("%s not executable (run just harness-build)", filepath.Join(opts.harnessBin, fake))
 		}
-	}
-	nodeBin, err := exec.LookPath("node")
-	if err != nil {
-		return "", "", "", fail("node not found on PATH (required to run the TS oracle)")
 	}
 	needsTTY := false
 	for _, c := range cases {
@@ -174,30 +220,39 @@ func preflightBinaries(opts *runOptions, root string, cases []harness.Case, fail
 		}
 	}
 	if needsTTY {
+		var err error
 		if scriptPath, err = exec.LookPath("script"); err != nil {
-			return "", "", "", fail("script not found on PATH (required for tty cases)")
+			return "", "", fail("script not found on PATH (required for tty cases)")
 		}
 		flavor = harness.ScriptFlavor()
 	}
 	manifest := filepath.Join(root, "harness", "fixtures", harness.PlaceholderAlias, "manifest.json")
 	if !fileExists(manifest) {
-		return "", "", "", fail("harness/fixtures/%s/manifest.json not found", harness.PlaceholderAlias)
+		return "", "", fail("harness/fixtures/%s/manifest.json not found", harness.PlaceholderAlias)
 	}
-	return nodeBin, scriptPath, flavor, 0
+	return scriptPath, flavor, 0
 }
 
-// executeRun stages the oracle, runs every case through the worker pool,
-// streams report lines in matrix order, and writes the report.
-func executeRun(opts *runOptions, root string, cases []harness.Case, exp *harness.Expected, nodeBin, scriptPath, flavor string, aliasDirs []string, stdout, stderr io.Writer) int {
-	cfg, cleanup, err := stageRun(opts, root, nodeBin, scriptPath, flavor, aliasDirs)
+// executeRun stages the run, executes every case through the worker pool
+// against its golden, streams report lines in matrix order, and writes the
+// report.
+func executeRun(opts *runOptions, root string, cases []harness.Case, exp *harness.Expected, manifest *harness.GoldenManifest, goldenDir, scriptPath, flavor string, aliasDirs []string, stdout, stderr io.Writer) int {
+	cfg, cleanup, err := stageRun(opts, root, scriptPath, flavor, aliasDirs)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
 	defer cleanup()
 	cfg.expected = exp
+	cfg.goldenDir = goldenDir
+	cfg.now = manifest.Now
+	// A failed version probe degrades to no version normalization: the cases
+	// themselves report the broken binary (harness-channel red), which is
+	// more actionable than a preflight refusal.
+	cfg.version, _ = harness.ProbeVersion(cfg.goPath, "--version")
+	cfg.hostname, cfg.username = harness.ProbeIdentity()
 
-	header := reportHeader(opts, cfg, nodeBin, len(cases))
+	header := reportHeader(opts, cfg, manifest, len(cases))
 	header.ExpectedPath = opts.expected
 	header.ExpectedEntries = len(exp.Entries)
 	for _, line := range harness.RenderHeader(header) {
@@ -217,7 +272,7 @@ func executeRun(opts *runOptions, root string, cases []harness.Case, exp *harnes
 		fmt.Fprintf(stderr, "tudiff: %v\n", runErr)
 		return 2
 	}
-	// The R5 gate rule: an expected red case passes; an unexpected red, a
+	// The gate rule: an expected red case passes; an unexpected red, a
 	// timeout, an unconfirmed-fixture replay, or a stale entry fails.
 	if summary.Unexpected+summary.Timeout+summary.Unconfirmed > 0 || len(summary.Stale) > 0 {
 		return 1
@@ -225,13 +280,55 @@ func executeRun(opts *runOptions, root string, cases []harness.Case, exp *harnes
 	return 0
 }
 
+// executeUpdate rewrites the goldens from the Go side over the (filtered)
+// matrix, then rewrites the manifest. A filtered run rewrites only the
+// matched cases (go test -run X -update style).
+func executeUpdate(opts *runOptions, root string, cases []harness.Case, old *harness.GoldenManifest, goldenDir, matrixPath, scriptPath, flavor string, aliasDirs []string, stdout, stderr io.Writer) int {
+	now := resolveNow(opts.now, old)
+	cfg, cleanup, err := stageRun(opts, root, scriptPath, flavor, aliasDirs)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	defer cleanup()
+	cfg.goldenDir = goldenDir
+	cfg.now = now
+	cfg.version, err = harness.ProbeVersion(cfg.goPath, "--version")
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	cfg.hostname, cfg.username = harness.ProbeIdentity()
+
+	n, err := captureAll(cases, cfg, opts.jobs, func(c harness.Case, s caseSide) harness.SideCapture {
+		return execGo(c, cfg, s)
+	})
+	if err != nil {
+		fmt.Fprintf(stderr, "tudiff: %v\n", err)
+		return 2
+	}
+	m, err := newManifest(old, matrixPath, now)
+	if err != nil {
+		fmt.Fprintf(stderr, "tudiff: %v\n", err)
+		return 2
+	}
+	m.Oracle = opts.goBin
+	m.OracleVersion = cfg.version
+	m.Cases = n
+	if err := harness.WriteGoldenManifest(goldenDir, m); err != nil {
+		fmt.Fprintf(stderr, "tudiff: writing manifest: %v\n", err)
+		return 2
+	}
+	fmt.Fprintf(stdout, "tudiff: wrote %d goldens under %s (now %s)\n", n, opts.golden+"/run", now)
+	return 0
+}
+
 // stageRun prepares a run: resolves every path into a runConfig, wipes and
-// recreates the report dir, creates the temp root, and stages the oracle
-// copy. cleanup removes the temp root.
-func stageRun(opts *runOptions, root, nodeBin, scriptPath, flavor string, aliasDirs []string) (runConfig, func(), error) {
+// recreates the report dir, and creates the temp root. cleanup removes the
+// temp root.
+func stageRun(opts *runOptions, root, scriptPath, flavor string, aliasDirs []string) (runConfig, func(), error) {
 	cfg := runConfig{
 		seedDir:    filepath.Join(root, "harness", "metrics-repo"),
-		nodeBin:    nodeBin,
 		goPath:     opts.resolve(root, "go", opts.goBin),
 		harnessBin: opts.resolve(root, "harness-bin", opts.harnessBin),
 		reportDir:  opts.resolve(root, "report", opts.report),
@@ -254,40 +351,46 @@ func stageRun(opts *runOptions, root, nodeBin, scriptPath, flavor string, aliasD
 		return fail("%v", err)
 	}
 	cfg.tmpRoot = tmpRoot
-	cleanup := func() { os.RemoveAll(tmpRoot) }
-	bundle, err := harness.StageOracle(tmpRoot, opts.resolve(root, "node", opts.node),
-		filepath.Join(root, "tu.default.conf"), filepath.Join(cfg.harnessBin, "ccusage"))
-	if err != nil {
-		cleanup()
-		return cfg, nil, err
-	}
-	cfg.bundle = bundle
-	return cfg, cleanup, nil
+	return cfg, func() { os.RemoveAll(tmpRoot) }, nil
 }
 
-// reportHeader builds the report header, probing both binaries' versions.
-func reportHeader(opts *runOptions, cfg runConfig, nodeBin string, caseCount int) harness.ReportHeader {
+// reportHeader builds the report header from the golden manifest's
+// provenance, probing the Go binary's version for the display line.
+func reportHeader(opts *runOptions, cfg runConfig, m *harness.GoldenManifest, caseCount int) harness.ReportHeader {
 	return harness.ReportHeader{
-		Timestamp:   time.Now().UTC(),
-		NodePath:    opts.node,
-		NodeVersion: firstLine(exec.Command(nodeBin, "--version").Output()),
-		GoPath:      opts.goBin,
-		GoVersion:   firstLine(exec.Command(cfg.goPath, "--version").Output()),
-		Fixtures:    aliasNames(cfg.fixtures),
-		Script:      cfg.flavor,
-		MatrixPath:  opts.matrix,
-		Cases:       caseCount,
-		Filter:      opts.filter,
+		Timestamp:           time.Now().UTC(),
+		GoldenDir:           opts.golden,
+		GoldenCapturedAt:    m.CapturedAt,
+		GoldenOracle:        m.Oracle,
+		GoldenOracleVersion: m.OracleVersion,
+		GoldenNow:           m.Now,
+		GoPath:              opts.goBin,
+		GoVersion:           firstLine(exec.Command(cfg.goPath, "--version").Output()),
+		Fixtures:            aliasNames(cfg.fixtures),
+		Script:              cfg.flavor,
+		MatrixPath:          opts.matrix,
+		Cases:               caseCount,
+		Filter:              opts.filter,
 	}
 }
 
 // runConfig carries the resolved, per-run constants shared by every case.
 type runConfig struct {
-	seedDir, bundle, nodeBin, goPath, harnessBin, reportDir, tmpRoot string
-	fixtures                                                         []string
-	timeout                                                          time.Duration
-	scriptPath, flavor                                               string
-	expected                                                         *harness.Expected
+	seedDir, goPath, harnessBin, reportDir, tmpRoot, goldenDir string
+	fixtures                                                   []string
+	timeout                                                    time.Duration
+	scriptPath, flavor                                         string
+	// now is the golden manifest's pinned clock, emitted as TUDIFF_NOW in the
+	// child's environment.
+	now string
+	// version is the Go binary's probed --version value: goldens are stored
+	// and Go captures are compared after NormalizeVersion with it.
+	version string
+	// hostname/username are the machine's probed identity (ProbeIdentity):
+	// goldens are stored and Go captures are compared after NormalizeIdentity
+	// with them (channels and tree.json keys).
+	hostname, username string
+	expected           *harness.Expected
 }
 
 // runAllCases executes the cases through a --jobs worker pool. Report lines
@@ -339,6 +442,106 @@ func runAllCases(cases []harness.Case, cfg runConfig, jobs int, stdout io.Writer
 	return results, firstErr
 }
 
+// captureAll is the --update worker pool: every case's golden is written by
+// captureCase; the first error aborts the run after in-flight cases finish.
+func captureAll(cases []harness.Case, cfg runConfig, jobs int, exec func(harness.Case, caseSide) harness.SideCapture) (int, error) {
+	work := make(chan harness.Case)
+	errs := make(chan error, len(cases))
+	var wg sync.WaitGroup
+	for w := 0; w < jobs; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for c := range work {
+				if err := captureCase(c, cfg, exec); err != nil {
+					errs <- fmt.Errorf("case %s: %w", c.ID, err)
+				}
+			}
+		}()
+	}
+	for _, c := range cases {
+		work <- c
+	}
+	close(work)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		return 0, err
+	}
+	return len(cases), nil
+}
+
+// captureCase stages one home, runs the case's capture side, and writes
+// run/<id>/ golden files: the byte channels (home-normalized, then version-,
+// then identity-normalized here), the decimal exit code, and tree.json (keys
+// identity-normalized).
+func captureCase(c harness.Case, cfg runConfig, exec func(harness.Case, caseSide) harness.SideCapture) error {
+	side, err := stageCase(c, cfg)
+	if err != nil {
+		return err
+	}
+	cap := exec(c, side)
+	if cap.TimedOut {
+		return fmt.Errorf("capture timed out")
+	}
+	if cap.Err != "" {
+		return fmt.Errorf("capture failed: %s", cap.Err)
+	}
+	cap.Stdout = normalizeChannel(cap.Stdout, side.home, cfg)
+	cap.Stderr = normalizeChannel(cap.Stderr, side.home, cfg)
+	cap.TTY = normalizeChannel(cap.TTY, side.home, cfg)
+	tree, err := harness.TreeSnapshot(side.home)
+	if err != nil {
+		return err
+	}
+	tree = harness.NormalizeTreeIdentity(tree, cfg.hostname, cfg.username)
+	return harness.WriteGoldenCase(harness.GoldenCaseDir(cfg.goldenDir, c.ID), cap, tree)
+}
+
+// normalizeChannel applies the capture/compare normalization pipeline to one
+// byte channel: home, then version, then identity (the corpus order).
+func normalizeChannel(b []byte, home string, cfg runConfig) []byte {
+	b = harness.NormalizeHome(b, home)
+	b = harness.NormalizeVersion(b, cfg.version)
+	return harness.NormalizeIdentity(b, cfg.hostname, cfg.username)
+}
+
+// resolveNow picks the manifest's pinned clock: --now wins, then the existing
+// manifest's value, then noon of today (local) for a bootstrap capture.
+func resolveNow(flagValue string, old *harness.GoldenManifest) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	if old != nil && old.Now != "" {
+		return old.Now
+	}
+	return time.Now().Format("2006-01-02") + "T12:00:00"
+}
+
+// newManifest builds the manifest for a capture: fresh captured_at and matrix
+// hash and the run constants, with both case counts carried over from the old
+// manifest — the caller (run or live) overwrites the count it just wrote.
+func newManifest(old *harness.GoldenManifest, matrixPath, now string) (*harness.GoldenManifest, error) {
+	sum, err := harness.MatrixSHA256(matrixPath)
+	if err != nil {
+		return nil, err
+	}
+	m := &harness.GoldenManifest{
+		Schema:       harness.SchemaVersion,
+		CapturedAt:   time.Now().UTC().Format(time.RFC3339),
+		Now:          now,
+		Script:       harness.ScriptFlavor(),
+		Platform:     runtime.GOOS + "/" + runtime.GOARCH,
+		Fixtures:     []string{harness.PlaceholderAlias},
+		MatrixSHA256: sum,
+	}
+	if old != nil {
+		m.Cases = old.Cases
+		m.LiveSteps = old.LiveSteps
+	}
+	return m, nil
+}
+
 // localDateInTZ is the injectable clock behind the date-rollover re-run: the
 // local calendar date in the case's timezone.
 var localDateInTZ = func(tzName string) string {
@@ -357,39 +560,46 @@ type caseSide struct {
 	env     []string
 }
 
-// runCase executes one case end to end: two staged $HOMEs, both sides
-// back-to-back (re-run once on a date rollover), the byte comparison and —
-// for cases still green — the written-tree comparison, the informational
-// call-log and unconfirmed lookups, and the raw captures.
+// runCase executes one case end to end against its golden: one staged $HOME,
+// the Go side run under the pinned clock (re-run once on a date rollover),
+// the byte comparison against the golden in the oracle position and — for
+// cases still green — the tree.json comparison, the unconfirmed-replay
+// lookup, and the Go-side report captures.
 func runCase(c harness.Case, cfg runConfig) (harness.Result, error) {
 	res := harness.Result{Case: c, Status: harness.StatusRed, NodeExit: -1, GoExit: -1}
-	node, goSide, err := stageCase(c, cfg)
+	goSide, err := stageCase(c, cfg)
+	if err != nil {
+		return res, err
+	}
+	goldenCap, goldenTree, err := harness.LoadGoldenCase(harness.GoldenCaseDir(cfg.goldenDir, c.ID), c.IO)
 	if err != nil {
 		return res, err
 	}
 
 	tzName := harness.TZName(c.TZ)
 	before := localDateInTZ(tzName)
-	nodeCap := execSide(c, cfg, true, node)
-	goCap := execSide(c, cfg, false, goSide)
+	goCap := execGo(c, cfg, goSide)
 	rerun := false
 	if localDateInTZ(tzName) != before {
-		// Midnight rollover between the two sides: discard and re-run once.
+		// Midnight rollover during the case: discard and re-run once. The
+		// pinned clock makes this moot; the guard is cheap and stays.
 		rerun = true
-		_ = os.Remove(node.callLog)
 		_ = os.Remove(goSide.callLog)
-		nodeCap = execSide(c, cfg, true, node)
-		goCap = execSide(c, cfg, false, goSide)
+		goCap = execGo(c, cfg, goSide)
 	}
-	nodeCap.Home, goCap.Home = node.home, goSide.home
+	goCap.Stdout = normalizeChannel(goCap.Stdout, goSide.home, cfg)
+	goCap.Stderr = normalizeChannel(goCap.Stderr, goSide.home, cfg)
+	goCap.TTY = normalizeChannel(goCap.TTY, goSide.home, cfg)
+	goCap.Home = goSide.home // for the tree-red go.tree copy; Compare's home normalization is a no-op on the normalized bytes
 
-	res = harness.Compare(c, nodeCap, goCap)
+	res = harness.Compare(c, goldenCap, goCap)
 	res.Rerun = rerun
 	if res.Status == harness.StatusGreen {
-		// The bytes agreed; the written trees must agree too (the sync
-		// writer's half of the case). A tree difference reddens the case on
-		// the "tree" channel; a case already red keeps its first channel.
-		diff, err := harness.CompareTrees(node.home, goSide.home)
+		// The bytes agreed; the written tree must agree with tree.json too
+		// (the sync writer's half of the case). A tree difference reddens the
+		// case on the "tree" channel; a case already red keeps its first
+		// channel.
+		diff, err := harness.CompareTree(goldenTree, goSide.home, cfg.hostname, cfg.username)
 		if err != nil {
 			return res, err
 		}
@@ -400,7 +610,7 @@ func runCase(c harness.Case, cfg runConfig) (harness.Result, error) {
 			res.GoExcerpt = diff.GoExcerpt
 		}
 	}
-	if err := annotateCalls(&res, node, goSide, cfg.fixtures); err != nil {
+	if err := annotateCalls(&res, goSide, cfg.fixtures); err != nil {
 		return res, err
 	}
 	// A red case may be an intentional divergence: annotate it with the
@@ -413,75 +623,61 @@ func runCase(c harness.Case, cfg runConfig) (harness.Result, error) {
 			res.Expected = id
 		}
 	}
-	if err := harness.WriteCaseCaptures(cfg.reportDir, res, nodeCap, goCap); err != nil {
+	if err := harness.WriteCaseCaptures(cfg.reportDir, res, goCap); err != nil {
 		return res, err
 	}
 	return res, nil
 }
 
-// stageCase creates the case's temp and report directories, stages both
-// sides' $HOMEs, and builds their environments.
-func stageCase(c harness.Case, cfg runConfig) (node, goSide caseSide, err error) {
+// stageCase creates the case's temp and report directories, stages one $HOME,
+// and builds its environment.
+func stageCase(c harness.Case, cfg runConfig) (caseSide, error) {
+	var s caseSide
 	safeID := strings.ReplaceAll(c.ID, "/", "-")
 	caseTmp := filepath.Join(cfg.tmpRoot, "cases", safeID)
 	reportCaseDir := filepath.Join(cfg.reportDir, "cases", filepath.FromSlash(c.ID))
 	if err := os.MkdirAll(reportCaseDir, 0o755); err != nil {
-		return node, goSide, err
+		return s, err
 	}
-	for _, sp := range []struct {
-		side *caseSide
-		name string
-	}{
-		{&node, string(harness.SideNode)},
-		{&goSide, string(harness.SideGo)},
-	} {
-		sp.side.dir = filepath.Join(caseTmp, sp.name)
-		sp.side.home = filepath.Join(sp.side.dir, "home")
-		sp.side.callLog = filepath.Join(reportCaseDir, sp.name+".calls.jsonl")
-		if err := harness.StageHome(sp.side.home, c.Conf, cfg.seedDir); err != nil {
-			return node, goSide, err
-		}
-		sp.side.env = harness.BuildEnv(c, harness.EnvSpec{
-			HarnessBin: cfg.harnessBin,
-			Home:       sp.side.home,
-			Fixtures:   cfg.fixtures,
-			CallLog:    sp.side.callLog,
-		})
+	s.dir = filepath.Join(caseTmp, string(harness.SideGo))
+	s.home = filepath.Join(s.dir, "home")
+	s.callLog = filepath.Join(reportCaseDir, string(harness.SideGo)+".calls.jsonl")
+	if err := harness.StageHome(s.home, c.Conf, cfg.seedDir); err != nil {
+		return s, err
 	}
-	return node, goSide, nil
+	s.env = harness.BuildEnv(c, harness.EnvSpec{
+		HarnessBin: cfg.harnessBin,
+		Home:       s.home,
+		Fixtures:   cfg.fixtures,
+		CallLog:    s.callLog,
+		Now:        cfg.now,
+	})
+	return s, nil
 }
 
-// execSide runs one side of a case: the staged oracle bundle through node, or
-// the Go binary in place; under script(1) for tty cases, pipes otherwise.
-func execSide(c harness.Case, cfg runConfig, node bool, side caseSide) harness.SideCapture {
-	name, args := cfg.goPath, c.Args
-	if node {
-		name, args = cfg.nodeBin, append([]string{cfg.bundle}, c.Args...)
-	}
+// execGo runs the Go side of a case: the binary in place, under script(1) for
+// tty cases, pipes otherwise.
+func execGo(c harness.Case, cfg runConfig, side caseSide) harness.SideCapture {
 	if c.IO == harness.IOTTY {
-		return harness.RunTTY(cfg.scriptPath, name, args, side.dir, side.env, cfg.timeout, cfg.flavor)
+		return harness.RunTTY(cfg.scriptPath, cfg.goPath, c.Args, side.dir, side.env, cfg.timeout, cfg.flavor)
 	}
-	return harness.RunPipe(name, args, side.dir, side.env, cfg.timeout)
+	return harness.RunPipe(cfg.goPath, c.Args, side.dir, side.env, cfg.timeout)
 }
 
-// annotateCalls fills the informational call-log comparison and the
-// unconfirmed-replay flag from the two sides' call logs. Each side's argv is
-// home-normalized with that side's staged home before comparison.
-func annotateCalls(res *harness.Result, node, goSide caseSide, fixtures []string) error {
-	nodeN, goN, differ, err := harness.CompareCallLogs(node.callLog, goSide.callLog, node.home, goSide.home)
+// annotateCalls fills the unconfirmed-replay flag and the Go call count from
+// the Go side's call log (the node-vs-go call-set comparison is gone with the
+// oracle; the Go log still feeds the gate and go.calls.jsonl).
+func annotateCalls(res *harness.Result, goSide caseSide, fixtures []string) error {
+	unc, err := harness.UnconfirmedReplays(goSide.callLog, fixtures)
 	if err != nil {
 		return err
 	}
-	res.NodeCalls, res.GoCalls, res.CallsDiffer = nodeN, goN, differ
-	nodeUnc, err := harness.UnconfirmedReplays(node.callLog, fixtures)
+	res.Unconfirmed = unc
+	n, err := harness.CountCalls(goSide.callLog)
 	if err != nil {
 		return err
 	}
-	goUnc, err := harness.UnconfirmedReplays(goSide.callLog, fixtures)
-	if err != nil {
-		return err
-	}
-	res.Unconfirmed = nodeUnc || goUnc
+	res.GoCalls = n
 	return nil
 }
 

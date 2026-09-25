@@ -1,0 +1,9 @@
+Error: init-metrics takes at most one argument (repo-url)
+Usage: tu [source] [period] [display]
+
+  tu                Today's cost, all tools
+  tu cc             Today's cost, Claude Code
+  tu mh             Monthly cost history, all tools
+  tu -h             Show full help
+
+Run 'tu help' for all commands.

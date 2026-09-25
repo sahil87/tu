@@ -19,7 +19,7 @@ description: The `tu skill` agent usage bundle — a committed byte-identical co
 - `WriteSkill(w io.Writer) error` MUST write the bundle verbatim to `w` — raw markdown, no rendering, no pager, no framing (the toolkit skill standard).
 
 ### Requirement: Drift guards
-- The test drift guard (`TestSkillDriftGuard` in `internal/toolkit/skill_test.go`) MUST walk up from the package directory to the directory containing `package.json` and assert byte-equality between `Skill` and `docs/site/skill.md` — editing one byte of either copy fails `go test`.
+- The test drift guard (`TestSkillDriftGuard` in `internal/toolkit/skill_test.go`) MUST walk up from the package directory to the directory containing `justfile` and assert byte-equality between `Skill` and `docs/site/skill.md` — editing one byte of either copy fails `go test`.
 - The build drift guard (the private `_go-skill-guard` recipe in the justfile, run by `go-build` and `go-build-target` before `go build`) MUST run `cmp -s docs/site/skill.md src/go/internal/toolkit/skill.md` and fail the build with `error: src/go/internal/toolkit/skill.md drifted from docs/site/skill.md — run scripts/sync-skill.sh` on stderr, exit 1 (0118).
 - The bundle MUST stay within the 150-line hard budget and end with exactly a trailing newline (`TestSkillShape` in `skill_test.go` pins both); `docs/site/skill.md` is 117 lines.
 

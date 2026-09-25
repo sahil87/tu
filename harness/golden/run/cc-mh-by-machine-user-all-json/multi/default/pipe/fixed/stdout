@@ -1,0 +1,15 @@
+[
+  {
+    "label": "2026-01",
+    "totalCost": 2.5,
+    "inputTokens": 12000,
+    "outputTokens": 1600,
+    "cacheCreationTokens": 4000,
+    "cacheReadTokens": 80000,
+    "totalTokens": 97600,
+    "machines": {
+      "harness-user": 1.4,
+      "other-user": 1.1
+    }
+  }
+]

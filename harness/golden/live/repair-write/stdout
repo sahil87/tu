@@ -1,0 +1,18 @@
+repair-metrics: scanned $REPO
+  4 tracked day-files, 3 commits touching *.jsonl
+
+Shrunk day-files (3):
+
+  FILE                             CURRENT         MAX       DELTA  MAX COMMIT
+  u/2026/m/cc-2026-01-01.jsonl       $1.00      $10.00      +$9.00  627c8bc (2026-01-09)
+  u/2026/m/cc-2026-01-03.jsonl       $1.00       $8.00      +$7.00  6cb422c (2026-01-09)
+  u/2026/m/cc-2026-01-04.jsonl       $2.00       $5.00      +$3.00  627c8bc (2026-01-09)
+
+Per-user totals:
+  u: +$19.00 across 3 file(s)
+
+Grand total: +$19.00 across 3 file(s)
+
+Restored 3 file(s) in the working tree.
+Review with: git -C $REPO diff
+Then commit and push manually.

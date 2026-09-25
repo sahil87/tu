@@ -1,7 +1,7 @@
-// localecmp.go ports the two JavaScript orderings scripts/repair-metrics.mjs
-// relies on, so the repair report lists files and per-user rows in the same
-// order as the mjs (R11). Both tables below are Node-verified (v24,
-// 2026-09-17) and pinned in localecmp_test.go.
+// localecmp.go ports the two JavaScript orderings the retired repair script
+// relied on, so the repair report lists files and per-user rows in the same
+// order (R11). Both tables below are verified against the retired runtime
+// (v24, 2026-09-17) and pinned in localecmp_test.go.
 package sync
 
 import "strings"
@@ -98,7 +98,8 @@ func icuPrimary(c byte) (int, bool) {
 	return 0, false
 }
 
-// userEntryCompare is the mjs per-user row order: [...byUser.entries()].sort()
+// userEntryCompare is the retired repair script's per-user row order:
+// [...byUser.entries()].sort()
 // — the default JS sort, which stringifies each [user, agg] entry to
 // "{user},[object Object]" and compares those by UTF-16 code units. For
 // ASCII user names that is byte order of the decorated string; the decoration

@@ -28,7 +28,7 @@ const (
 	pushFailedPrefix   = "Warning: sync push failed after retry — "
 )
 
-// SyncMetrics is the TS syncMetrics (src/node/sync/sync.ts): the
+// SyncMetrics is the retired TypeScript implementation's syncMetrics: the
 // add/commit/pull/push round trip against the metrics repo. It prints
 // nothing — lines are the stderr lines the TS would have printed, in order,
 // for the edge to write.

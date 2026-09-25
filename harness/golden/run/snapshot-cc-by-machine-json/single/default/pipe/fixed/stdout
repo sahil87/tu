@@ -1,0 +1,13 @@
+{
+  "Claude Code": {
+    "totalCost": 0,
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheCreationTokens": 0,
+    "cacheReadTokens": 0,
+    "totalTokens": 0,
+    "machines": {
+      "$MACHINE": 0
+    }
+  }
+}

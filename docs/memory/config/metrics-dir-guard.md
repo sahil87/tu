@@ -71,7 +71,7 @@ On clone failure the guard writes the marker, demotes to `Single`, and emits `Wa
 
 ### Node-shaped clone-failure detail
 **Decision**: `cloneFailureDetail` reproduces `execFileSync` error text — `Command failed: git clone …` with captured stderr, or `spawnSync git {ETIMEDOUT|ENOENT|EACCES}` — instead of Go's native `*exec.ExitError` strings.
-**Why**: Parity with the frozen `src/node/` oracle (until plan row Z1): the differential harness pins the full warning line byte-for-byte, including the deadline and process-start shapes.
+**Why**: Parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes): the differential harness pins the full warning line byte-for-byte, including the deadline and process-start shapes.
 **Rejected**: Go-native error text (`exit status 128`, `signal: killed`) — readable but a different wire shape.
 *Introduced by*: 260916-xivf-metrics-source-and-multi-mode (xivf)
 

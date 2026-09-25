@@ -11,9 +11,9 @@ import (
 // docs/site/skill.md: editing one byte of either copy fails this test (the
 // internal/config/defaults_test.go walk-up precedent).
 func TestSkillDriftGuard(t *testing.T) {
-	root, ok := findPackageRoot(t)
+	root, ok := findJustfileRoot(t)
 	if !ok {
-		t.Fatal("no package.json found walking up from the package directory")
+		t.Fatal("no justfile found walking up from the package directory")
 	}
 	raw, err := os.ReadFile(filepath.Join(root, "docs", "site", "skill.md"))
 	if err != nil {
@@ -42,5 +42,25 @@ func TestWriteSkill(t *testing.T) {
 	}
 	if !bytes.Equal(buf.Bytes(), Skill) {
 		t.Error("WriteSkill output != embedded Skill")
+	}
+}
+
+// findJustfileRoot walks up from the package directory (the test's cwd) to
+// the first directory containing justfile — the repo root.
+func findJustfileRoot(t *testing.T) (root string, ok bool) {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "justfile")); err == nil {
+			return dir, true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
 	}
 }

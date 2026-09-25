@@ -21,8 +21,8 @@ import (
 // vendor/ccusage/bin/ccusage beside it, with executable symlinks resolved so
 // a Homebrew bin/ symlink finds the vendor tree beside the real file), (2)
 // ccusage on PATH, (3) an error wrapping exec.ErrNotFound. It never walks to
-// a repo root or probes node_modules. Source.Binary non-empty bypasses
-// resolution entirely.
+// a repo root or looks in a package directory. Source.Binary non-empty
+// bypasses resolution entirely.
 func ResolveBinary() (string, error) {
 	if exe, err := os.Executable(); err == nil {
 		if vendor, ok := resolveVendor(exe); ok {
@@ -47,6 +47,18 @@ func resolveVendor(exe string) (string, bool) {
 		return vendor, true
 	}
 	return "", false
+}
+
+// VendorBeside returns the vendor/ccusage/bin/ccusage path beside the binary
+// found on PATH as name (symlinks resolved, as resolveVendor), reporting
+// false when either is absent. tudiff capture uses it for the
+// vendor-beside-tu resolution step.
+func VendorBeside(name string) (string, bool) {
+	exe, err := exec.LookPath(name)
+	if err != nil {
+		return "", false
+	}
+	return resolveVendor(exe)
 }
 
 // run executes binary with argv (no shell), inheriting the environment and

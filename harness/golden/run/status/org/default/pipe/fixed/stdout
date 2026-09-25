@@ -1,0 +1,7 @@
+Mode:        multi
+User:        harness-user
+Machine:     harness-machine
+Org config:  ~/.config/tu/org.conf
+Metrics:     ~/.tu/metrics_repo
+Last sync:   never
+Auto-sync:   on

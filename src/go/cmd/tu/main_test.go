@@ -13,8 +13,8 @@ import (
 	"github.com/sahil87/tu/internal/toolkit"
 )
 
-// Same shape the TypeScript pinning test enforces (src/node/core/__tests__/cli-version.test.ts)
-// and the toolkit `version` standard recommends: `<tool> version vX.Y.Z`.
+// Same shape the retired TypeScript implementation's version pinning test
+// enforced and the toolkit `version` standard recommends: `<tool> version vX.Y.Z`.
 var versionLineRE = regexp.MustCompile(`^tu version v\d+(\.\d+)*$`)
 
 func TestRunVersionFlags(t *testing.T) {

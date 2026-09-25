@@ -19,8 +19,7 @@ import (
 type Side string
 
 const (
-	SideNode Side = "node"
-	SideGo   Side = "go"
+	SideGo Side = "go"
 )
 
 // Case verdicts.
@@ -71,25 +70,24 @@ func NormalizeHome(b []byte, home string) []byte {
 	return bytes.ReplaceAll(b, []byte(home), []byte("$HOME"))
 }
 
-// Result is the comparison outcome of one case, plus the informational
-// call-log comparison and run metadata the report renders.
+// Result is the comparison outcome of one case, plus the unconfirmed-replay
+// flag and run metadata the report renders. The Node* fields name the
+// oracle position: since the golden corpus replaced the Node oracle they
+// hold the golden side's values.
 type Result struct {
 	Case        Case
 	Status      string
 	Channel     string // first differing channel (red), or "timeout"
 	Offset      int    // first differing byte index (byte channels)
-	Line        int    // 1-based line of Offset in the node capture
-	NodeExcerpt string // strconv.Quote of ≤40 bytes from Offset
+	Line        int    // 1-based line of Offset in the oracle capture
+	NodeExcerpt string // strconv.Quote of ≤40 bytes from Offset (oracle position)
 	GoExcerpt   string
-	NodeExit    int
+	NodeExit    int // oracle position (the golden's exit code in golden mode)
 	GoExit      int
-	NodeMs      int64
 	GoMs        int64
 	NodeTimeout bool // unexported into report.json; backs the timeout case line
 	GoTimeout   bool
 	Unconfirmed bool
-	CallsDiffer bool
-	NodeCalls   int
 	GoCalls     int
 	Rerun       bool
 	// Expected is the id of the expected-diffs entry explaining a red case
@@ -105,6 +103,10 @@ type EnvSpec struct {
 	Home       string   // this side's staged $HOME
 	Fixtures   []string // absolute fixture alias dirs, search order
 	CallLog    string   // this side's TUDIFF_CALL_LOG path
+	// Now, when non-empty, is the golden manifest's pinned clock (a zone-less
+	// local timestamp): BuildEnv emits it as TUDIFF_NOW for the Go binary's
+	// edge now() seam. Empty means the child runs on the real clock.
+	Now string
 }
 
 // gitScripts maps the failure-injection env axis values to their
@@ -130,6 +132,9 @@ func BuildEnv(c Case, spec EnvSpec) []string {
 		"TUDIFF_FIXTURES=" + strings.Join(spec.Fixtures, string(os.PathListSeparator)),
 		"TUDIFF_CALL_LOG=" + spec.CallLog,
 	}
+	if spec.Now != "" {
+		env = append(env, "TUDIFF_NOW="+spec.Now)
+	}
 	if c.IO == IOTTY {
 		env = append(env, "TERM=xterm-256color")
 	}
@@ -143,26 +148,6 @@ func BuildEnv(c Case, spec EnvSpec) []string {
 		env = append(env, "TUDIFF_GIT_SCRIPT="+script)
 	}
 	return env
-}
-
-// StageOracle copies the TS oracle into tmpDir so the repository's dist/ is
-// never mutated: the bundle, the shipped default conf beside it (the bundled
-// layout findDefaultConf checks first), and the fake ccusage in the fixed
-// vendor slot the TS fetcher execs.
-func StageOracle(tmpDir, nodePath, defaultConf, fakeCcusage string) (bundlePath string, err error) {
-	dist := filepath.Join(tmpDir, "oracle", "dist")
-	bundlePath = filepath.Join(dist, "tu.mjs")
-	if err := CopyFile(nodePath, bundlePath, 0o644); err != nil {
-		return "", fmt.Errorf("tudiff: staging oracle bundle: %w", err)
-	}
-	if err := CopyFile(defaultConf, filepath.Join(dist, "tu.default.conf"), 0o644); err != nil {
-		return "", fmt.Errorf("tudiff: staging tu.default.conf: %w", err)
-	}
-	vendor := filepath.Join(dist, "vendor", "ccusage", "bin", "ccusage")
-	if err := CopyFile(fakeCcusage, vendor, 0o755); err != nil {
-		return "", fmt.Errorf("tudiff: staging fake ccusage: %w", err)
-	}
-	return bundlePath, nil
 }
 
 // CopyFile copies one file to dst (parent dirs created) with the given mode.
@@ -308,20 +293,18 @@ type byteChannel struct {
 // Compare byte-diffs one case's two captures, stopping at the first differing
 // channel: pipe cases compare exit, stdout, stderr; tty cases compare exit,
 // tty. Each side's byte channels are home-normalized (NormalizeHome with that
-// side's staged Home) before comparing — the two staged $HOMEs differ only in
-// the side segment, so paths that legitimately embed $HOME (the setup-command
-// messages) would otherwise diverge. A timeout on either side is a timeout
-// verdict regardless of bytes. A capture-level error on either side (Err
-// non-empty — a failed exec or a missing exit sentinel) is a red verdict:
-// errored captures are not comparable, so identical failures must never read
-// as green.
+// side's staged Home) before comparing; the oracle-position capture (the
+// golden in golden mode) is stored pre-normalized and carries no Home. A
+// timeout on either side is a timeout verdict regardless of bytes. A
+// capture-level error on either side (Err non-empty — a failed exec or a
+// missing exit sentinel) is a red verdict: errored captures are not
+// comparable, so identical failures must never read as green.
 func Compare(c Case, node, goCap SideCapture) Result {
 	r := Result{
 		Case:     c,
 		Status:   StatusGreen,
 		NodeExit: node.Exit,
 		GoExit:   goCap.Exit,
-		NodeMs:   node.Duration.Milliseconds(),
 		GoMs:     goCap.Duration.Milliseconds(),
 	}
 	if node.TimedOut || goCap.TimedOut {
@@ -364,8 +347,8 @@ func Compare(c Case, node, goCap SideCapture) Result {
 }
 
 // firstDivergence locates the first differing byte of two captures: its
-// index, the 1-based line containing it (counting '\n' in the node side up to
-// the offset), and quoted ≤40-byte excerpts of each side from that offset.
+// index, the 1-based line containing it (counting '\n' in the oracle side up
+// to the offset), and quoted ≤40-byte excerpts of each side from that offset.
 func firstDivergence(node, goCap []byte) (offset, line int, nodeExcerpt, goExcerpt string) {
 	n := len(node)
 	if len(goCap) < n {
@@ -389,63 +372,6 @@ func Excerpt(b []byte, offset int) string {
 		end = len(b)
 	}
 	return strconv.Quote(string(b[offset:end]))
-}
-
-// CompareCallLogs parses both sides' call logs and compares them as sorted
-// sets of tool+argv pairs (cwd differs by side by construction; matched is
-// alias metadata). Each side's argv entries are home-normalized with that
-// side's staged home, so `-C <dir>` and `clone <url> <dir>` shapes carrying
-// $HOME compare equal. Missing logs count as empty. The result is
-// informational — it must never redden a case.
-func CompareCallLogs(nodePath, goPath, nodeHome, goHome string) (nodeN, goN int, differ bool, err error) {
-	nodeSet, err := callSet(nodePath, nodeHome)
-	if err != nil {
-		return 0, 0, false, err
-	}
-	goSet, err := callSet(goPath, goHome)
-	if err != nil {
-		return 0, 0, false, err
-	}
-	nodeList, goList := sortedKeys(nodeSet), sortedKeys(goSet)
-	return len(nodeList), len(goList), !equalStrings(nodeList, goList), nil
-}
-
-// callSet reads a JSON-lines call log into a multiset of canonical call keys,
-// home-normalizing each argv entry first.
-func callSet(path, home string) (map[string]int, error) {
-	set := map[string]int{}
-	err := readCallLog(path, func(cl callLogLine) error {
-		argv := make([]string, len(cl.Argv))
-		for i, a := range cl.Argv {
-			argv[i] = string(NormalizeHome([]byte(a), home))
-		}
-		set[cl.Tool+"\x00"+strings.Join(argv, "\x00")]++
-		return nil
-	})
-	return set, err
-}
-
-func sortedKeys(set map[string]int) []string {
-	var out []string
-	for k, n := range set {
-		for i := 0; i < n; i++ {
-			out = append(out, k)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
-func equalStrings(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 // TreeDiff describes the first difference between the written trees of one
@@ -537,6 +463,12 @@ func presenceDiff(path string, nodeHas bool) *TreeDiff {
 // treeFiles lists the slash-separated relative paths of every file under dir
 // in sorted order; exists reports whether dir itself is present.
 func treeFiles(dir string) (paths []string, exists bool, err error) {
+	return treeFilesSkip(dir, nil)
+}
+
+// treeFilesSkip is treeFiles with an exclusion predicate over slash-separated
+// relpaths; excluding a directory prunes its subtree.
+func treeFilesSkip(dir string, skip func(rel string) bool) (paths []string, exists bool, err error) {
 	info, err := os.Stat(dir)
 	if os.IsNotExist(err) {
 		return nil, false, nil
@@ -551,12 +483,19 @@ func treeFiles(dir string) (paths []string, exists bool, err error) {
 		if err != nil {
 			return err
 		}
-		if !d.IsDir() {
-			rel, err := filepath.Rel(dir, path)
-			if err != nil {
-				return err
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if skip != nil && rel != "." && skip(rel) {
+			if d.IsDir() {
+				return filepath.SkipDir
 			}
-			paths = append(paths, filepath.ToSlash(rel))
+			return nil
+		}
+		if !d.IsDir() {
+			paths = append(paths, rel)
 		}
 		return nil
 	})

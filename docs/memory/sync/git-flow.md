@@ -79,6 +79,6 @@ Both warning lines use the em dash U+2014. `SyncMetrics` MUST NOT print; the ret
 
 ### Exec error text reproduces the reference wrapper
 **Decision**: `Exec.Run` formats failures as `git -C <dir>... failed: {message}` with the unconditional newline, the maxBuffer overflow text, and `spawn git ENOENT`.
-**Why**: parity with the frozen `src/node/` oracle (until plan row Z1) — the pull/push warning lines surface this text verbatim, so the bytes must match.
+**Why**: parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes) — the pull/push warning lines surface this text verbatim, so the bytes must match.
 **Rejected**: Go-native `exec.ExitError` text (diverges on every surfaced warning line).
 *Introduced by*: 260916-lsml-sync-metrics-writer

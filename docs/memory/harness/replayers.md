@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "The harness replayer binaries — fakeccusage serving fixture bytes verbatim by (source, period, flags) from TUDIFF_FIXTURES with a loud exit-2 miss, fakegit answering every git argv from TUDIFF_GIT_SCRIPT rules or a silent exit 0, the shared TUDIFF_CALL_LOG JSONL line shape, and how the fake ccusage is staged into the oracle's fixed vendor slot."
+description: "The harness replayer binaries — fakeccusage serving fixture bytes verbatim by (source, period, flags) from TUDIFF_FIXTURES with a loud exit-2 miss, fakegit answering every git argv from TUDIFF_GIT_SCRIPT rules or a silent exit 0, and the shared TUDIFF_CALL_LOG JSONL line shape feeding the unconfirmed-fixture gate."
 ---
 # Replayers
 
@@ -24,7 +24,7 @@ description: "The harness replayer binaries — fakeccusage serving fixture byte
 - **THEN** the exit code is 2 and stderr starts with `fakeccusage: no fixture for argv`
 
 ### Requirement: Fake git
-`src/go/cmd/fakegit` (built as `bin/harness/git`) sits first on `PATH` so every git invocation tu makes is intercepted (tu reaches `git` through `PATH` on both sides). It SHALL log every invocation to the shared call log with `tool: "git"`, then answer from `TUDIFF_GIT_SCRIPT` when set: a JSON array of rules `{"match":[…],"stdout":"…","stderr":"…","exit":n}` where `match` is a prefix match on argv after stripping a leading `-C <dir>` pair; the first matching rule wins. With no script or no matching rule it MUST write nothing to stdout or stderr and exit 0. It MUST perform no filesystem or network operations beyond the call log, and MUST accept (not special-case or reject) every argv shape tu issues: `rebase --abort`, `add <user>/`, `status --porcelain <user>/`, `commit -m <msg>`, `pull --rebase origin main`, `push`, `rev-parse --git-dir`, `clone <url> <dir>`.
+`src/go/cmd/fakegit` (built as `bin/harness/git`) sits first on `PATH` so every git invocation tu makes is intercepted (the shipped binary reaches `git` through `PATH`). It SHALL log every invocation to the shared call log with `tool: "git"`, then answer from `TUDIFF_GIT_SCRIPT` when set: a JSON array of rules `{"match":[…],"stdout":"…","stderr":"…","exit":n}` where `match` is a prefix match on argv after stripping a leading `-C <dir>` pair; the first matching rule wins. With no script or no matching rule it MUST write nothing to stdout or stderr and exit 0. It MUST perform no filesystem or network operations beyond the call log, and MUST accept (not special-case or reject) every argv shape tu issues: `rebase --abort`, `add <user>/`, `status --porcelain <user>/`, `commit -m <msg>`, `pull --rebase origin main`, `push`, `rev-parse --git-dir`, `clone <url> <dir>`.
 
 #### Scenario: Scripted and unscripted responses
 - **GIVEN** `TUDIFF_GIT_SCRIPT='[{"match":["status","--porcelain"],"stdout":" M u/x\n","exit":0}]'`
@@ -35,20 +35,20 @@ description: "The harness replayer binaries — fakeccusage serving fixture byte
 - **THEN** stdout and stderr are empty and exit is 0
 
 ### Requirement: Shared call log
-Both fakes SHALL append one JSON line per invocation to the file named by `TUDIFF_CALL_LOG` when set (create if absent, append otherwise), via the shared `harness.LogCall`. Line shape: `{"tool":"ccusage"|"git","argv":[…],"cwd":"…","matched":"<alias>/<file>"}` — `matched` is present only for fake-ccusage hits. A missing or unwritable log path MUST NOT change a fake's exit code or output (best-effort, errors swallowed silently — the fake impersonates a tool whose stderr is being compared). The log lets the harness byte-compare the *sequence* of ccusage/git calls between the two binaries, not just their output.
+Both fakes SHALL append one JSON line per invocation to the file named by `TUDIFF_CALL_LOG` when set (create if absent, append otherwise), via the shared `harness.LogCall`. Line shape: `{"tool":"ccusage"|"git","argv":[…],"cwd":"…","matched":"<alias>/<file>"}` — `matched` is present only for fake-ccusage hits. A missing or unwritable log path MUST NOT change a fake's exit code or output (best-effort, errors swallowed silently — the fake impersonates a tool whose stderr is being compared). The Go side's log feeds the unconfirmed-fixture gate (`UnconfirmedReplays`) and lands in the report as `cases/<id>/go.calls.jsonl` ([differential-harness](/harness/differential-harness.md)).
 
 #### Scenario: Append to existing log
 - **GIVEN** `TUDIFF_CALL_LOG=/tmp/x/calls.jsonl` and an existing file with 2 lines
 - **WHEN** the fake ccusage is invoked once
 - **THEN** the file has 3 lines and the last decodes with `tool == "ccusage"` and a 3-element `argv`
 
-### Requirement: Oracle-side staging of the fake ccusage
-The oracle fetcher does NOT look `ccusage` up on `PATH` — it execs the fixed path `dist/vendor/ccusage/bin/ccusage` when `dist/vendor/` exists, else `node_modules/.bin/ccusage`. Staging the fake for the oracle side therefore means copying the self-contained `bin/harness/ccusage` binary to `<staged-dist>/vendor/ccusage/bin/ccusage` (what `StageOracle` does into `<tmp>/oracle/dist/`); the shipped binary resolves vendor-first relative to `os.Executable()` then `PATH`. The fake git needs no staging — `PATH`-first placement suffices because both sides reach `git` through `PATH`.
+### Requirement: PATH-first placement reaches the shipped binary
+The fakes need no staging beyond sitting first on the child's `PATH`: the shipped binary resolves ccusage vendor-first relative to `os.Executable()` and falls back to `PATH` when no vendored copy exists beside it (the dev `bin/tu` has none), and it reaches `git` through `PATH` directly.
 
 ## Design Decisions
 
 ### Fakes are separate env-configured Go binaries
 **Decision**: `cmd/fakeccusage` and `cmd/fakegit`, built under the impersonated names into `bin/harness/`, configured only by `TUDIFF_*` env vars.
-**Why**: Their argv belongs to tu; separate mains read better than an argv[0]-dispatch trick; a static binary can be copied into the oracle's fixed `dist/vendor/ccusage/bin/ccusage` slot, which a shell shim could not do portably.
+**Why**: Their argv belongs to tu; separate mains read better than an argv[0]-dispatch trick; a static binary placed first on `PATH` impersonates the tool portably, which a shell shim cannot do under `script(1)`.
 **Rejected**: Busybox-style single binary dispatching on `os.Args[0]`; shell shims exec'ing `tudiff fake-…`.
 *Introduced by*: 260915-r7dh-harness-fixture-capture

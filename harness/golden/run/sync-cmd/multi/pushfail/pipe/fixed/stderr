@@ -1,0 +1,4 @@
+Warning: sync push failed after retry — git -C $HOME/.tu/metrics_repo... failed: Command failed: git -C $HOME/.tu/metrics_repo push
+error: failed to push some refs
+
+Error: sync failed — check network and remote config.

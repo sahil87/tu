@@ -1,0 +1,3 @@
+Created ~/.config/tu/tu.conf — edit it to configure multi-machine sync.
+Set metrics_repo = git@example.invalid:harness/tu-metrics.git in ~/.config/tu/tu.conf
+Cloned git@example.invalid:harness/tu-metrics.git → $HOME/.tu/metrics_repo

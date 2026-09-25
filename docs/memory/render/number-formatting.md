@@ -61,14 +61,14 @@ description: The render package's shared number formatting — FormatInt en-US g
 ### ICU shortest-repr rounding for costs
 
 **Decision**: `FormatCost` rounds the shortest decimal representation of the double, half away from zero, with carry — not the exact binary value.
-**Why**: parity with the frozen `src/node/` oracle (until plan row Z1) — the shortest-digit algorithms agree on both sides, so rounding that string matches the oracle where Go's half-even `'f', 2` diverges on node-verified inputs (`1.005`, `0.125`, `0.015`, `2.675`, `999999.995`).
+**Why**: parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes) — the shortest-digit algorithms agree on both sides, so rounding that string matches the oracle where Go's half-even `'f', 2` diverges on node-verified inputs (`1.005`, `0.125`, `0.015`, `2.675`, `999999.995`).
 **Rejected**: `strconv.FormatFloat(x, 'f', 2, 64)` — wrong on every tie above.
 *Introduced by*: 260916-3am6-query-view-render-snapshot
 
 ### Exact JS rounding twins
 
 **Decision**: `FixedHalfUp` (a `big.Rat` over the exact binary value, magnitude rounded half-up, sign re-added) is the `toFixed(digits)` twin for digits ∈ {1, 2}; `JSRound = floor(x + 0.5)` is the `Math.round` twin.
-**Why**: parity with the frozen `src/node/` oracle (until plan row Z1) — the leaderboard share/Δ cells and the CSV fractions are byte surfaces, and Go's `FormatFloat('f', d)` and `math.Round` each differ on ties the harness seed can hit.
+**Why**: parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes) — the leaderboard share/Δ cells and the CSV fractions are byte surfaces, and Go's `FormatFloat('f', d)` and `math.Round` each differ on ties the harness seed can hit.
 **Rejected**: `strconv.FormatFloat(x, 'f', digits, 64)` / `math.Round` — correct on almost every input, wrong on the ties; reusing `FormatCost` for CSV — wrong on `1.005`, `0.015`, `1.045` (a different rule, not a closer one).
 *Introduced by*: 260916-9ax5-history-and-periods, generalized by 260916-2gbb-leaderboard-lb-lbh
 

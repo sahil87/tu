@@ -41,10 +41,10 @@ func TestCaptureMissingCcusage(t *testing.T) {
 // Capture without --ccusage in a directory with no resolvable binary errors
 // with the resolution message.
 func TestCaptureNoBinaryFound(t *testing.T) {
-	// Run from a temp dir as repo root (package.json present, no ccusage
-	// anywhere, PATH empty so LookPath fails too).
+	// Run from a temp dir as repo root (justfile present, no ccusage
+	// anywhere, PATH empty so the LookPath probes fail too).
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte("{}"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "justfile"), []byte("x:\n\ttrue\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	wd, err := os.Getwd()
@@ -62,7 +62,7 @@ func TestCaptureNoBinaryFound(t *testing.T) {
 	if code != 1 {
 		t.Errorf("exit = %d, want 1", code)
 	}
-	if got := stderr.String(); !strings.Contains(got, "tudiff: no ccusage binary found (run npm ci or pass --ccusage)") {
+	if got := stderr.String(); !strings.Contains(got, "tudiff: no ccusage binary found (pass --ccusage)") {
 		t.Errorf("stderr = %q", got)
 	}
 }

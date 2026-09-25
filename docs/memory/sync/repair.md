@@ -46,7 +46,7 @@ Under `--write`, `sync.Repair` MUST write each shrunk file's full historical-max
 - **THEN** `Sahils-Mac-mini.local/…` sorts AFTER `dev-ws-s01/…` (`'d' < 's'` case-insensitively) — plain byte order would put `Sahils` first
 
 ### Requirement: turepair is a standalone maintainer binary
-`cmd/turepair` (built as `bin/turepair`) MUST be a standalone maintainer binary outside the `tu` grammar, with `main` the only writer and the algorithm in `sync.Repair`. Arg parsing MUST match: `--repo <path>` (default `~/.tu/metrics_repo`, home-expanded then resolved absolute so the printed path matches), `--write` flips the mode, `--repo` without a value fails with `repair-metrics: --repo requires a path`, any other argument fails with `repair-metrics: unknown argument: {arg}`, and both failures append the usage line `Usage: node scripts/repair-metrics.mjs [--repo <path>] [--write]` after a newline — verbatim, node spelling included, so the two implementations' outputs diff clean (a follow-up owns changing it). Every failure line MUST carry the `repair-metrics: ` prefix via `sync.FailLines`. The binary MUST NOT be part of the `tu` grammar.
+`cmd/turepair` (built as `bin/turepair`) MUST be a standalone maintainer binary outside the `tu` grammar, with `main` the only writer and the algorithm in `sync.Repair`. Arg parsing MUST match: `--repo <path>` (default `~/.tu/metrics_repo`, home-expanded then resolved absolute so the printed path matches), `--write` flips the mode, `--repo` without a value fails with `repair-metrics: --repo requires a path`, any other argument fails with `repair-metrics: unknown argument: {arg}`, and both failures append the usage line `Usage: turepair [--repo <path>] [--write]` after a newline. Every failure line MUST carry the `repair-metrics: ` prefix via `sync.FailLines`. The binary MUST NOT be part of the `tu` grammar. The live harness pins its dry-run and `--write` output and repo trees against the `live/repair-dry-run/` and `live/repair-write/` goldens (see [live](/harness/live.md)).
 
 ## Design Decisions
 
@@ -64,6 +64,6 @@ Under `--write`, `sync.Repair` MUST write each shrunk file's full historical-max
 
 ### The report orderings are ported comparators, not Go defaults
 **Decision**: `localeCompare` and `userEntryCompare` in `localecmp.go` reproduce the two JavaScript orderings the report relies on — ICU-root primary/tertiary for paths, decorated-string byte order for per-user rows.
-**Why**: parity with the frozen `src/node/` oracle (until plan row Z1) — the shrunk table and per-user rows must diff clean, and Go's `strings.Compare` would order `Sahils-…` before `dev-ws-…` where the ICU primary does the reverse.
+**Why**: parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes) — the shrunk table and per-user rows must diff clean, and Go's `strings.Compare` would order `Sahils-…` before `dev-ws-…` where the ICU primary does the reverse.
 **Rejected**: plain byte order (simpler but changes the report's row order).
 *Introduced by*: 260916-lsml-sync-metrics-writer

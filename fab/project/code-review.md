@@ -23,7 +23,7 @@
      vendor directories, or other paths that shouldn't be reviewed. -->
 
 - Changed files only (files touched during apply)
-- Skip `dist/` (generated bundle), `node_modules/`, and binary files
+- Skip binary files
 
 ## False Positive Policy
 
@@ -44,6 +44,6 @@
 
 ## Project-Specific Review Rules
 
-- New data sources MUST produce `UsageEntry[]` and flow through existing aggregation functions
+- New data sources MUST produce `[]fact.Record` and flow through `query`
 - CLI output changes SHOULD include test coverage for the new output format
 - Error paths MUST warn on stderr rather than throwing unhandled exceptions

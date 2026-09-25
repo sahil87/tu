@@ -61,6 +61,12 @@ func writeHomeConf(path string) error {
 // created — the metrics-dir guard is an existence check and the fake git
 // answers every call.
 func CopyTree(src, dst string) error {
+	return CopyTreeExcept(src, dst, nil)
+}
+
+// CopyTreeExcept is CopyTree with an exclusion predicate over slash-separated
+// relpaths; excluding a directory prunes its subtree.
+func CopyTreeExcept(src, dst string, skip func(rel string) bool) error {
 	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -68,6 +74,12 @@ func CopyTree(src, dst string) error {
 		rel, err := filepath.Rel(src, path)
 		if err != nil {
 			return err
+		}
+		if skip != nil && rel != "." && skip(filepath.ToSlash(rel)) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		target := filepath.Join(dst, rel)
 		if d.IsDir() {

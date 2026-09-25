@@ -1,5 +1,6 @@
-// Package watch is the live-polling TUI (the TS src/node/tui/watch.ts +
-// compositor.ts + panel.ts + rain.ts): a hand-rolled loop on x/term +
+// Package watch is the live-polling TUI (ported from the retired TypeScript
+// implementation's watch/compositor/panel/rain quartet): a hand-rolled loop
+// on x/term +
 // os/signal + time (plan decision D12 — no TUI framework). One goroutine owns
 // every terminal write; the compositor is a pure function from (session,
 // table lines, terminal size, clock) to frame bytes, golden-testable without

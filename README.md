@@ -105,21 +105,18 @@ For end-to-end recipes — daily snapshots, history pivots, multi-machine sync, 
 ## CI / branch protection
 
 `main` is gated by a required status check named **`ci-gate`**. The
-[`CI` workflow](https://github.com/sahil87/tu/blob/main/.github/workflows/ci.yml) runs the build and the test suite on
-every pull request targeting `main` (and on pushes to `main`) in three lanes:
-`build-and-test` for the shipped Node implementation, `go-build-and-test`
-for the unshipped Go successor under `src/go/`, and `tudiff` for the
-differential harness against the placeholder corpus. The aggregating `ci-gate`
-job passes only when all three lanes succeed. A branch ruleset on `main`
-requires `ci-gate` to be green before a PR can be merged.
+[`CI` workflow](https://github.com/sahil87/tu/blob/main/.github/workflows/ci.yml) runs the build and the test suites on
+every pull request targeting `main` (and on pushes to `main`) in two lanes:
+`go-build-and-test` (lint, build, cross-compile, unit tests over `src/go/`)
+and `tudiff` (the differential harness against the committed golden corpus).
+The aggregating `ci-gate` job passes only when both lanes succeed. A branch
+ruleset on `main` requires `ci-gate` to be green before a PR can be merged.
 
 Reproduce CI locally before opening a PR:
 
 ```bash
-npm ci && npm run build && npm test          # Node lane
-just go-lint && just go-build && just go-test  # Go lane
-# or, with the task runner, the Node lane alone:
-just test
+just go-lint && just go-build && just go-test
+just go-diff --placeholder && just go-live
 ```
 
 Applying or adjusting the ruleset is an admin action (needs a `gh` token with

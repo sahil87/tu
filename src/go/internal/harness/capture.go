@@ -14,13 +14,15 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/sahil87/tu/internal/source/ccusage"
 )
 
 // CaptureTimeout bounds a single ccusage cell invocation.
 const CaptureTimeout = 120 * time.Second
 
-// DefaultSources are the six ccusage subcommands tu uses, in the registry
-// order of src/node/core/fetcher.ts.
+// DefaultSources are the six ccusage subcommands tu uses, in the retired
+// TypeScript implementation's registry order.
 var DefaultSources = []string{"claude", "codex", "opencode", "gemini", "copilot", "kimi"}
 
 // CaptureOptions parameterizes one Capture run. Zero values default as
@@ -42,19 +44,19 @@ type CaptureSummary struct {
 }
 
 // FindRepoRoot walks up from start to the first directory containing
-// package.json.
+// justfile.
 func FindRepoRoot(start string) (string, error) {
 	dir, err := filepath.Abs(start)
 	if err != nil {
 		return "", err
 	}
 	for {
-		if _, err := os.Stat(filepath.Join(dir, "package.json")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, "justfile")); err == nil {
 			return dir, nil
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", fmt.Errorf("tudiff: no package.json found above %s", start)
+			return "", fmt.Errorf("tudiff: no justfile found above %s", start)
 		}
 		dir = parent
 	}
@@ -62,8 +64,8 @@ func FindRepoRoot(start string) (string, error) {
 
 // ResolveCcusage picks the ccusage binary per the capture resolution order:
 // an explicit --ccusage path, then dist/vendor/ccusage/bin/ccusage under the
-// repo root, then the npm-installed native binary (Node platform/arch
-// spelling), then ccusage on PATH.
+// repo root, then the vendored binary beside the tu found on PATH (symlinks
+// resolved, as ccusage.ResolveBinary does), then ccusage on PATH.
 func ResolveCcusage(root, explicit string) (string, error) {
 	if explicit != "" {
 		if _, err := os.Stat(explicit); err != nil {
@@ -77,30 +79,17 @@ func ResolveCcusage(root, explicit string) (string, error) {
 		}
 		return abs, nil
 	}
-	candidates := []string{
-		filepath.Join(root, "dist", "vendor", "ccusage", "bin", "ccusage"),
-		filepath.Join(root, "node_modules", "@ccusage", "ccusage-"+nodePlatformArch(), "bin", "ccusage"),
+	vendored := filepath.Join(root, "dist", "vendor", "ccusage", "bin", "ccusage")
+	if _, err := os.Stat(vendored); err == nil {
+		return vendored, nil
 	}
-	for _, c := range candidates {
-		if _, err := os.Stat(c); err == nil {
-			return c, nil
-		}
+	if vendor, ok := ccusage.VendorBeside("tu"); ok {
+		return vendor, nil
 	}
 	if p, err := exec.LookPath("ccusage"); err == nil {
 		return p, nil
 	}
-	return "", fmt.Errorf("tudiff: no ccusage binary found (run npm ci or pass --ccusage)")
-}
-
-// nodePlatformArch is the platform-arch pair as npm spells it for the
-// @ccusage/ccusage-<platform>-<arch> packages: Node's process.platform equals
-// GOOS on the supported targets; only the architecture spelling differs.
-func nodePlatformArch() string {
-	arch := runtime.GOARCH
-	if arch == "amd64" {
-		arch = "x64"
-	}
-	return runtime.GOOS + "-" + arch
+	return "", fmt.Errorf("tudiff: no ccusage binary found (pass --ccusage)")
 }
 
 // CcusageVersion runs `<path> --version` and extracts the bare version from
@@ -173,7 +162,7 @@ func Capture(opts CaptureOptions, stdout io.Writer) (*CaptureSummary, error) {
 		opts.Home, _ = os.UserHomeDir()
 	}
 	if opts.CcusagePath == "" {
-		return nil, fmt.Errorf("tudiff: no ccusage binary found (run npm ci or pass --ccusage)")
+		return nil, fmt.Errorf("tudiff: no ccusage binary found (pass --ccusage)")
 	}
 
 	version, err := CcusageVersion(opts.CcusagePath)

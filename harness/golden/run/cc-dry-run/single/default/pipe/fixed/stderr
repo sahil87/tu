@@ -1,0 +1,1 @@
+Error: --dry-run is supported only with 'tu sync' — run 'tu sync --dry-run' to preview a sync.

@@ -81,7 +81,8 @@ type UsageError struct {
 // ShortUsage is the byte-exact TS SHORT_USAGE constant.
 const ShortUsage = "Usage: tu [source] [period] [display]\n\n  tu                Today's cost, all tools\n  tu cc             Today's cost, Claude Code\n  tu mh             Monthly cost history, all tools\n  tu -h             Show full help\n\nRun 'tu help' for all commands."
 
-// FullHelp is the byte-exact TS FULL_HELP constant (src/node/core/cli.ts) —
+// FullHelp is the byte-exact FULL_HELP constant of the retired TypeScript
+// implementation —
 // the full help text `tu help`/`tu -h`/`tu --help` print. `help-dump` is
 // hidden and appears nowhere in it. cmd/tu prints it with Fprintln (the TS
 // console.log appends exactly one newline).

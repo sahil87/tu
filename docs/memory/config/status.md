@@ -65,7 +65,7 @@ description: tu status in internal/config/status.go — Status/StatusData read c
 
 ### Literal 13-column labels over printf widths
 **Decision**: `Lines` renders the layout block with the label columns as literal strings (`Mode:        `, `Metrics:     `, …), not `fmt` width verbs.
-**Why**: Parity with the frozen `src/node/` oracle (until plan row Z1): the em dash in `NOT FOUND —` and the apostrophe in `run 'tu init-metrics'` survive byte-exact when they are copied verbatim instead of reconstructed by a format verb.
+**Why**: Parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes): the em dash in `NOT FOUND —` and the apostrophe in `run 'tu init-metrics'` survive byte-exact when they are copied verbatim instead of reconstructed by a format verb.
 **Rejected**: `fmt.Sprintf("%-13s", label)` — column widths drift from the pinned bytes and invite reflow of the multibyte suffixes.
 *Introduced by*: 260916-4fs0-config-and-setup-commands (4fs0)
 

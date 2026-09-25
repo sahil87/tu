@@ -75,7 +75,7 @@ The history pipeline MUST compose `RollUp(Window(recs, since, until), period)` �
 
 ### Date-sorted collapsed input pins the --json float bytes
 **Decision**: The main-table pipeline runs `SortByDate` on the collapsed daily records before `Window`/`RollUp`, so every period bucket sums its days in ascending-date association regardless of gather order.
-**Why**: The gather order is machine-major (own machine's days first, then other machines in walk order); float addition is not associative, so summing a bucket in that order can differ in the last bit, and the `--json` cost fields are raw doubles — parity with the frozen `src/node/` oracle (until plan row Z1) demands the ascending-date association.
+**Why**: The gather order is machine-major (own machine's days first, then other machines in walk order); float addition is not associative, so summing a bucket in that order can differ in the last bit, and the `--json` cost fields are raw doubles — parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes) demands the ascending-date association.
 **Rejected**: Summing in gather order — machine-major association can differ in the last bit of a raw double, changing `--json` bytes across machines; a canonical re-sort inside `RollUp` — hides the ordering contract from callers like the breakdown that deliberately sum in record input order.
 *Introduced by*: 260916-9ax5-history-and-periods (9ax5)
 

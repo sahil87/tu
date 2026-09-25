@@ -40,6 +40,24 @@ func TestBuildEnvExact(t *testing.T) {
 	}
 }
 
+// The golden manifest's pinned clock rides the child environment as
+// TUDIFF_NOW; an empty Now leaves the variable unset (real clock).
+func TestBuildEnvNow(t *testing.T) {
+	spec := baseSpec("/abs/home")
+	spec.Now = "2026-09-26T12:00:00"
+	env := BuildEnv(baseCase(), spec)
+	want := append(append([]string(nil), BuildEnv(baseCase(), baseSpec("/abs/home"))...),
+		"TUDIFF_NOW=2026-09-26T12:00:00")
+	if strings.Join(env, "\n") != strings.Join(want, "\n") {
+		t.Errorf("env =\n%s\nwant =\n%s", strings.Join(env, "\n"), strings.Join(want, "\n"))
+	}
+	for _, kv := range BuildEnv(baseCase(), baseSpec("/abs/home")) {
+		if strings.HasPrefix(kv, "TUDIFF_NOW=") {
+			t.Errorf("TUDIFF_NOW present with an empty Now: %q", kv)
+		}
+	}
+}
+
 // R9: exported TU_METRICS_REPO / NO_COLOR in the harness process must not
 // leak into a default-env case.
 func TestBuildEnvNoLeak(t *testing.T) {
@@ -226,50 +244,23 @@ func TestCompareTimeout(t *testing.T) {
 	}
 }
 
-// R13: the call-log comparison is informational — a difference never changes
-// a green verdict.
-func TestCompareCallsInformational(t *testing.T) {
+// CountCalls backs report.json's go_calls: the number of logged invocations,
+// a missing log counting as empty.
+func TestCountCalls(t *testing.T) {
 	dir := t.TempDir()
-	nodeLog := filepath.Join(dir, "node.calls.jsonl")
-	goLog := filepath.Join(dir, "go.calls.jsonl")
+	log := filepath.Join(dir, "go.calls.jsonl")
 	lines := []string{
 		`{"tool":"ccusage","argv":["claude","daily","--json"],"cwd":"/a"}`,
 		`{"tool":"git","argv":["push"],"cwd":"/a"}`,
 	}
-	if err := os.WriteFile(nodeLog, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(log, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Same calls, reversed order, different cwd — must compare equal.
-	reversed := []string{
-		`{"tool":"git","argv":["push"],"cwd":"/b"}`,
-		`{"tool":"ccusage","argv":["claude","daily","--json"],"cwd":"/b"}`,
+	if n, err := CountCalls(log); err != nil || n != 2 {
+		t.Errorf("CountCalls = %d, %v; want 2", n, err)
 	}
-	if err := os.WriteFile(goLog, []byte(strings.Join(reversed, "\n")+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	nodeN, goN, differ, err := CompareCallLogs(nodeLog, goLog, "", "")
-	if err != nil || differ || nodeN != 2 || goN != 2 {
-		t.Errorf("CompareCallLogs = %d/%d differ=%v err=%v", nodeN, goN, differ, err)
-	}
-
-	// Six calls vs none: differ, but the case status stays green.
-	six := strings.Repeat(lines[0]+"\n", 6)
-	if err := os.WriteFile(nodeLog, []byte(six), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Remove(goLog); err != nil {
-		t.Fatal(err)
-	}
-	nodeN, goN, differ, err = CompareCallLogs(nodeLog, goLog, "", "")
-	if err != nil || !differ || nodeN != 6 || goN != 0 {
-		t.Errorf("CompareCallLogs = %d/%d differ=%v err=%v", nodeN, goN, differ, err)
-	}
-	cap := SideCapture{Stdout: []byte("x"), Exit: 0}
-	r := Compare(baseCase(), cap, cap)
-	r.CallsDiffer = differ
-	r.NodeCalls, r.GoCalls = nodeN, goN
-	if r.Status != StatusGreen || !r.CallsDiffer {
-		t.Errorf("status = %q, CallsDiffer = %v", r.Status, r.CallsDiffer)
+	if n, err := CountCalls(filepath.Join(dir, "absent")); err != nil || n != 0 {
+		t.Errorf("CountCalls (missing log) = %d, %v; want 0", n, err)
 	}
 }
 
@@ -314,43 +305,6 @@ func TestRunTTYSmoke(t *testing.T) {
 	}
 }
 
-// R8: the oracle is staged as copies beside a default conf, with the fake in
-// the vendor slot at 0755.
-func TestStageOracle(t *testing.T) {
-	src := t.TempDir()
-	for name, body := range map[string]string{"tu.mjs": "bundle\n", "tu.default.conf": "conf\n", "ccusage": "fake\n"} {
-		if err := os.WriteFile(filepath.Join(src, name), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	tmp := t.TempDir()
-	bundle, err := StageOracle(tmp, filepath.Join(src, "tu.mjs"), filepath.Join(src, "tu.default.conf"), filepath.Join(src, "ccusage"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if filepath.ToSlash(bundle) != filepath.ToSlash(filepath.Join(tmp, "oracle", "dist", "tu.mjs")) {
-		t.Errorf("bundle = %q", bundle)
-	}
-	vendor := filepath.Join(tmp, "oracle", "dist", "vendor", "ccusage", "bin", "ccusage")
-	info, err := os.Stat(vendor)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0o755 {
-		t.Errorf("vendor mode = %o", info.Mode().Perm())
-	}
-	raw, err := os.ReadFile(vendor)
-	if err != nil || string(raw) != "fake\n" {
-		t.Errorf("vendor bytes = %q, %v", raw, err)
-	}
-	// Sources untouched.
-	for _, name := range []string{"tu.mjs", "tu.default.conf", "ccusage"} {
-		if raw, err := os.ReadFile(filepath.Join(src, name)); err != nil || len(raw) == 0 {
-			t.Errorf("source %s modified", name)
-		}
-	}
-}
-
 // R13 (B1): captures that differ only in the staged home path compare green,
 // and divergence details are computed on the normalized bytes.
 func TestCompareHomeNormalized(t *testing.T) {
@@ -381,36 +335,6 @@ func TestCompareHomeNormalized(t *testing.T) {
 	}
 	if r.NodeExcerpt != `"metrics_repo\n"` || r.GoExcerpt != `"other\n"` {
 		t.Errorf("excerpts = %q / %q", r.NodeExcerpt, r.GoExcerpt)
-	}
-}
-
-// R13 (B1): call-log argv that differ only by the two staged homes do not
-// differ.
-func TestCompareCallLogsHomeNormalized(t *testing.T) {
-	dir := t.TempDir()
-	nodeLog := filepath.Join(dir, "node.calls.jsonl")
-	goLog := filepath.Join(dir, "go.calls.jsonl")
-	nodeLine := `{"tool":"git","argv":["-C","/tmp/c/node/home/.tu/metrics_repo","rev-parse","--git-dir"],"cwd":"/a"}` + "\n"
-	goLine := `{"tool":"git","argv":["-C","/tmp/c/go/home/.tu/metrics_repo","rev-parse","--git-dir"],"cwd":"/b"}` + "\n"
-	if err := os.WriteFile(nodeLog, []byte(nodeLine), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(goLog, []byte(goLine), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	nodeN, goN, differ, err := CompareCallLogs(nodeLog, goLog, "/tmp/c/node/home", "/tmp/c/go/home")
-	if err != nil || differ || nodeN != 1 || goN != 1 {
-		t.Errorf("CompareCallLogs = %d/%d differ=%v err=%v, want 1/1 differ=false", nodeN, goN, differ, err)
-	}
-
-	// A real argv difference still differs under normalization.
-	goLine = `{"tool":"git","argv":["-C","/tmp/c/go/home/.tu/other","rev-parse","--git-dir"],"cwd":"/b"}` + "\n"
-	if err := os.WriteFile(goLog, []byte(goLine), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	_, _, differ, err = CompareCallLogs(nodeLog, goLog, "/tmp/c/node/home", "/tmp/c/go/home")
-	if err != nil || !differ {
-		t.Errorf("CompareCallLogs differ=%v err=%v, want differ=true", differ, err)
 	}
 }
 

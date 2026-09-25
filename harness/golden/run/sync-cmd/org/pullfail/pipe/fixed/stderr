@@ -1,0 +1,4 @@
+Warning: sync pull failed — git -C $HOME/.tu/metrics_repo... failed: Command failed: git -C $HOME/.tu/metrics_repo pull --rebase origin main
+fatal: couldn't find remote ref main
+
+Error: sync failed — check network and remote config.

@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "oracle": "bin/tu",
+  "oracle_version": "v0.12.2-3-gcd42986",
+  "node_version": "",
+  "captured_at": "2026-09-25T05:52:36Z",
+  "now": "2026-09-25T12:00:00",
+  "script": "util-linux",
+  "platform": "linux/amd64",
+  "fixtures": [
+    "_placeholder"
+  ],
+  "matrix_sha256": "8248744d49190637e811ce2a2cee23efc4ffec2266113767e5e7d39dd1bca265",
+  "cases": 452,
+  "live_steps": 9
+}

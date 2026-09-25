@@ -1,0 +1,18 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-25T03:33:21Z"}
+{"args":"Plan row Z1: delete src/node after two Go releases past cutover; freeze Node outputs as committed goldens for the full tudiff matrix, switch tudiff to golden comparison, then remove src/node, package.json, package-lock.json, scripts/build.sh, scripts/help-dump.mjs, and every setup-node/npm step in CI and release.yml","cmd":"fab-new","event":"command","ts":"2026-09-25T03:33:21Z"}
+{"delta":"+2.8","event":"confidence","score":2.8,"trigger":"calc-score","ts":"2026-09-25T03:39:50Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-25T03:41:47Z"}
+{"cmd":"fab-clarify","event":"command","ts":"2026-09-25T04:00:19Z"}
+{"delta":"+1.7","event":"confidence","score":4.5,"trigger":"calc-score","ts":"2026-09-25T04:08:01Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-25T04:08:31Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-25T04:08:31Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-25T05:31:01Z"}
+{"event":"review","result":"failed","ts":"2026-09-25T05:37:52Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-25T05:37:52Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-25T05:54:11Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-25T05:57:56Z"}
+{"event":"review","result":"passed","ts":"2026-09-25T05:57:56Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-25T06:10:52Z"}
+{"cmd":"git-pr","event":"command","ts":"2026-09-25T06:11:31Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-09-25T06:13:23Z"}
+{"event":"review","result":"passed","ts":"2026-09-25T06:25:24Z"}

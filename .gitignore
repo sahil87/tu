@@ -1,12 +1,11 @@
-node_modules/
 dist/
 bin/
-*.tsbuildinfo
 
 # Transient help-dump artifact — `tu help-dump` emits the contract JSON; shll.ai
-# pulls it via its own cron (shll.ai is the source of truth). `npm run help-dump`
-# writes this locally for inspection; never committed here. See scripts/help-dump.mjs.
-help/
+# pulls it via its own cron (shll.ai is the source of truth). `tu help-dump >
+# help/tu.json` writes this locally for inspection; never committed here.
+# Root-anchored: an unanchored `help/` would also swallow harness/golden/run/help/.
+/help/
 
 .fab-status.yaml
 

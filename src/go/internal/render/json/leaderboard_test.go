@@ -10,8 +10,9 @@ import (
 	"github.com/sahil87/tu/internal/view"
 )
 
-// lbRowsJSON is the R10 given: the layouts §12 array shape with the oracle's
-// raw doubles (env -i HOME=<staged> TZ=UTC node dist/tu.mjs m lb --json).
+// lbRowsJSON is the R10 given: the layouts §12 array shape with the retired
+// TypeScript implementation's raw doubles (captured with
+// env -i HOME=<staged> TZ=UTC, `m lb --json`).
 func lbRowsJSON() []view.LeaderboardRow {
 	d := func(v float64) *float64 { return &v }
 	return []view.LeaderboardRow{

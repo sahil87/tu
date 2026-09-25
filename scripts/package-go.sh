@@ -12,15 +12,8 @@ ASSET_PREFIX="tu-go"
 TARBALL_DIR="dist/ccusage-tarballs"
 SUMS_FILE="dist/${ASSET_PREFIX}-SHA256SUMS"
 
-# ccusage pin guard — runs first, before any download. The Node and Go
-# artifacts vendor the same ccusage while both trees exist (the differential
-# harness assumes one ccusage), so the pin must agree with the lockfile.
+# CCUSAGE_VERSION is the sole ccusage pin — read it first, before any download.
 CCUSAGE_VERSION=$(tr -d '[:space:]' < CCUSAGE_VERSION)
-LOCK_VERSION=$(node -p 'require("./package-lock.json").packages["node_modules/ccusage"].version')
-if [ "$CCUSAGE_VERSION" != "$LOCK_VERSION" ]; then
-  echo "error: CCUSAGE_VERSION ($CCUSAGE_VERSION) != package-lock.json ccusage ($LOCK_VERSION) — bump both together" >&2
-  exit 1
-fi
 
 echo "Packaging ${ASSET_PREFIX} archives (ccusage $CCUSAGE_VERSION)..."
 
@@ -103,13 +96,15 @@ case "$(uname -m)" in
   *) echo "error: unsupported host arch: $(uname -m)" >&2; exit 1 ;;
 esac
 
-version=$(node -p 'require("./package.json").version')
 host_archive="dist/${ASSET_PREFIX}-${host_os}-${host_arch}.tar.gz"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 tar xzf "$host_archive" -C "$tmp"
-want="tu version v${version}"
+# The same expression the justfile stamps (-X main.version={{go_version}}), so
+# the archive's --version agrees by construction; at release the checkout is
+# the tag, so this is exactly "tu version vX.Y.Z".
+want="tu version $(git describe --tags --always 2>/dev/null || echo dev)"
 got=$("$tmp/tu" --version)
 if [ "$got" != "$want" ]; then
   echo "error: host smoke test failed: $host_archive ./tu --version printed '$got', want '$want'" >&2

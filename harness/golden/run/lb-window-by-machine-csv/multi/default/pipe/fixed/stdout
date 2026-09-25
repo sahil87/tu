@@ -1,0 +1,5 @@
+rank,user,machine,cost,total_tokens,share,delta
+1,other-user,laptop,1.30,48800,0.433,
+2,harness-user,harness-machine,1.00,48800,0.333,
+3,harness-user,other-box,0.70,48800,0.233,
+Total,,,3.00,146400,,

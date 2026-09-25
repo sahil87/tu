@@ -1,0 +1,37 @@
+{
+  "files": {
+    "docs/README.md": {
+      "sha256": "1063324c479b303abcc66832f6c49bbc3013b3785e72ad648e352258bfe49eb2",
+      "size": 699
+    },
+    "harness-user/2026/harness-machine/cc-2026-01-05.jsonl": {
+      "sha256": "f51524d1db455f5aae7172b0f93484aef225ed14f2051ce6cdaf2f1a41ecac00",
+      "size": 148
+    },
+    "harness-user/2026/harness-machine/cc-2026-01-06.jsonl": {
+      "sha256": "2a90b066d246f0fb19cdaf761aff2a6d06f7ae8310420653c2bffd9453f1589d",
+      "size": 149
+    },
+    "harness-user/2026/harness-machine/cc-2026-01-07.jsonl": {
+      "sha256": "335a90a3791928977e034c65bb9fc58f794b90f9d23c203f4ffa0a055cd5524c",
+      "size": 148
+    },
+    "harness-user/2026/other-box/cc-2026-01-06.jsonl": {
+      "sha256": "9640679d307b26be84e836d5b26b2b4426f12b684dfaca2a48d78523397aa875",
+      "size": 149
+    },
+    "harness-user/2026/other-box/codex-2026-01-07.jsonl": {
+      "sha256": "8aca10d3c1a52aeb6c516df6c7d84098f91c57cd970b5c4b28db070178ff644e",
+      "size": 149
+    },
+    "other-user/2026/laptop/cc-2026-01-05.jsonl": {
+      "sha256": "429273a77bf66855a0e15bee8482f3ac8ea63b5c56b13995735d7aca9410ea4a",
+      "size": 149
+    },
+    "other-user/2026/laptop/gemini-2026-01-06.jsonl": {
+      "sha256": "36176d9448659a8079f73ba9674f0b7da88319a4893225309b8793f2079b99bc",
+      "size": 149
+    }
+  },
+  "last_sync": false
+}
