@@ -87,7 +87,7 @@ The unexported `invocations map[string]invocation` SHALL be keyed by `fact.Tool.
 
 ### No cache write on failure or empty results
 **Decision**: only a non-empty parse result is written to the cache.
-**Why**: the fetch returns before the cache write in all three no-write cases — parity with the frozen `src/node/` oracle (until plan row Z1), whose call-log comparison would flag a skipped binary invocation.
+**Why**: the fetch returns before the cache write in all three no-write cases — parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes), whose call-log comparison would flag a skipped binary invocation.
 **Rejected**: caching empties (diverges from the compared binary behavior).
 *Introduced by*: 260916-v0as-fact-source-ccusage
 

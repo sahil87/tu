@@ -83,6 +83,6 @@ Pull/push MUST be reported as the operations that would follow, never executed o
 
 ### Both report blocks share one cost formatter
 **Decision**: write and skip lines both render costs as `"$" + render.FixedHalfUp(x, 2)`, with no thousands separators in either block.
-**Why**: parity with the frozen `src/node/` oracle (until plan row Z1), where one formatter serves both blocks.
+**Why**: parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes), where one formatter serves both blocks.
 **Rejected**: locale-grouped costs in the write block only (diverges from the reference bytes).
 *Introduced by*: 260916-lsml-sync-metrics-writer

@@ -27,7 +27,7 @@ description: The version helpers (BareVersion/DisplayVersion/VersionLine) and th
 ### Requirement: help-dump envelope
 - `BuildHelpDoc(version, helpText string) HelpDoc` in `internal/toolkit/helpdump.go` MUST assemble a flat document — one root node whose `Commands` is a non-nil empty slice, serialized as the one-line `"commands": []`.
 - Field order is frozen: envelope `tool, version, schema_version, root`; node `name, path, short, usage, text, commands`. The JSON is a frozen cross-repo contract — fields MUST NOT be reordered or renamed.
-- Constants: `Tool = "tu"`, `HelpSchemaVersion = 1`, `Description = "AI coding assistant cost tracking CLI"`. The description is a Go constant; `TestDescriptionMatchesPackageJSON` in `helpdump_test.go` pins it against `package.json`'s `description` while that file exists, skipping when no `package.json` is found walking up from the package directory.
+- Constants: `Tool = "tu"`, `HelpSchemaVersion = 1`, `Description = "AI coding assistant cost tracking CLI"`. The description is a Go constant — the long-term shape.
 - The envelope's `version` MUST be the BARE form (`"0.11.5"`, never `"v0.11.5"` — the caller passes `BareVersion(version)`). `usage` MUST be the first `helpText` line starting with `Usage:` (fallback: first non-empty line, then `""`) via `extractUsage`. `text` MUST be `helpText` verbatim — the caller passes `command.FullHelp + "\n"`, byte-identical to `tu --help`.
 - The envelope MUST NOT carry `captured_at` (the capture timestamp is owned by shll.ai's puller — a tool cannot know its own capture time) nor an `aliases` key (omitted entirely when there are none) (rdo3).
 
@@ -53,7 +53,7 @@ description: The version helpers (BareVersion/DisplayVersion/VersionLine) and th
 
 ### JSON encoding without HTML escaping
 **Decision**: `HelpDoc.Encode` uses `json.Encoder` with `SetEscapeHTML(false)` and a two-space indent.
-**Why**: parity with the frozen `src/node/` oracle (until plan row Z1) — `JSON.stringify` does not escape `<`, `>`, `&` where `encoding/json` does by default, and the help text carries `<date>`, `<m>`, `<n>`, `<s>`, `<user>`, `<sh>`; `Encoder.Encode` also appends the one trailing newline of the frozen shape.
+**Why**: parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes) — `JSON.stringify` does not escape `<`, `>`, `&` where `encoding/json` does by default, and the help text carries `<date>`, `<m>`, `<n>`, `<s>`, `<user>`, `<sh>`; `Encoder.Encode` also appends the one trailing newline of the frozen shape.
 **Rejected**: `json.MarshalIndent` plus manual post-replacement of the escapes (fragile); a hand-rolled writer (needless).
 *Introduced by*: 260916-vcur-toolkit-layer
 
@@ -64,7 +64,7 @@ description: The version helpers (BareVersion/DisplayVersion/VersionLine) and th
 *Introduced by*: 260602-v76l-help-dump-shll-ai
 
 ### help-dump is an in-binary subcommand, not a repo script
-**Decision**: the frozen-contract assembly lives in the shipped binary (`BuildHelpDoc`, wired into `runCommand` in `cmd/tu/main.go`); `scripts/help-dump.mjs` is a thin local wrapper that shells out to the binary and holds no contract logic.
+**Decision**: the frozen-contract assembly lives in the shipped binary (`BuildHelpDoc`, wired into `runCommand` in `cmd/tu/main.go`); no repo script holds contract logic (`tu help-dump > help/tu.json` into the gitignored `help/` is a local convenience).
 **Why**: shll.ai's pull cron runs `<binary> help-dump` against the brew-installed binary, uniform across all seven tools — a same-named repo script is not the same surface; while tu shipped the command only as a repo script, the puller fell back to last-good every run (260604).
 **Rejected**: Repo-script-only production (the puller fell back to last-good on every run).
 *Introduced by*: 260602-v76l-help-dump-shll-ai (in-binary fix: 260604)

@@ -80,6 +80,6 @@ description: Config path resolution from $HOME only (ResolvePaths/ErrNoHome), IN
 
 ### JavaScript parseInt semantics for the version field
 **Decision**: `parseIntJS` reproduces `parseInt(s, 10)` — whitespace/sign prefix, longest digit run, fallback to version 1 on no digits — instead of Go's stricter `strconv.Atoi` on the whole string.
-**Why**: Parity with the frozen `src/node/` oracle (until plan row Z1); the harness feeds values like `"2abc"` that the oracle accepts as 2.
+**Why**: Parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes); the harness feeds values like `"2abc"` that the oracle accepts as 2.
 **Rejected**: Whole-string integer parsing — rejects inputs the oracle accepts and changes which confs trigger the newer-version warning.
 *Introduced by*: 260916-4fs0-config-and-setup-commands (4fs0)

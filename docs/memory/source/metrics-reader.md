@@ -49,7 +49,7 @@ The package MUST NOT return errors: every filesystem or decode failure reads as 
 
 ### One DayFile encoding shared with the writer
 **Decision**: the reader and the sync writer share `metrics.DayFile` and the `Name`/`Path` helpers.
-**Why**: `json.Marshal(DayFile)` reproduces the committed seed file bytes — parity with the frozen `src/node/` oracle (until plan row Z1) — and one encoding keeps reader and writer in lockstep.
+**Why**: `json.Marshal(DayFile)` reproduces the committed seed file bytes — parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes) — and one encoding keeps reader and writer in lockstep.
 **Rejected**: separate read and write shapes (two places to drift).
 *Introduced by*: 260916-lsml-sync-metrics-writer
 

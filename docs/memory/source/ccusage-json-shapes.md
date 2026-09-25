@@ -73,7 +73,7 @@ Each `daily[]` entry SHALL map to `fact.Record{Date, Tool, Totals}` with: `Total
 
 ### Coercion to 0, never an error
 **Decision**: a present non-number value coerces to 0; a missing key falls through to the next fallback.
-**Why**: mirrors the upstream coercion semantics — parity with the frozen `src/node/` oracle (until plan row Z1); ccusage never emits numeric strings, so the difference from a numeric-string parse is unobservable on real data.
+**Why**: mirrors the upstream coercion semantics — parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes); ccusage never emits numeric strings, so the difference from a numeric-string parse is unobservable on real data.
 **Rejected**: erroring on a malformed entry (one bad row would fail the whole document).
 *Introduced by*: 260916-v0as-fact-source-ccusage
 

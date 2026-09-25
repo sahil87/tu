@@ -53,7 +53,7 @@ Cleanup MUST run once on exit: stop the countdown timer and rain ticker, `Term.C
 
 ### Raw mode keeps output post-processing
 **Decision**: after `term.MakeRaw`, `keepOutputPostProcessing` re-arms `OPOST|ONLCR` through `x/sys/unix` termios ioctls (`TCGETS`/`TCSETS` on linux, `TIOCGETA`/`TIOCSETA` on darwin); `Close` restores the pre-`MakeRaw` state.
-**Why**: x/term's `MakeRaw` clears `OPOST` (and with it `ONLCR`), so the compositor's `\n` stops becoming `\r\n` at the tty driver and frames stair-step; the session's bytes assume `\n` becomes `\r\n` at the driver, the mid-session stderr warning lines included — parity with the frozen `src/node/` oracle (until plan row Z1). A probe failure is silent: the session still works, only line endings degrade.
+**Why**: x/term's `MakeRaw` clears `OPOST` (and with it `ONLCR`), so the compositor's `\n` stops becoming `\r\n` at the tty driver and frames stair-step; the session's bytes assume `\n` becomes `\r\n` at the driver, the mid-session stderr warning lines included — parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes). A probe failure is silent: the session still works, only line endings degrade.
 **Rejected**: emitting `\r\n` from the compositor (diverges from the byte producer the goldens pin); stdlib syscalls instead of `x/sys/unix` (the ioctl request constants differ per OS and `x/sys` already wraps both). (4pze)
 *Introduced by*: 260917-4pze-watch-mode-tui
 

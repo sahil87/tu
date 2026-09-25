@@ -47,7 +47,7 @@ All float costs/shares/deltas MUST go through `encodeFloat` (`internal/render/js
 
 ### The writer is hand-ordered
 **Decision**: the encoder builds key order by hand and uses `encoding/json` only for scalars.
-**Why**: Go maps are unordered and struct marshalling cannot emit the conditional `label` key first — the key order is a byte surface, so parity with the frozen `src/node/` oracle (until plan row Z1) demands a hand-ordered writer.
+**Why**: Go maps are unordered and struct marshalling cannot emit the conditional `label` key first — the key order is a byte surface, so parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes) demands a hand-ordered writer.
 **Rejected**: struct marshalling with `json` tags (wrong order for the conditional `label`); map marshalling (unordered).
 *Introduced by*: 260916-3am6-query-view-render-snapshot
 
@@ -59,6 +59,6 @@ All float costs/shares/deltas MUST go through `encodeFloat` (`internal/render/js
 
 ### machines attach in first-seen slice order
 **Decision**: the `machines` object's keys follow `Breakdown.Slices` first-seen order, never sorted; a zero-usage single-source tool may carry `machines` with `0` values and no `label`.
-**Why**: parity with the frozen `src/node/` oracle (until plan row Z1) — the insertion-order copy and the single-source zero-fill are byte surfaces the harness diffs.
+**Why**: parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes) — the insertion-order copy and the single-source zero-fill are byte surfaces the harness diffs.
 **Rejected**: sorted keys or dropping zero-value machines — both diverge from the pinned bytes.
 *Introduced by*: 260916-pmsd-machine-columns

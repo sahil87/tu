@@ -1,0 +1,57 @@
+id: 6wpm
+name: 260925-6wpm-remove-src-node
+created: 2026-09-25T03:33:21Z
+created_by: sahil-noon
+change_type: chore
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
+    review-pr: pending
+plan:
+    generated: true
+    task_count: 12
+    acceptance_count: 29
+    acceptance_completed: 29
+confidence:
+    certain: 12
+    confident: 7
+    tentative: 0
+    unresolved: 0
+    score: 4.5
+    fuzzy: true
+    dimensions:
+        signal: 91.8
+        reversibility: 81.1
+        competence: 79.5
+        disambiguation: 74.2
+stage_metrics:
+    intake: {started_at: "2026-09-25T03:33:21Z", driver: fab-new, iterations: 1, completed_at: "2026-09-25T04:08:31Z"}
+    apply: {started_at: "2026-09-25T05:37:52Z", driver: fab-fff, iterations: 2, completed_at: "2026-09-25T05:54:11Z"}
+    review: {started_at: "2026-09-25T05:54:11Z", driver: fab-fff, iterations: 2, completed_at: "2026-09-25T05:57:56Z"}
+    hydrate: {started_at: "2026-09-25T05:57:56Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-25T06:10:52Z"}
+    ship: {started_at: "2026-09-25T06:10:52Z", driver: fab-fff, iterations: 1}
+prs: []
+change_type_source: explicit
+base_branch: main
+true_impact:
+    added: 24928
+    deleted: 21220
+    net: 3708
+    excluding:
+        added: 24924
+        deleted: 21200
+        net: 3724
+    tests:
+        added: 1492
+        deleted: 638
+        net: 854
+    computed_at: "2026-09-25T06:10:52Z"
+    computed_at_stage: hydrate
+summary: 'retires the Node oracle and toolchain: tudiff run/live compare bin/tu against the committed golden corpus harness/golden/ (new golden-corpus memory: layout, manifest, tree.json, $HOME/$VERSION/$MACHINE/$USER + $TMP/$REPO normalisation, pinned TUDIFF_NOW clock, --update discipline), the version anchor is the git tag (tag-only release.sh, fetch-depth: 0), and the parity rationale lines now cite the golden corpus'
+# base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-09-25T06:10:52Z

@@ -69,7 +69,7 @@ description: The CSV and Markdown encoders — RFC 4180 rows with pinned headers
 
 ### csv.Cost is toFixed(2), not FormatCost
 **Decision**: every CSV cost goes through `csv.Cost = render.FixedHalfUp(x, 2)` — the exact-binary half-up `toFixed(2)` rule; share/delta go through `csvShare` (`JSRound(n×1000)/1000`, trailing zeros dropped).
-**Why**: parity with the frozen `src/node/` oracle (until plan row Z1) — `toFixed(2)` and `Math.round(n×1000)/1000` are byte surfaces; `FormatCost`'s ICU rule and `FormatFloat`'s half-even both diverge on node-verified inputs (`1.005`, `0.125`, `2.675`).
+**Why**: parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes) — `toFixed(2)` and `Math.round(n×1000)/1000` are byte surfaces; `FormatCost`'s ICU rule and `FormatFloat`'s half-even both diverge on node-verified inputs (`1.005`, `0.125`, `2.675`).
 **Rejected**: reusing `render.FormatCost` for CSV (wrong on `1.005`, `0.015`, `1.045`) or `strconv.FormatFloat(x, 'f', 2, 64)` (half-even).
 *Introduced by*: 260916-9ax5-history-and-periods, generalized by 260916-2gbb-leaderboard-lb-lbh
 

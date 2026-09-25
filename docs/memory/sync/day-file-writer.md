@@ -57,7 +57,7 @@ A finite result yields `shrinking = incoming < existing`: strictly lower skips, 
 
 ### The guard coerces through a Number()-equivalent table
 **Decision**: existing costs are coerced by `jsNumber`/`jsNumberString`/`jsJoin` — including base-prefixed integers, array joins, and NaN for objects — before the comparison.
-**Why**: parity with the frozen `src/node/` oracle (until plan row Z1); a day-file's `totalCost` may hold any JSON value when hand-corrupted, and the guard must classify each exactly as the reference coercion does.
+**Why**: parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes); a day-file's `totalCost` may hold any JSON value when hand-corrupted, and the guard must classify each exactly as the reference coercion does.
 **Rejected**: a strict float-only check (a string `"0.75"` or `null` in a corrupted file would diverge from the reference verdict).
 *Introduced by*: 260916-lsml-sync-metrics-writer
 

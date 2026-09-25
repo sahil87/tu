@@ -80,6 +80,6 @@ The cap ([guards](/command/guards.md)) defaults the floor before `gather` runs, 
 
 ### Reproduce the JSON label quirk
 **Decision**: `runSnapshot` clears `ToolTotals.Label` only on the single-mode daily-all path; every other path (any explicit source, any non-daily period, multi mode, `--by-machine`) keeps the label.
-**Why**: the label omission on the bare single-mode daily JSON is a harness-compared byte surface; parity with the frozen `src/node/` oracle (until plan row Z1).
+**Why**: the label omission on the bare single-mode daily JSON is a harness-compared byte surface; parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes).
 **Rejected**: reproducing nothing (a harness red on populated data); clearing labels everywhere (breaks `tu cc --json` and every multi-mode snapshot).
 *Introduced by*: 260916-3am6-query-view-render-snapshot
