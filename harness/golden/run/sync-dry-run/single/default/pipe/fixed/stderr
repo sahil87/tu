@@ -1,0 +1,2 @@
+tu sync requires metrics_repo to be set.
+Add metrics_repo to ~/.config/tu/tu.conf, run 'tu init-metrics <repo-url>', or set TU_METRICS_REPO.

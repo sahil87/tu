@@ -1,0 +1,2 @@
+Set metrics_repo = git@example.invalid:harness/tu-metrics.git in ~/.config/tu/tu.conf
+Already initialized: $HOME/.tu/metrics_repo

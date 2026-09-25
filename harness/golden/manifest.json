@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "oracle": "node dist/tu.mjs",
+  "oracle_version": "v0.12.2",
+  "node_version": "v24.15.0",
+  "captured_at": "2026-09-25T04:51:21Z",
+  "now": "2026-09-25T12:00:00",
+  "script": "util-linux",
+  "platform": "linux/amd64",
+  "fixtures": [
+    "_placeholder"
+  ],
+  "matrix_sha256": "8248744d49190637e811ce2a2cee23efc4ffec2266113767e5e7d39dd1bca265",
+  "cases": 452,
+  "live_steps": 9
+}

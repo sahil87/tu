@@ -1,0 +1,176 @@
+b0d42eb9865e1571d88f80529263ca65e098ab6e
+# harness-user: update 2026-09-25
+
+diff --git a/harness-user/2026/harness-machine/cc-2026-01-05.jsonl b/harness-user/2026/harness-machine/cc-2026-01-05.jsonl
+index eca9078..d1dd8ab 100644
+--- a/harness-user/2026/harness-machine/cc-2026-01-05.jsonl
++++ b/harness-user/2026/harness-machine/cc-2026-01-05.jsonl
+@@ -1 +1 @@
+-{"label":"2026-01-05","totalCost":0.25,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
++{"label":"2026-01-05","totalCost":0.5,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/harness-user/2026/harness-machine/cc-2026-01-07.jsonl b/harness-user/2026/harness-machine/cc-2026-01-07.jsonl
+new file mode 100644
+index 0000000..da0d0c1
+--- /dev/null
++++ b/harness-user/2026/harness-machine/cc-2026-01-07.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-07","totalCost":0.5,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/harness-user/2026/harness-machine/codex-2026-01-05.jsonl b/harness-user/2026/harness-machine/codex-2026-01-05.jsonl
+new file mode 100644
+index 0000000..d1dd8ab
+--- /dev/null
++++ b/harness-user/2026/harness-machine/codex-2026-01-05.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-05","totalCost":0.5,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/harness-user/2026/harness-machine/codex-2026-01-06.jsonl b/harness-user/2026/harness-machine/codex-2026-01-06.jsonl
+new file mode 100644
+index 0000000..f7ef927
+--- /dev/null
++++ b/harness-user/2026/harness-machine/codex-2026-01-06.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-06","totalCost":0.5,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/harness-user/2026/harness-machine/codex-2026-01-07.jsonl b/harness-user/2026/harness-machine/codex-2026-01-07.jsonl
+new file mode 100644
+index 0000000..da0d0c1
+--- /dev/null
++++ b/harness-user/2026/harness-machine/codex-2026-01-07.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-07","totalCost":0.5,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/harness-user/2026/harness-machine/copilot-2026-01-05.jsonl b/harness-user/2026/harness-machine/copilot-2026-01-05.jsonl
+new file mode 100644
+index 0000000..d1dd8ab
+--- /dev/null
++++ b/harness-user/2026/harness-machine/copilot-2026-01-05.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-05","totalCost":0.5,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/harness-user/2026/harness-machine/copilot-2026-01-06.jsonl b/harness-user/2026/harness-machine/copilot-2026-01-06.jsonl
+new file mode 100644
+index 0000000..f7ef927
+--- /dev/null
++++ b/harness-user/2026/harness-machine/copilot-2026-01-06.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-06","totalCost":0.5,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/harness-user/2026/harness-machine/copilot-2026-01-07.jsonl b/harness-user/2026/harness-machine/copilot-2026-01-07.jsonl
+new file mode 100644
+index 0000000..da0d0c1
+--- /dev/null
++++ b/harness-user/2026/harness-machine/copilot-2026-01-07.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-07","totalCost":0.5,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/harness-user/2026/harness-machine/gemini-2026-01-05.jsonl b/harness-user/2026/harness-machine/gemini-2026-01-05.jsonl
+new file mode 100644
+index 0000000..d1dd8ab
+--- /dev/null
++++ b/harness-user/2026/harness-machine/gemini-2026-01-05.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-05","totalCost":0.5,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/harness-user/2026/harness-machine/gemini-2026-01-06.jsonl b/harness-user/2026/harness-machine/gemini-2026-01-06.jsonl
+new file mode 100644
+index 0000000..f7ef927
+--- /dev/null
++++ b/harness-user/2026/harness-machine/gemini-2026-01-06.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-06","totalCost":0.5,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/harness-user/2026/harness-machine/gemini-2026-01-07.jsonl b/harness-user/2026/harness-machine/gemini-2026-01-07.jsonl
+new file mode 100644
+index 0000000..da0d0c1
+--- /dev/null
++++ b/harness-user/2026/harness-machine/gemini-2026-01-07.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-07","totalCost":0.5,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/harness-user/2026/harness-machine/kimi-2026-01-05.jsonl b/harness-user/2026/harness-machine/kimi-2026-01-05.jsonl
+new file mode 100644
+index 0000000..d1dd8ab
+--- /dev/null
++++ b/harness-user/2026/harness-machine/kimi-2026-01-05.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-05","totalCost":0.5,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/harness-user/2026/harness-machine/kimi-2026-01-06.jsonl b/harness-user/2026/harness-machine/kimi-2026-01-06.jsonl
+new file mode 100644
+index 0000000..f7ef927
+--- /dev/null
++++ b/harness-user/2026/harness-machine/kimi-2026-01-06.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-06","totalCost":0.5,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/harness-user/2026/harness-machine/kimi-2026-01-07.jsonl b/harness-user/2026/harness-machine/kimi-2026-01-07.jsonl
+new file mode 100644
+index 0000000..da0d0c1
+--- /dev/null
++++ b/harness-user/2026/harness-machine/kimi-2026-01-07.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-07","totalCost":0.5,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/harness-user/2026/harness-machine/oc-2026-01-05.jsonl b/harness-user/2026/harness-machine/oc-2026-01-05.jsonl
+new file mode 100644
+index 0000000..d1dd8ab
+--- /dev/null
++++ b/harness-user/2026/harness-machine/oc-2026-01-05.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-05","totalCost":0.5,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/harness-user/2026/harness-machine/oc-2026-01-06.jsonl b/harness-user/2026/harness-machine/oc-2026-01-06.jsonl
+new file mode 100644
+index 0000000..f7ef927
+--- /dev/null
++++ b/harness-user/2026/harness-machine/oc-2026-01-06.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-06","totalCost":0.5,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/harness-user/2026/harness-machine/oc-2026-01-07.jsonl b/harness-user/2026/harness-machine/oc-2026-01-07.jsonl
+new file mode 100644
+index 0000000..da0d0c1
+--- /dev/null
++++ b/harness-user/2026/harness-machine/oc-2026-01-07.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-07","totalCost":0.5,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+5b1df47b08d6d678078236b32b43d7900d383ed7
+seed
+
+diff --git a/docs/README.md b/docs/README.md
+new file mode 100644
+index 0000000..2975bff
+--- /dev/null
++++ b/docs/README.md
+@@ -0,0 +1,3 @@
++# Seeded metrics repo
++
++A deterministic mini-clone of a tu metrics repo, copied into the staged `$HOME/.tu/metrics_repo/` of the differential harness's multi-mode `$HOME` variants (`multi`, `org`, `legacy`). The layout follows the metrics-repo spec (`<user>/<year>/<machine>/<tool>-<date>.jsonl`, one `UsageEntry` JSON object per line): two profiles (`harness-user`, `other-user`) across two machines so leaderboard and `-u` cases have rows, with the own-machine `cc` day-files straddling the placeholder fixtures' `0.5` cost so both arms of the own-machine max-merge (live wins / stored wins) are exercised. `docs/` is never scanned as a user directory, which is exactly why this README lives here.
+diff --git a/harness-user/2026/harness-machine/cc-2026-01-05.jsonl b/harness-user/2026/harness-machine/cc-2026-01-05.jsonl
+new file mode 100644
+index 0000000..eca9078
+--- /dev/null
++++ b/harness-user/2026/harness-machine/cc-2026-01-05.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-05","totalCost":0.25,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/harness-user/2026/harness-machine/cc-2026-01-06.jsonl b/harness-user/2026/harness-machine/cc-2026-01-06.jsonl
+new file mode 100644
+index 0000000..496078f
+--- /dev/null
++++ b/harness-user/2026/harness-machine/cc-2026-01-06.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-06","totalCost":0.75,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/harness-user/2026/other-box/cc-2026-01-06.jsonl b/harness-user/2026/other-box/cc-2026-01-06.jsonl
+new file mode 100644
+index 0000000..3816c6b
+--- /dev/null
++++ b/harness-user/2026/other-box/cc-2026-01-06.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-06","totalCost":0.40,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/harness-user/2026/other-box/codex-2026-01-07.jsonl b/harness-user/2026/other-box/codex-2026-01-07.jsonl
+new file mode 100644
+index 0000000..46642ee
+--- /dev/null
++++ b/harness-user/2026/other-box/codex-2026-01-07.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-07","totalCost":0.30,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/other-user/2026/laptop/cc-2026-01-05.jsonl b/other-user/2026/laptop/cc-2026-01-05.jsonl
+new file mode 100644
+index 0000000..bf7916d
+--- /dev/null
++++ b/other-user/2026/laptop/cc-2026-01-05.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-05","totalCost":1.10,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}
+diff --git a/other-user/2026/laptop/gemini-2026-01-06.jsonl b/other-user/2026/laptop/gemini-2026-01-06.jsonl
+new file mode 100644
+index 0000000..d0e210f
+--- /dev/null
++++ b/other-user/2026/laptop/gemini-2026-01-06.jsonl
+@@ -0,0 +1 @@
++{"label":"2026-01-06","totalCost":0.20,"inputTokens":3000,"outputTokens":400,"cacheCreationTokens":1000,"cacheReadTokens":20000,"totalTokens":24400}

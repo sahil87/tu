@@ -1,0 +1,4 @@
+syncing metrics... Warning: sync pull failed — git -C $HOME/.tu/metrics_repo... failed: Command failed: git -C $HOME/.tu/metrics_repo pull --rebase origin main
+fatal: couldn't find remote ref main
+
+sync failed — using local data.

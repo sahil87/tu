@@ -71,25 +71,24 @@ func NormalizeHome(b []byte, home string) []byte {
 	return bytes.ReplaceAll(b, []byte(home), []byte("$HOME"))
 }
 
-// Result is the comparison outcome of one case, plus the informational
-// call-log comparison and run metadata the report renders.
+// Result is the comparison outcome of one case, plus the unconfirmed-replay
+// flag and run metadata the report renders. The Node* fields name the
+// oracle position: since the golden corpus replaced the Node oracle they
+// hold the golden side's values.
 type Result struct {
 	Case        Case
 	Status      string
 	Channel     string // first differing channel (red), or "timeout"
 	Offset      int    // first differing byte index (byte channels)
-	Line        int    // 1-based line of Offset in the node capture
-	NodeExcerpt string // strconv.Quote of ≤40 bytes from Offset
+	Line        int    // 1-based line of Offset in the oracle capture
+	NodeExcerpt string // strconv.Quote of ≤40 bytes from Offset (oracle position)
 	GoExcerpt   string
-	NodeExit    int
+	NodeExit    int // oracle position (the golden's exit code in golden mode)
 	GoExit      int
-	NodeMs      int64
 	GoMs        int64
 	NodeTimeout bool // unexported into report.json; backs the timeout case line
 	GoTimeout   bool
 	Unconfirmed bool
-	CallsDiffer bool
-	NodeCalls   int
 	GoCalls     int
 	Rerun       bool
 	// Expected is the id of the expected-diffs entry explaining a red case
@@ -105,6 +104,10 @@ type EnvSpec struct {
 	Home       string   // this side's staged $HOME
 	Fixtures   []string // absolute fixture alias dirs, search order
 	CallLog    string   // this side's TUDIFF_CALL_LOG path
+	// Now, when non-empty, is the golden manifest's pinned clock (a zone-less
+	// local timestamp): BuildEnv emits it as TUDIFF_NOW for the Go binary's
+	// edge now() seam. Empty means the child runs on the real clock.
+	Now string
 }
 
 // gitScripts maps the failure-injection env axis values to their
@@ -129,6 +132,9 @@ func BuildEnv(c Case, spec EnvSpec) []string {
 		"LC_ALL=C.UTF-8",
 		"TUDIFF_FIXTURES=" + strings.Join(spec.Fixtures, string(os.PathListSeparator)),
 		"TUDIFF_CALL_LOG=" + spec.CallLog,
+	}
+	if spec.Now != "" {
+		env = append(env, "TUDIFF_NOW="+spec.Now)
 	}
 	if c.IO == IOTTY {
 		env = append(env, "TERM=xterm-256color")
@@ -308,20 +314,18 @@ type byteChannel struct {
 // Compare byte-diffs one case's two captures, stopping at the first differing
 // channel: pipe cases compare exit, stdout, stderr; tty cases compare exit,
 // tty. Each side's byte channels are home-normalized (NormalizeHome with that
-// side's staged Home) before comparing — the two staged $HOMEs differ only in
-// the side segment, so paths that legitimately embed $HOME (the setup-command
-// messages) would otherwise diverge. A timeout on either side is a timeout
-// verdict regardless of bytes. A capture-level error on either side (Err
-// non-empty — a failed exec or a missing exit sentinel) is a red verdict:
-// errored captures are not comparable, so identical failures must never read
-// as green.
+// side's staged Home) before comparing; the oracle-position capture (the
+// golden in golden mode) is stored pre-normalized and carries no Home. A
+// timeout on either side is a timeout verdict regardless of bytes. A
+// capture-level error on either side (Err non-empty — a failed exec or a
+// missing exit sentinel) is a red verdict: errored captures are not
+// comparable, so identical failures must never read as green.
 func Compare(c Case, node, goCap SideCapture) Result {
 	r := Result{
 		Case:     c,
 		Status:   StatusGreen,
 		NodeExit: node.Exit,
 		GoExit:   goCap.Exit,
-		NodeMs:   node.Duration.Milliseconds(),
 		GoMs:     goCap.Duration.Milliseconds(),
 	}
 	if node.TimedOut || goCap.TimedOut {
@@ -364,8 +368,8 @@ func Compare(c Case, node, goCap SideCapture) Result {
 }
 
 // firstDivergence locates the first differing byte of two captures: its
-// index, the 1-based line containing it (counting '\n' in the node side up to
-// the offset), and quoted ≤40-byte excerpts of each side from that offset.
+// index, the 1-based line containing it (counting '\n' in the oracle side up
+// to the offset), and quoted ≤40-byte excerpts of each side from that offset.
 func firstDivergence(node, goCap []byte) (offset, line int, nodeExcerpt, goExcerpt string) {
 	n := len(node)
 	if len(goCap) < n {
@@ -537,6 +541,12 @@ func presenceDiff(path string, nodeHas bool) *TreeDiff {
 // treeFiles lists the slash-separated relative paths of every file under dir
 // in sorted order; exists reports whether dir itself is present.
 func treeFiles(dir string) (paths []string, exists bool, err error) {
+	return treeFilesSkip(dir, nil)
+}
+
+// treeFilesSkip is treeFiles with an exclusion predicate over slash-separated
+// relpaths; excluding a directory prunes its subtree.
+func treeFilesSkip(dir string, skip func(rel string) bool) (paths []string, exists bool, err error) {
 	info, err := os.Stat(dir)
 	if os.IsNotExist(err) {
 		return nil, false, nil
@@ -551,12 +561,19 @@ func treeFiles(dir string) (paths []string, exists bool, err error) {
 		if err != nil {
 			return err
 		}
-		if !d.IsDir() {
-			rel, err := filepath.Rel(dir, path)
-			if err != nil {
-				return err
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if skip != nil && rel != "." && skip(rel) {
+			if d.IsDir() {
+				return filepath.SkipDir
 			}
-			paths = append(paths, filepath.ToSlash(rel))
+			return nil
+		}
+		if !d.IsDir() {
+			paths = append(paths, rel)
 		}
 		return nil
 	})

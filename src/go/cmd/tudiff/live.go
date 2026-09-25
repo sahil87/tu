@@ -6,11 +6,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -18,13 +16,15 @@ import (
 	"github.com/sahil87/tu/internal/harness"
 )
 
-// live.go is the `tudiff live` subcommand (intake § 10, plan R14): the
+// live.go is the `tudiff live` subcommand (intake § 10, plan R4): the
 // real-git half of the differential gate. Where `run` answers every git call
-// with the fake, live seeds two identical bare remotes from
-// harness/metrics-repo/, points each side's staged multi home at a real clone,
-// and runs the sync/repair sequence with the real git on PATH — fixed
-// identity and commit dates make identical trees yield identical hashes, so
-// the two sides' `git log -p` outputs compare byte for byte.
+// with the fake, live seeds one bare remote from harness/metrics-repo/,
+// points the staged multi home at a real clone of it, and runs the
+// sync/repair sequence with the real git on PATH — the pinned identity and
+// fixed commit dates make the tree reproducible, so the golden corpus's
+// log.txt (hashes included) is stable across runs. Compare mode diffs the Go
+// binary against harness/golden/live/<step>/; --update rewrites those
+// goldens.
 
 const (
 	defaultTurepair   = "bin/turepair"
@@ -32,37 +32,49 @@ const (
 
 	// fixedGitDate pins every commit timestamp the live sequence creates
 	// (seed, sync, foreign, repair fixture), so identical trees and messages
-	// yield identical commit hashes on both sides.
+	// yield identical commit hashes on every run.
 	fixedGitDate = "2026-01-09T12:00:00Z"
 
-	// liveTimeout bounds one side of one live step (real git over local
-	// bares; far above anything the sequence should need).
+	// liveTimeout bounds one execution of one live step (real git over a
+	// local bare; far above anything the sequence should need).
 	liveTimeout = 60 * time.Second
 
 	// rebaseRecoveryNeedle is the stderr line the interrupted-rebase step
-	// must produce on both sides (internal/sync rebaseRecoveryLine).
+	// must produce (internal/sync rebaseRecoveryLine).
 	rebaseRecoveryNeedle = "Warning: recovering from interrupted rebase"
 )
+
+// liveSteps lists the sequence's result IDs in order: the seven sync steps
+// plus the two repair steps. Compare-mode preflight requires a golden dir for
+// each, and --update's manifest live_steps count is the number written.
+var liveSteps = []string{
+	"sync-dry-run", "sync", "sync-again", "foreign-sync", "rebase-recovery",
+	"pull-failure", "cc-sync", "repair-dry-run", "repair-write",
+}
 
 // liveOptions holds the parsed live flags; set records explicit flags (same
 // resolution rule as run).
 type liveOptions struct {
-	node, goBin, turepair, harnessBin, report, expected string
-	keep                                                bool
-	set                                                 map[string]bool
+	goBin, turepair, harnessBin, report, expected string
+	golden, now, fromNode                         string
+	keep, update                                  bool
+	set                                           map[string]bool
 }
 
 func runLive(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("live", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	opts := liveOptions{set: map[string]bool{}}
-	fs.StringVar(&opts.node, "node", defaultNode, "TS oracle bundle (run as `node <staged copy>`)")
 	fs.StringVar(&opts.goBin, "go", defaultGo, "Go binary under test")
-	fs.StringVar(&opts.turepair, "turepair", defaultTurepair, "Go repair binary (parried against scripts/repair-metrics.mjs)")
+	fs.StringVar(&opts.turepair, "turepair", defaultTurepair, "Go repair binary (the repair steps' compare/capture side)")
 	fs.StringVar(&opts.harnessBin, "harness-bin", defaultHarnessBin, "directory holding the fake ccusage (the fake git is deliberately unused here)")
 	fs.StringVar(&opts.report, "report", defaultLiveReport, "report directory (wiped at the start of a run)")
 	fs.StringVar(&opts.expected, "expected", defaultExpected, "expected-diffs file (DC-keyed intentional divergences)")
-	fs.BoolVar(&opts.keep, "keep", false, "keep the temp dir (bares, clones, staged homes) for inspection")
+	fs.BoolVar(&opts.keep, "keep", false, "keep the temp dir (bare, clone, staged home) for inspection")
+	fs.StringVar(&opts.golden, "golden", harness.DefaultGoldenDir, "golden corpus directory (manifest.json plus live/<step>/ captures)")
+	fs.BoolVar(&opts.update, "update", false, "rewrite the live goldens from the Go side instead of comparing")
+	fs.StringVar(&opts.now, "now", "", "pin the golden clock (zone-less 2006-01-02T15:04:05) for --update")
+	fs.StringVar(&opts.fromNode, "from-node", "", "TRANSITIONAL (deleted with src/node): capture the goldens from this Node oracle bundle instead of the Go binary")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -71,6 +83,9 @@ func runLive(args []string, stdout, stderr io.Writer) int {
 	fail := func(format string, a ...any) int {
 		fmt.Fprintf(stderr, "tudiff: "+format+"\n", a...)
 		return 2
+	}
+	if opts.fromNode != "" && !opts.update {
+		return fail("--from-node requires --update")
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -81,11 +96,22 @@ func runLive(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	nodeBin, exp, code := preflightLive(&opts, root, fail)
+	goldenDir := opts.resolve(root, "golden", opts.golden)
+	manifest, exp, code := preflightLive(&opts, root, goldenDir, fail)
 	if code != 0 {
 		return code
 	}
-	return executeLive(&opts, root, nodeBin, exp, stdout, stderr)
+	if opts.update {
+		if opts.fromNode != "" {
+			nodeBin, code := preflightLiveFromNode(&opts, root, fail)
+			if code != 0 {
+				return code
+			}
+			return executeLiveNodeCapture(&opts, root, manifest, goldenDir, nodeBin, stdout, stderr)
+		}
+		return executeLiveUpdate(&opts, root, manifest, goldenDir, stdout, stderr)
+	}
+	return executeLive(&opts, root, manifest, exp, stdout, stderr)
 }
 
 // resolve absolutizes a path flag with the shared run/live rule.
@@ -93,17 +119,13 @@ func (o *liveOptions) resolve(root, name, value string) string {
 	return resolvePathFlag(root, o.set[name], value)
 }
 
-// preflightLive runs the intake § 10.1 checks: real git and node on PATH,
-// the oracle bundle, both Go binaries, the fake ccusage, and the placeholder
-// manifest the fake replays from, then loads the expected-diffs file (same
-// R3 messages as run: a missing file is a preflight error, never an empty
-// set).
-func preflightLive(opts *liveOptions, root string, fail func(string, ...any) int) (nodeBin string, exp *harness.Expected, code int) {
+// preflightLive runs the live checks: real git on PATH, both Go binaries, the
+// fake ccusage, the placeholder manifest the fake replays from, and the
+// expected-diffs file (same messages as run: a missing file is a preflight
+// error, never an empty set), then the golden guards.
+func preflightLive(opts *liveOptions, root, goldenDir string, fail func(string, ...any) int) (*harness.GoldenManifest, *harness.Expected, int) {
 	if _, err := exec.LookPath("git"); err != nil {
-		return "", nil, fail("git not found on PATH (live diffs the real git, not the fake)")
-	}
-	if !fileExists(opts.resolve(root, "node", opts.node)) {
-		return "", nil, fail("%s not found (run npm ci && npm run build)", opts.node)
+		return nil, nil, fail("git not found on PATH (live diffs the real git, not the fake)")
 	}
 	for _, b := range []struct{ name, path string }{
 		{"go", opts.goBin},
@@ -111,79 +133,227 @@ func preflightLive(opts *liveOptions, root string, fail func(string, ...any) int
 	} {
 		p := opts.resolve(root, b.name, b.path)
 		if !fileExists(p) {
-			return "", nil, fail("%s not found (run just go-build)", b.path)
+			return nil, nil, fail("%s not found (run just go-build)", b.path)
 		}
 		if !executable(p) {
-			return "", nil, fail("%s not executable (run just go-build)", b.path)
+			return nil, nil, fail("%s not executable (run just go-build)", b.path)
 		}
 	}
 	cc := filepath.Join(opts.resolve(root, "harness-bin", opts.harnessBin), "ccusage")
 	if !fileExists(cc) {
-		return "", nil, fail("%s not found (run just harness-build)", filepath.Join(opts.harnessBin, "ccusage"))
+		return nil, nil, fail("%s not found (run just harness-build)", filepath.Join(opts.harnessBin, "ccusage"))
 	}
 	if !executable(cc) {
-		return "", nil, fail("%s not executable (run just harness-build)", filepath.Join(opts.harnessBin, "ccusage"))
-	}
-	nodeBin, err := exec.LookPath("node")
-	if err != nil {
-		return "", nil, fail("node not found on PATH (required to run the TS oracle)")
+		return nil, nil, fail("%s not executable (run just harness-build)", filepath.Join(opts.harnessBin, "ccusage"))
 	}
 	manifest := filepath.Join(root, "harness", "fixtures", harness.PlaceholderAlias, "manifest.json")
 	if !fileExists(manifest) {
-		return "", nil, fail("harness/fixtures/%s/manifest.json not found", harness.PlaceholderAlias)
+		return nil, nil, fail("harness/fixtures/%s/manifest.json not found", harness.PlaceholderAlias)
 	}
-	exp, err = harness.LoadExpected(opts.resolve(root, "expected", opts.expected))
+	exp, err := harness.LoadExpected(opts.resolve(root, "expected", opts.expected))
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", nil, fail("%s not found", opts.expected)
+			return nil, nil, fail("%s not found", opts.expected)
 		}
-		return "", nil, fail("expected-diffs: %v", err)
+		return nil, nil, fail("expected-diffs: %v", err)
 	}
-	return nodeBin, exp, 0
+	golden, code := preflightLiveGolden(opts, root, goldenDir, fail)
+	if code != 0 {
+		return nil, nil, code
+	}
+	return golden, exp, 0
+}
+
+// preflightLiveGolden runs live's golden-mode guards (the run.go discipline
+// with live's own update hints): compare mode requires a valid manifest whose
+// matrix hash matches the current matrix and a golden dir per step; --update
+// treats a missing manifest as the bootstrap case and skips both guards.
+func preflightLiveGolden(opts *liveOptions, root, goldenDir string, fail func(string, ...any) int) (*harness.GoldenManifest, int) {
+	m, err := harness.LoadGoldenManifest(goldenDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			if opts.update {
+				return nil, 0
+			}
+			return nil, fail("%s not found (run tudiff live --update)", filepath.Join(opts.golden, "manifest.json"))
+		}
+		return nil, fail("%s: %v", filepath.Join(opts.golden, "manifest.json"), err)
+	}
+	if opts.update {
+		return m, 0
+	}
+	sum, err := harness.MatrixSHA256(filepath.Join(root, defaultMatrix))
+	if err != nil {
+		return nil, fail("matrix: %v", err)
+	}
+	if sum != m.MatrixSHA256 {
+		return nil, fail("%s changed since the goldens were captured (run tudiff run --update and review the diff)", defaultMatrix)
+	}
+	for _, step := range liveSteps {
+		if info, err := os.Stat(harness.GoldenLiveDir(goldenDir, step)); err != nil || !info.IsDir() {
+			return nil, fail("no golden for live/%s (run tudiff live --update)", step)
+		}
+	}
+	return m, 0
 }
 
 // liveConfig carries the resolved, per-run constants shared by every step.
 type liveConfig struct {
-	root, tmpRoot, livebin, bundle              string
-	nodeBin, goPath, turepairPath, repairScript string
-	seedDir, placeholder, reportDir             string
-	keep                                        bool
-	expected                                    *harness.Expected
+	root, tmpRoot, livebin          string
+	goPath, turepairPath, goldenDir string
+	seedDir, placeholder, reportDir string
+	// now is the golden manifest's pinned clock, emitted as TUDIFF_NOW in the
+	// child's environment (empty for the transitional Node capture arm — the
+	// Node side has no clock seam and runs on real time).
+	now string
+	// version is the capture/compare side's probed --version value, for
+	// NormalizeVersion on the byte channels.
+	version string
+	// captureSide names the staged temp segment (SideGo; SideNode only in the
+	// transitional --from-node arm).
+	captureSide string
+	keep        bool
+	update      bool // write goldens instead of comparing
+	expected    *harness.Expected
+
+	// --- transitional --from-node arm state (T006 deletes) ---
+	nodeBin, nodeBundle, repairScript string
 }
 
-// liveSide holds one side's staged paths.
+// liveSide holds the staged side's paths.
 type liveSide struct {
-	name string // "node" / "go"
+	name string // "go" ("node" only in the --from-node arm)
 	dir  string // working directory (<tmp>/<side>/)
 	home string // staged $HOME (<dir>/home)
-	repo string // <home>/.tu/metrics_repo — a real clone of the side's bare
-	bare string // <tmp>/<side>.git
+	repo string // <home>/.tu/metrics_repo — a real clone of the bare
+	bare string // <tmp>/remote.git
 }
 
 // liveRunner holds the live sequence's shared state.
 type liveRunner struct {
-	cfg     liveConfig
-	baseEnv []string // pinned identity/date env for the harness's own git calls
-	node    liveSide
-	goSide  liveSide
+	cfg      liveConfig
+	baseEnv  []string // pinned identity/date env for the harness's own git calls
+	side     liveSide
+	exec     func(args []string, fixtures string) harness.SideCapture // tu side
+	repair   func(repo string, write bool) harness.SideCapture        // repair side
+	captured int                                                      // goldens written (update modes)
+	fatal    error                                                    // update modes: first capture failure; later steps are skipped
 }
 
-func executeLive(opts *liveOptions, root, nodeBin string, exp *harness.Expected, stdout, stderr io.Writer) int {
+// executeLive runs the sequence against the live goldens and writes the
+// report under --report.
+func executeLive(opts *liveOptions, root string, manifest *harness.GoldenManifest, exp *harness.Expected, stdout, stderr io.Writer) int {
+	lr, cleanup, code := stageLive(opts, root, string(harness.SideGo), stderr)
+	if code != 0 {
+		return code
+	}
+	defer cleanup()
+	lr.cfg.goldenDir = opts.resolve(root, "golden", opts.golden)
+	lr.cfg.now = manifest.Now
+	lr.cfg.expected = exp
+	lr.exec = lr.execGo
+	lr.repair = lr.repairGo
+	// A failed version probe degrades to no version normalization (the run.go
+	// rule): the steps themselves report the broken binary.
+	lr.cfg.version, _ = harness.ProbeVersion(lr.cfg.goPath, "--version")
+
+	// The header lands in report.txt via WriteReport (the case count is known
+	// only after the sequence runs); stdout streams case lines and the
+	// summary, as before golden mode.
+	header := harness.ReportHeader{
+		Timestamp:           time.Now().UTC(),
+		GoldenDir:           opts.golden,
+		GoldenCapturedAt:    manifest.CapturedAt,
+		GoldenOracle:        manifest.Oracle,
+		GoldenOracleVersion: manifest.OracleVersion,
+		GoldenNow:           manifest.Now,
+		GoPath:              opts.goBin,
+		GoVersion:           firstLine(exec.Command(lr.cfg.goPath, "--version").Output()),
+		Fixtures:            []string{harness.PlaceholderAlias, "live-alias"},
+		MatrixPath:          "live",
+		ExpectedPath:        opts.expected,
+		ExpectedEntries:     len(exp.Entries),
+	}
+	results, _ := lr.runSequence(stdout)
+	header.Cases = len(results)
+	summary := harness.SummarizeResults(exp, results)
+	for _, line := range harness.RenderSummary(summary, header.Fixtures) {
+		fmt.Fprintln(stdout, line)
+	}
+	if err := harness.WriteReport(lr.cfg.reportDir, header, exp, results); err != nil {
+		fmt.Fprintf(stderr, "tudiff: writing report: %v\n", err)
+		return 2
+	}
+	if lr.cfg.keep {
+		fmt.Fprintf(stderr, "tudiff: kept temp dir %s\n", lr.cfg.tmpRoot)
+	}
+	// The gate rule, same as run: an expected red step passes; an unexpected
+	// red, a timeout, an unconfirmed-fixture replay, or a stale entry fails.
+	if summary.Unexpected+summary.Timeout+summary.Unconfirmed > 0 || len(summary.Stale) > 0 {
+		return 1
+	}
+	return 0
+}
+
+// executeLiveUpdate rewrites the live goldens from the Go side, then rewrites
+// the manifest with live_steps set and cases preserved from the old manifest.
+func executeLiveUpdate(opts *liveOptions, root string, old *harness.GoldenManifest, goldenDir string, stdout, stderr io.Writer) int {
+	now := resolveNow(opts.now, old)
+	lr, cleanup, code := stageLive(opts, root, string(harness.SideGo), stderr)
+	if code != 0 {
+		return code
+	}
+	defer cleanup()
+	lr.cfg.goldenDir = goldenDir
+	lr.cfg.now = now
+	lr.cfg.update = true
+	lr.exec = lr.execGo
+	lr.repair = lr.repairGo
+	version, err := harness.ProbeVersion(lr.cfg.goPath, "--version")
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	lr.cfg.version = version
+	if _, err := lr.runSequence(stdout); err != nil {
+		fmt.Fprintf(stderr, "tudiff: %v\n", err)
+		return 2
+	}
+	m, err := newManifest(old, filepath.Join(root, defaultMatrix), now)
+	if err != nil {
+		fmt.Fprintf(stderr, "tudiff: %v\n", err)
+		return 2
+	}
+	m.Oracle = opts.goBin
+	m.OracleVersion = lr.cfg.version
+	m.LiveSteps = lr.captured
+	if err := harness.WriteGoldenManifest(goldenDir, m); err != nil {
+		fmt.Fprintf(stderr, "tudiff: writing manifest: %v\n", err)
+		return 2
+	}
+	fmt.Fprintf(stdout, "tudiff: wrote %d goldens under %s (now %s)\n", lr.captured, opts.golden+"/live", now)
+	return 0
+}
+
+// stageLive prepares a live run: resolves paths, wipes and recreates the
+// report dir, creates the temp root and the livebin (only the fake ccusage —
+// the fake git is deliberately absent so every git a tu child spawns is the
+// real one), seeds the bare remote, and stages the side's home as a real
+// clone of it. cleanup removes the temp root unless --keep.
+func stageLive(opts *liveOptions, root, captureSide string, stderr io.Writer) (*liveRunner, func(), int) {
 	cfg := liveConfig{
 		root:         root,
-		nodeBin:      nodeBin,
 		goPath:       opts.resolve(root, "go", opts.goBin),
 		turepairPath: opts.resolve(root, "turepair", opts.turepair),
-		repairScript: filepath.Join(root, "scripts", "repair-metrics.mjs"),
 		seedDir:      filepath.Join(root, "harness", "metrics-repo"),
 		placeholder:  filepath.Join(root, "harness", "fixtures", harness.PlaceholderAlias),
 		reportDir:    opts.resolve(root, "report", opts.report),
+		captureSide:  captureSide,
 		keep:         opts.keep,
-		expected:     exp,
 	}
-	fail := func(format string, a ...any) int {
+	fail := func(format string, a ...any) (*liveRunner, func(), int) {
 		fmt.Fprintf(stderr, "tudiff: "+format+"\n", a...)
-		return 2
+		return nil, nil, 2
 	}
 	if err := os.RemoveAll(cfg.reportDir); err != nil {
 		return fail("wiping report dir: %v", err)
@@ -196,91 +366,64 @@ func executeLive(opts *liveOptions, root, nodeBin string, exp *harness.Expected,
 		return fail("%v", err)
 	}
 	cfg.tmpRoot = tmpRoot
-	if !cfg.keep {
-		defer os.RemoveAll(tmpRoot)
+	cleanup := func() { os.RemoveAll(tmpRoot) }
+	if cfg.keep {
+		cleanup = func() {}
 	}
-
-	// livebin holds ONLY the fake ccusage: the child PATH is livebin followed
-	// by the process PATH, so the fake git is deliberately absent — every git
-	// a tu child spawns is the real one.
 	cfg.livebin = filepath.Join(tmpRoot, "livebin")
 	if err := harness.CopyFile(filepath.Join(opts.resolve(root, "harness-bin", opts.harnessBin), "ccusage"),
 		filepath.Join(cfg.livebin, "ccusage"), 0o755); err != nil {
+		cleanup()
 		return fail("staging livebin: %v", err)
 	}
-	bundle, err := harness.StageOracle(tmpRoot, opts.resolve(root, "node", opts.node),
-		filepath.Join(root, "tu.default.conf"), filepath.Join(opts.resolve(root, "harness-bin", opts.harnessBin), "ccusage"))
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 2
-	}
-	cfg.bundle = bundle
-
 	lr := &liveRunner{cfg: cfg, baseEnv: pinnedGitEnv(os.Getenv("PATH"), os.Getenv("HOME"))}
 	if err := lr.stage(); err != nil {
+		cleanup()
 		fmt.Fprintln(stderr, err)
-		return 2
+		return nil, nil, 2
 	}
-
-	header := harness.ReportHeader{
-		Timestamp:       time.Now().UTC(),
-		NodePath:        opts.node,
-		NodeVersion:     firstLine(exec.Command(nodeBin, "--version").Output()),
-		GoPath:          opts.goBin,
-		GoVersion:       firstLine(exec.Command(cfg.goPath, "--version").Output()),
-		Fixtures:        []string{harness.PlaceholderAlias, "live-alias"},
-		MatrixPath:      "live",
-		ExpectedPath:    opts.expected,
-		ExpectedEntries: len(exp.Entries),
-	}
-	results := lr.runSequence(stdout)
-	header.Cases = len(results)
-	summary := harness.SummarizeResults(exp, results)
-	for _, line := range harness.RenderSummary(summary, header.Fixtures) {
-		fmt.Fprintln(stdout, line)
-	}
-	if err := harness.WriteReport(cfg.reportDir, header, exp, results); err != nil {
-		fmt.Fprintf(stderr, "tudiff: writing report: %v\n", err)
-		return 2
-	}
-	if cfg.keep {
-		fmt.Fprintf(stderr, "tudiff: kept temp dir %s\n", tmpRoot)
-	}
-	// The R5 gate rule, same as run.
-	if summary.Unexpected+summary.Timeout+summary.Unconfirmed > 0 || len(summary.Stale) > 0 {
-		return 1
-	}
-	return 0
+	return lr, cleanup, 0
 }
 
-// stage seeds the two bare remotes and both sides' staged homes.
+// stage seeds the bare remote and stages the side's home as a real clone.
 func (lr *liveRunner) stage() error {
-	nodeBare, goBare, err := seedLiveRemotes(lr.cfg.tmpRoot, lr.cfg.seedDir, lr.baseEnv)
+	bare, err := seedLiveRemote(lr.cfg.tmpRoot, lr.cfg.seedDir, lr.baseEnv)
 	if err != nil {
 		return err
 	}
-	for _, sp := range []struct {
-		side *liveSide
-		name string
-		bare string
-	}{
-		{&lr.node, string(harness.SideNode), nodeBare},
-		{&lr.goSide, string(harness.SideGo), goBare},
-	} {
-		s, err := stageLiveSide(lr.cfg.tmpRoot, sp.name, sp.bare, lr.cfg.seedDir, lr.baseEnv)
-		if err != nil {
-			return err
-		}
-		*sp.side = s
+	s, err := stageLiveSide(lr.cfg.tmpRoot, lr.cfg.captureSide, bare, lr.cfg.seedDir, lr.baseEnv)
+	if err != nil {
+		return err
 	}
+	lr.side = s
 	return nil
 }
 
-// runSequence runs the intake § 10.3 sequence plus the repair parity flow,
-// streaming one report line per step in sequence order.
-func (lr *liveRunner) runSequence(stdout io.Writer) []harness.Result {
+// stepPins declares which extra artefacts a step pins beyond
+// stdout/stderr/exit and tree.json (every step pins those): status.txt is the
+// clone's `git status --porcelain` after the step, log.txt its
+// `git log --format=%H%n%s -p main` — the same artefacts the step checked
+// against the other side in the node-vs-go era.
+type stepPins struct {
+	status, log bool
+}
+
+var (
+	pinStatus    = stepPins{status: true}
+	pinStatusLog = stepPins{status: true, log: true}
+	pinLog       = stepPins{log: true}
+)
+
+// runSequence runs the intake § 10.3 sequence plus the repair flow against
+// the one staged side, streaming one report line per step in compare mode.
+// Update modes write each step's golden instead and abort on the first
+// capture failure (lr.fatal; the manifest is never written after one).
+func (lr *liveRunner) runSequence(stdout io.Writer) ([]harness.Result, error) {
 	var results []harness.Result
 	emit := func(res harness.Result) {
+		if lr.cfg.update {
+			return // update modes stream nothing; lr.fatal carries failures
+		}
 		// The single annotation funnel: a red step may be an intentional
 		// divergence (green, timeout, and harness-channel steps never carry
 		// an expected id — a capture-level failure is not a comparison
@@ -294,118 +437,87 @@ func (lr *liveRunner) runSequence(stdout io.Writer) []harness.Result {
 		fmt.Fprintln(stdout, harness.RenderCaseLine(res))
 	}
 
-	// a. sync --dry-run: the report, and neither tree mutates.
-	res, _, _ := lr.compareStep("sync-dry-run", []string{"sync", "--dry-run"}, lr.cfg.placeholder)
-	lr.checkStatusClean(&res)
-	emit(res)
+	// a. sync --dry-run: the report; the tree and status stay untouched.
+	emit(lr.runStepN("sync-dry-run", []string{"sync", "--dry-run"}, lr.cfg.placeholder, pinStatus))
 
-	// b. sync: the round trip; then trees, status, logs, .last-sync.
-	res, _, _ = lr.compareStep("sync", []string{"sync"}, lr.cfg.placeholder)
-	lr.checkCloneTrees(&res)
-	lr.checkStatusClean(&res)
-	lr.checkLogsEqual(&res)
-	lr.checkLastSyncPresent(&res)
-	emit(res)
+	// b. sync: the round trip; then tree, status, log, .last-sync.
+	emit(lr.runStepN("sync", []string{"sync"}, lr.cfg.placeholder, pinStatusLog))
 
-	// c. sync again: the steady-state no-commit path; the log is unchanged.
-	beforeNode, errN := lr.sideLog(lr.node)
-	beforeGo, errG := lr.sideLog(lr.goSide)
-	res, _, _ = lr.compareStep("sync-again", []string{"sync"}, lr.cfg.placeholder)
-	if errN != nil || errG != nil {
-		redden(&res, "log", fmt.Sprint(errN), fmt.Sprint(errG))
-	} else {
-		afterNode, errN := lr.sideLog(lr.node)
-		afterGo, errG := lr.sideLog(lr.goSide)
-		if errN != nil || errG != nil {
-			redden(&res, "log", fmt.Sprint(errN), fmt.Sprint(errG))
-		} else {
-			checkEqual(&res, "log", beforeNode, afterNode)
-			checkEqual(&res, "log", beforeGo, afterGo)
-		}
-	}
-	emit(res)
+	// c. sync again: the steady-state no-commit path; the log is unchanged
+	// (log.txt is the post-sync log, so matching it proves no new commit).
+	emit(lr.runStepN("sync-again", []string{"sync"}, lr.cfg.placeholder, pinLog))
 
-	// d. foreign commit: a third clone of each bare pushes a day-file; each
+	// d. foreign commit: a second clone of the bare pushes a day-file; the
 	// side then syncs a fresh local change (the one-off alias raises cc
 	// 2026-01-07) and pull --rebase integrates. The fetch cache key excludes
-	// TUDIFF_FIXTURES and steps a–c warmed it, so both sides' .tu/cache must go
-	// first — otherwise the alias's raised value is never read and the step
-	// exercises only a clean pull.
-	if err := lr.pushForeignCommit(); err != nil {
-		emit(harnessFailStep("foreign-sync", []string{"sync"}, err))
-	} else {
-		alias := filepath.Join(lr.cfg.tmpRoot, "live-alias")
-		if err := buildLiveAlias(lr.cfg.placeholder, alias, "2026-01-07", 0.9); err != nil {
-			emit(harnessFailStep("foreign-sync", []string{"sync"}, err))
-		} else if err := lr.clearFetchCaches(); err != nil {
-			emit(harnessFailStep("foreign-sync", []string{"sync"}, err))
+	// TUDIFF_FIXTURES and steps a–c warmed it, so .tu/cache must go first —
+	// otherwise the alias's raised value is never read and the step exercises
+	// only a clean pull.
+	if lr.fatal == nil {
+		emit(lr.foreignSyncStep())
+	}
+
+	// e. interrupted rebase: a fabricated .git/rebase-merge in the clone;
+	// sync recovers and proceeds.
+	if lr.fatal == nil {
+		if err := fabricateRebaseMerge(lr.side.repo, lr.baseEnv); err != nil {
+			emit(harnessFailStep("rebase-recovery", []string{"sync"}, err))
 		} else {
-			res, _, _ = lr.compareStep("foreign-sync", []string{"sync"}, alias)
-			lr.checkLogsEqual(&res)
-			lr.checkCloneTrees(&res)
-			lr.checkStatusClean(&res)
+			res, oracleCap, cap := lr.runStep("rebase-recovery", []string{"sync"}, lr.aliasOrPlaceholder(), pinStatus)
+			checkStderrContains(&res, oracleCap, cap, rebaseRecoveryNeedle)
 			emit(res)
 		}
 	}
 
-	// e. interrupted rebase: a fabricated .git/rebase-merge in both clones;
-	// sync recovers and proceeds.
-	var recoveryErr error
-	for _, side := range []liveSide{lr.node, lr.goSide} {
-		if err := fabricateRebaseMerge(side.repo, lr.baseEnv); err != nil && recoveryErr == nil {
-			recoveryErr = err
+	// f. pull failure: the clone points origin at a missing bare; sync fails
+	// with the pull-failure bytes and exit 1 (the golden corpus pinned the
+	// same real git's text). The working origin is restored afterwards so cc
+	// --sync can run.
+	if lr.fatal == nil {
+		missing := filepath.Join(lr.cfg.tmpRoot, "missing.git")
+		if _, err := liveGit(lr.baseEnv, lr.side.repo, "remote", "set-url", "origin", missing); err != nil {
+			emit(harnessFailStep("pull-failure", []string{"sync"}, err))
+		} else {
+			res, _, _ := lr.runStep("pull-failure", []string{"sync"}, lr.aliasOrPlaceholder(), stepPins{})
+			checkExit(&res, 1)
+			emit(res)
 		}
-	}
-	if recoveryErr != nil {
-		emit(harnessFailStep("rebase-recovery", []string{"sync"}, recoveryErr))
-	} else {
-		res, nodeCap, goCap := lr.compareStep("rebase-recovery", []string{"sync"}, lr.aliasOrPlaceholder())
-		checkStderrContains(&res, nodeCap, goCap, rebaseRecoveryNeedle)
-		lr.checkStatusClean(&res)
-		emit(res)
-	}
-
-	// f. pull failure: both clones point origin at a missing bare; sync fails
-	// with the pull-failure bytes and exit 1 (same real git, same remote
-	// path, so the text matches after home normalization). The working
-	// origin is restored afterwards so cc --sync can run.
-	var remoteErr error
-	missing := filepath.Join(lr.cfg.tmpRoot, "missing.git")
-	for _, side := range []liveSide{lr.node, lr.goSide} {
-		if _, err := liveGit(lr.baseEnv, side.repo, "remote", "set-url", "origin", missing); err != nil && remoteErr == nil {
-			remoteErr = err
-		}
-	}
-	if remoteErr != nil {
-		emit(harnessFailStep("pull-failure", []string{"sync"}, remoteErr))
-	} else {
-		res, _, _ = lr.compareStep("pull-failure", []string{"sync"}, lr.aliasOrPlaceholder())
-		checkExit(&res, 1)
-		emit(res)
-	}
-	for _, side := range []liveSide{lr.node, lr.goSide} {
-		_, _ = liveGit(lr.baseEnv, side.repo, "remote", "set-url", "origin", side.bare)
+		_, _ = liveGit(lr.baseEnv, lr.side.repo, "remote", "set-url", "origin", lr.side.bare)
 	}
 
 	// g. cc --sync: the sync line on stderr, the table on stdout.
-	res, _, _ = lr.compareStep("cc-sync", []string{"cc", "--sync"}, lr.aliasOrPlaceholder())
-	lr.checkStatusClean(&res)
-	emit(res)
+	emit(lr.runStepN("cc-sync", []string{"cc", "--sync"}, lr.aliasOrPlaceholder(), pinStatus))
 
-	// Repair parity (intake § 10.4): the R11 fixture history seeded once,
-	// copied twice; the mjs and the Go binary run dry-run then --write, with
-	// each side's repo path normalized to $REPO before comparing.
-	repoA, repoB, err := lr.stageRepairRepos()
-	if err != nil {
-		emit(harnessFailStep("repair-dry-run", []string{"repair"}, err))
-	} else {
-		emit(lr.repairStep("repair-dry-run", repoA, repoB, false))
-		res := lr.repairStep("repair-write", repoA, repoB, true)
-		lr.checkRepairTrees(&res, repoA, repoB)
-		emit(res)
+	// Repair (intake § 10.4): the R11 fixture history seeded once, copied
+	// once; the repair binary runs dry-run then --write, the repo path
+	// normalized to $REPO before comparing/storing.
+	if lr.fatal == nil {
+		repo, err := lr.stageRepairRepo()
+		if err != nil {
+			emit(harnessFailStep("repair-dry-run", []string{"repair"}, err))
+		} else {
+			emit(lr.repairStep("repair-dry-run", repo, false))
+			emit(lr.repairStep("repair-write", repo, true))
+		}
 	}
 
-	return results
+	return results, lr.fatal
+}
+
+// foreignSyncStep is sequence step d: the foreign commit pushed to the bare,
+// the one-off raised-cost alias built, the fetch caches wiped, then the sync.
+func (lr *liveRunner) foreignSyncStep() harness.Result {
+	if err := lr.pushForeignCommit(); err != nil {
+		return harnessFailStep("foreign-sync", []string{"sync"}, err)
+	}
+	alias := filepath.Join(lr.cfg.tmpRoot, "live-alias")
+	if err := buildLiveAlias(lr.cfg.placeholder, alias, "2026-01-07", 0.9); err != nil {
+		return harnessFailStep("foreign-sync", []string{"sync"}, err)
+	}
+	if err := lr.clearFetchCaches(); err != nil {
+		return harnessFailStep("foreign-sync", []string{"sync"}, err)
+	}
+	return lr.runStepN("foreign-sync", []string{"sync"}, alias, pinStatusLog)
 }
 
 // aliasOrPlaceholder returns the one-off alias once the foreign-commit step
@@ -420,7 +532,7 @@ func (lr *liveRunner) aliasOrPlaceholder() string {
 }
 
 // harnessFailStep builds the red result for a step that could not run (a
-// harness-level failure before either side executed).
+// harness-level failure before the side executed).
 func harnessFailStep(id string, args []string, err error) harness.Result {
 	return harness.Result{
 		Case:        liveCase(id, args),
@@ -447,48 +559,177 @@ func liveCase(id string, args []string) harness.Case {
 	}
 }
 
-// compareStep runs one tu argv on both sides back-to-back (re-run once on a
-// UTC date rollover, the runCase rule) and byte-compares the captures after
-// home normalization.
-func (lr *liveRunner) compareStep(id string, args []string, fixtures string) (harness.Result, harness.SideCapture, harness.SideCapture) {
-	c := liveCase(id, args)
-	before := localDateInTZ(harness.TZFixedName)
-	nodeCap := lr.execSide(true, args, fixtures)
-	goCap := lr.execSide(false, args, fixtures)
-	rerun := false
-	if localDateInTZ(harness.TZFixedName) != before {
-		// Midnight rollover between the two sides: discard and re-run once.
-		rerun = true
-		nodeCap = lr.execSide(true, args, fixtures)
-		goCap = lr.execSide(false, args, fixtures)
-	}
-	nodeCap.Home, goCap.Home = lr.node.home, lr.goSide.home
-	res := harness.Compare(c, nodeCap, goCap)
-	res.Rerun = rerun
-	if err := harness.WriteCaseCaptures(lr.cfg.reportDir, res, nodeCap, goCap); err != nil {
-		redden(&res, "harness", strconv.Quote(err.Error()), strconv.Quote(err.Error()))
-	}
-	return res, nodeCap, goCap
+// runStepN is runStep for steps without post-step assertions.
+func (lr *liveRunner) runStepN(id string, args []string, fixtures string, pins stepPins) harness.Result {
+	res, _, _ := lr.runStep(id, args, fixtures, pins)
+	return res
 }
 
-// execSide runs one side of a step: the staged oracle bundle through node, or
-// the Go binary in place.
-func (lr *liveRunner) execSide(node bool, args []string, fixtures string) harness.SideCapture {
-	side := lr.goSide
-	name, argv := lr.cfg.goPath, args
-	if node {
-		side = lr.node
-		name, argv = lr.cfg.nodeBin, append([]string{lr.cfg.bundle}, args...)
+// runStep executes one sequence step on the staged side. Compare mode loads
+// live/<id>/ into the oracle position and compares (bytes via Compare, the
+// gitless written tree against tree.json, the pinned extras as text); update
+// modes write that golden from the fresh capture. It returns the result and
+// both positions' captures (identical in update mode) for the step-specific
+// assertions.
+func (lr *liveRunner) runStep(id string, args []string, fixtures string, pins stepPins) (harness.Result, harness.SideCapture, harness.SideCapture) {
+	c := liveCase(id, args)
+	if lr.fatal != nil {
+		return harness.Result{Case: c}, harness.SideCapture{}, harness.SideCapture{}
 	}
-	return harness.RunPipe(name, argv, side.dir, lr.childEnv(side.home, fixtures), liveTimeout)
+	dir := harness.GoldenLiveDir(lr.cfg.goldenDir, id)
+	cap, rerun := lr.execStep(args, fixtures)
+	normalizeLive(&cap, lr.side.home, lr.cfg.tmpRoot, lr.cfg.version)
+	if lr.cfg.update {
+		res, err := lr.writeStepGolden(dir, c, cap, pins)
+		if err != nil {
+			lr.fatal = fmt.Errorf("step %s: %w", id, err)
+			return harnessFailStep(id, args, err), cap, cap
+		}
+		return res, cap, cap
+	}
+
+	goldenCap, goldenTree, err := harness.LoadGoldenCase(dir, c.IO)
+	if err != nil {
+		return harnessFailStep(id, args, err), harness.SideCapture{}, cap
+	}
+	res := harness.Compare(c, goldenCap, cap)
+	res.Rerun = rerun
+	lr.checkGoldenTree(&res, goldenTree)
+	lr.checkGoldenExtras(&res, dir, pins)
+	if err := harness.WriteCaseCaptures(lr.cfg.reportDir, res, cap); err != nil {
+		redden(&res, "harness", strconv.Quote(err.Error()), strconv.Quote(err.Error()))
+	}
+	return res, goldenCap, cap
+}
+
+// normalizeLive normalizes one live capture's byte channels for storage and
+// comparison: the staged home first (it lives under the temp root), then the
+// temp root itself (real git's error text — the pull-failure step's — embeds
+// the missing-remote path verbatim), then the version. cap.Home stays set:
+// Compare's and WriteCaseCaptures' home normalization are no-ops on the
+// normalized bytes, and the tree-red go.tree copy still finds the home.
+func normalizeLive(cap *harness.SideCapture, home, tmpRoot, version string) {
+	norm := func(b []byte) []byte {
+		b = harness.NormalizeHome(b, home)
+		b = bytes.ReplaceAll(b, []byte(tmpRoot), []byte("$TMP"))
+		return harness.NormalizeVersion(b, version)
+	}
+	cap.Stdout = norm(cap.Stdout)
+	cap.Stderr = norm(cap.Stderr)
+	cap.Home = home
+}
+
+// execStep runs the capture/compare side's tu, re-running once on a UTC date
+// rollover (the runCase rule; moot under the pinned clock but cheap).
+func (lr *liveRunner) execStep(args []string, fixtures string) (cap harness.SideCapture, rerun bool) {
+	before := localDateInTZ(harness.TZFixedName)
+	cap = lr.exec(args, fixtures)
+	if localDateInTZ(harness.TZFixedName) != before {
+		return lr.exec(args, fixtures), true
+	}
+	return cap, false
+}
+
+// execGo runs the Go binary against the staged home.
+func (lr *liveRunner) execGo(args []string, fixtures string) harness.SideCapture {
+	return harness.RunPipe(lr.cfg.goPath, args, lr.side.dir, lr.childEnv(lr.side.home, fixtures), liveTimeout)
+}
+
+// writeStepGolden writes one step's golden: the byte channels (normalized by
+// runStep), the decimal exit, the gitless tree.json, and the pinned extras.
+// The returned result carries the capture's exit code in both positions so
+// the step assertions (checkExit, checkStderrContains) validate the fresh
+// capture exactly as they validate a comparison.
+func (lr *liveRunner) writeStepGolden(dir string, c harness.Case, cap harness.SideCapture, pins stepPins) (harness.Result, error) {
+	res := harness.Result{Case: c, Status: harness.StatusGreen, NodeExit: cap.Exit, GoExit: cap.Exit}
+	if cap.TimedOut {
+		return res, fmt.Errorf("capture timed out")
+	}
+	if cap.Err != "" {
+		return res, fmt.Errorf("capture failed: %s", cap.Err)
+	}
+	tree, err := harness.TreeSnapshotLive(lr.side.home)
+	if err != nil {
+		return res, err
+	}
+	if err := harness.WriteGoldenCase(dir, cap, tree); err != nil {
+		return res, err
+	}
+	if pins.status {
+		out, err := liveGit(lr.baseEnv, lr.side.repo, "status", "--porcelain")
+		if err != nil {
+			return res, err
+		}
+		if err := harness.WriteGoldenExtra(dir, "status.txt", []byte(out)); err != nil {
+			return res, err
+		}
+	}
+	if pins.log {
+		out, err := lr.sideLog()
+		if err != nil {
+			return res, err
+		}
+		if err := harness.WriteGoldenExtra(dir, "log.txt", []byte(out)); err != nil {
+			return res, err
+		}
+	}
+	lr.captured++
+	return res, nil
+}
+
+// checkGoldenTree reddens when the clone's written tree (or .last-sync
+// presence) diverges from tree.json.
+func (lr *liveRunner) checkGoldenTree(res *harness.Result, goldenTree harness.Tree) {
+	diff, err := harness.CompareLiveTree(goldenTree, lr.side.home)
+	if err != nil {
+		redden(res, "tree", strconv.Quote(err.Error()), strconv.Quote(err.Error()))
+		return
+	}
+	if diff != nil {
+		redden(res, "tree", diff.NodeExcerpt, diff.GoExcerpt)
+	}
+}
+
+// checkGoldenExtras compares the pinned text artefacts: status.txt against
+// the clone's git status --porcelain, log.txt against its log -p.
+func (lr *liveRunner) checkGoldenExtras(res *harness.Result, dir string, pins stepPins) {
+	if pins.status {
+		lr.checkGoldenText(res, dir, "status.txt", "status", func() (string, error) {
+			return liveGit(lr.baseEnv, lr.side.repo, "status", "--porcelain")
+		})
+	}
+	if pins.log {
+		lr.checkGoldenText(res, dir, "log.txt", "log", lr.sideLog)
+	}
+}
+
+// checkGoldenText compares one harness-side text artefact against the step's
+// stored extra.
+func (lr *liveRunner) checkGoldenText(res *harness.Result, dir, name, channel string, actual func() (string, error)) {
+	want, err := harness.LoadGoldenExtra(dir, name)
+	if err != nil {
+		redden(res, channel, strconv.Quote(err.Error()), strconv.Quote(err.Error()))
+		return
+	}
+	got, err := actual()
+	if err != nil {
+		redden(res, channel, string(want), fmt.Sprint(err))
+		return
+	}
+	checkEqual(res, channel, string(want), got)
 }
 
 // childEnv is one tu child's environment: livebin first on PATH (fake
 // ccusage, real git), the staged HOME, TZ=UTC, the pinned git identity/date,
-// and the fixture search path.
+// the fixture search path, and — when the golden manifest pins a clock —
+// TUDIFF_NOW.
 func (lr *liveRunner) childEnv(home, fixtures string) []string {
 	env := pinnedGitEnv(lr.cfg.livebin+string(os.PathListSeparator)+os.Getenv("PATH"), home)
-	return append(env, "TUDIFF_FIXTURES="+fixtures)
+	env = append(env, "TUDIFF_FIXTURES="+fixtures)
+	if lr.cfg.now != "" {
+		env = append(env, "TUDIFF_NOW="+lr.cfg.now)
+	}
+	return env
 }
 
 // pinnedGitEnv builds an environment from scratch (the BuildEnv rule: nothing
@@ -535,44 +776,34 @@ func liveGit(env []string, dir string, args ...string) (string, error) {
 	return out.String(), nil
 }
 
-// seedLiveRemotes builds one bare repo on main from seedDir (a scratch clone
-// receives the full tree, docs/README.md included, one "seed" commit, push)
-// and copies it to <tmp>/node.git and <tmp>/go.git — two identical remotes,
-// never shared.
-func seedLiveRemotes(tmpRoot, seedDir string, env []string) (nodeBare, goBare string, err error) {
-	seed := filepath.Join(tmpRoot, "seed.git")
-	if _, err := liveGit(env, tmpRoot, "init", "--bare", "--initial-branch=main", seed); err != nil {
-		return "", "", err
+// seedLiveRemote builds the bare repo on main from seedDir (a scratch clone
+// receives the full tree, docs/README.md included, one "seed" commit, push).
+func seedLiveRemote(tmpRoot, seedDir string, env []string) (bare string, err error) {
+	bare = filepath.Join(tmpRoot, "remote.git")
+	if _, err := liveGit(env, tmpRoot, "init", "--bare", "--initial-branch=main", bare); err != nil {
+		return "", err
 	}
 	scratch := filepath.Join(tmpRoot, "scratch")
-	if _, err := liveGit(env, tmpRoot, "clone", seed, scratch); err != nil {
-		return "", "", err
+	if _, err := liveGit(env, tmpRoot, "clone", bare, scratch); err != nil {
+		return "", err
 	}
 	if err := harness.CopyTree(seedDir, scratch); err != nil {
-		return "", "", err
+		return "", err
 	}
 	if _, err := liveGit(env, scratch, "add", "-A"); err != nil {
-		return "", "", err
+		return "", err
 	}
 	if _, err := liveGit(env, scratch, "commit", "-m", "seed"); err != nil {
-		return "", "", err
+		return "", err
 	}
 	if _, err := liveGit(env, scratch, "push", "origin", "main"); err != nil {
-		return "", "", err
+		return "", err
 	}
-	nodeBare = filepath.Join(tmpRoot, "node.git")
-	goBare = filepath.Join(tmpRoot, "go.git")
-	if err := harness.CopyTree(seed, nodeBare); err != nil {
-		return "", "", err
-	}
-	if err := harness.CopyTree(seed, goBare); err != nil {
-		return "", "", err
-	}
-	return nodeBare, goBare, nil
+	return bare, nil
 }
 
-// stageLiveSide stages one side's $HOME as the multi variant, then REPLACES
-// the seeded .tu/metrics_repo copy with a real clone of the side's bare.
+// stageLiveSide stages the side's $HOME as the multi variant, then REPLACES
+// the seeded .tu/metrics_repo copy with a real clone of the bare.
 func stageLiveSide(tmpRoot, name, bare, seedDir string, env []string) (liveSide, error) {
 	s := liveSide{name: name, bare: bare}
 	s.dir = filepath.Join(tmpRoot, name)
@@ -590,48 +821,40 @@ func stageLiveSide(tmpRoot, name, bare, seedDir string, env []string) (liveSide,
 	return s, nil
 }
 
-// pushForeignCommit clones each bare a third time, adds the other-user
+// pushForeignCommit clones the bare a second time, adds the other-user
 // day-file, commits with the pinned date, and pushes — the upstream change
-// the next sync's pull --rebase integrates. Identical tree, message, parent,
-// and dates make the two bares' new commits hash-equal.
+// the next sync's pull --rebase integrates.
 func (lr *liveRunner) pushForeignCommit() error {
 	const foreignFile = "other-user/2026/laptop/cc-2026-01-08.jsonl"
 	const foreignBody = `{"label":"2026-01-08","totalCost":2.5,"inputTokens":6000,"outputTokens":800,"cacheCreationTokens":2000,"cacheReadTokens":40000,"totalTokens":48800}` + "\n"
-	for _, side := range []liveSide{lr.node, lr.goSide} {
-		clone := filepath.Join(lr.cfg.tmpRoot, "foreign-"+side.name)
-		if _, err := liveGit(lr.baseEnv, lr.cfg.tmpRoot, "clone", side.bare, clone); err != nil {
-			return err
-		}
-		full := filepath.Join(clone, filepath.FromSlash(foreignFile))
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(full, []byte(foreignBody), 0o644); err != nil {
-			return err
-		}
-		if _, err := liveGit(lr.baseEnv, clone, "add", "other-user/"); err != nil {
-			return err
-		}
-		if _, err := liveGit(lr.baseEnv, clone, "commit", "-m", "# other-user: update 2026-01-08"); err != nil {
-			return err
-		}
-		if _, err := liveGit(lr.baseEnv, clone, "push", "origin", "main"); err != nil {
-			return err
-		}
+	clone := filepath.Join(lr.cfg.tmpRoot, "foreign")
+	if _, err := liveGit(lr.baseEnv, lr.cfg.tmpRoot, "clone", lr.side.bare, clone); err != nil {
+		return err
+	}
+	full := filepath.Join(clone, filepath.FromSlash(foreignFile))
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(full, []byte(foreignBody), 0o644); err != nil {
+		return err
+	}
+	if _, err := liveGit(lr.baseEnv, clone, "add", "other-user/"); err != nil {
+		return err
+	}
+	if _, err := liveGit(lr.baseEnv, clone, "commit", "-m", "# other-user: update 2026-01-08"); err != nil {
+		return err
+	}
+	if _, err := liveGit(lr.baseEnv, clone, "push", "origin", "main"); err != nil {
+		return err
 	}
 	return nil
 }
 
-// clearFetchCaches wipes both sides' $HOME/.tu/cache so a step running under a
+// clearFetchCaches wipes the side's $HOME/.tu/cache so a step running under a
 // different TUDIFF_FIXTURES alias re-fetches instead of replaying the records
 // an earlier step cached under the same (tool, period, args) key.
 func (lr *liveRunner) clearFetchCaches() error {
-	for _, side := range []liveSide{lr.node, lr.goSide} {
-		if err := os.RemoveAll(filepath.Join(side.home, ".tu", "cache")); err != nil {
-			return err
-		}
-	}
-	return nil
+	return os.RemoveAll(filepath.Join(lr.side.home, ".tu", "cache"))
 }
 
 // fabricateRebaseMerge plants the minimal abortable .git/rebase-merge state
@@ -697,7 +920,7 @@ func buildLiveAlias(src, dst, date string, newCost float64) error {
 	return os.WriteFile(dailyPath, append(out, '\n'), 0o644)
 }
 
-// --- repair parity ---
+// --- repair ---
 
 // liveRepairEntry is the R11 fixture's day-file line (repair_test.go's
 // repairEntry): cost is a string so the fixture controls the exact bytes.
@@ -706,22 +929,18 @@ func liveRepairEntry(label, cost string, tokens int) string {
 		label, cost, tokens) + "\n"
 }
 
-// stageRepairRepos seeds the R11 fixture history in one repo and copies it
-// twice — the mjs repairs A, the Go binary repairs B.
-func (lr *liveRunner) stageRepairRepos() (repoA, repoB string, err error) {
+// stageRepairRepo seeds the R11 fixture history in one repo and copies it
+// once — the capture/compare side's repair target.
+func (lr *liveRunner) stageRepairRepo() (string, error) {
 	src := filepath.Join(lr.cfg.tmpRoot, "repair-src")
 	if err := seedRepairHistory(src, lr.baseEnv); err != nil {
-		return "", "", err
+		return "", err
 	}
-	repoA = filepath.Join(lr.cfg.tmpRoot, "repair-node")
-	repoB = filepath.Join(lr.cfg.tmpRoot, "repair-go")
-	if err := harness.CopyTree(src, repoA); err != nil {
-		return "", "", err
+	repo := filepath.Join(lr.cfg.tmpRoot, "repair-repo")
+	if err := harness.CopyTree(src, repo); err != nil {
+		return "", err
 	}
-	if err := harness.CopyTree(src, repoB); err != nil {
-		return "", "", err
-	}
-	return repoA, repoB, nil
+	return repo, nil
 }
 
 // seedRepairHistory builds the R11 fixture (internal/sync/repair_test.go's
@@ -786,29 +1005,75 @@ func seedRepairHistory(repo string, env []string) error {
 	return commit("post-purge shrink")
 }
 
-// repairStep runs the mjs against repoA and bin/turepair against repoB and
-// compares the captures, each side's repo path replaced by $REPO first (the
-// paths differ by construction; Home stays empty so Compare adds nothing).
-func (lr *liveRunner) repairStep(id string, repoA, repoB string, write bool) harness.Result {
+// repairStep runs the repair flow's dry-run or --write half on the staged
+// repair repo. Compare mode loads live/<id>/ (repo path stored as $REPO) and
+// compares the output and the repo tree; update modes write that golden.
+func (lr *liveRunner) repairStep(id string, repo string, write bool) harness.Result {
 	caseArgs := []string{"repair"}
 	if write {
 		caseArgs = append(caseArgs, "--write")
 	}
 	c := liveCase(id, caseArgs)
-	env := pinnedGitEnv(os.Getenv("PATH"), lr.cfg.tmpRoot)
-	nodeCap := harness.RunPipe(lr.cfg.nodeBin,
-		append([]string{lr.cfg.repairScript, "--repo", repoA}, writeFlag(write)...), lr.cfg.tmpRoot, env, liveTimeout)
-	goCap := harness.RunPipe(lr.cfg.turepairPath,
-		append([]string{"--repo", repoB}, writeFlag(write)...), lr.cfg.tmpRoot, env, liveTimeout)
-	nodeCap.Stdout = normalizeRepo(nodeCap.Stdout, repoA)
-	nodeCap.Stderr = normalizeRepo(nodeCap.Stderr, repoA)
-	goCap.Stdout = normalizeRepo(goCap.Stdout, repoB)
-	goCap.Stderr = normalizeRepo(goCap.Stderr, repoB)
-	res := harness.Compare(c, nodeCap, goCap)
-	if err := harness.WriteCaseCaptures(lr.cfg.reportDir, res, nodeCap, goCap); err != nil {
+	if lr.fatal != nil {
+		return harness.Result{Case: c}
+	}
+	dir := harness.GoldenLiveDir(lr.cfg.goldenDir, id)
+	cap := lr.repair(repo, write)
+	cap.Stdout = normalizeRepo(cap.Stdout, repo)
+	cap.Stderr = normalizeRepo(cap.Stderr, repo)
+	cap.Stdout = bytes.ReplaceAll(cap.Stdout, []byte(lr.cfg.tmpRoot), []byte("$TMP"))
+	cap.Stderr = bytes.ReplaceAll(cap.Stderr, []byte(lr.cfg.tmpRoot), []byte("$TMP"))
+	if lr.cfg.update {
+		res := harness.Result{Case: c, Status: harness.StatusGreen, NodeExit: cap.Exit, GoExit: cap.Exit}
+		if err := lr.writeRepairGolden(dir, cap, repo); err != nil {
+			lr.fatal = fmt.Errorf("step %s: %w", id, err)
+			return harnessFailStep(id, caseArgs, err)
+		}
+		return res
+	}
+	goldenCap, goldenTree, err := harness.LoadGoldenCase(dir, c.IO)
+	if err != nil {
+		return harnessFailStep(id, caseArgs, err)
+	}
+	res := harness.Compare(c, goldenCap, cap)
+	actual, err := harness.TreeSnapshotRepo(repo)
+	if err != nil {
+		redden(&res, "tree", strconv.Quote(err.Error()), strconv.Quote(err.Error()))
+	} else if diff := harness.CompareTreeSnapshot(goldenTree, actual); diff != nil {
+		redden(&res, "tree", diff.NodeExcerpt, diff.GoExcerpt)
+	}
+	if err := harness.WriteCaseCaptures(lr.cfg.reportDir, res, cap); err != nil {
 		redden(&res, "harness", strconv.Quote(err.Error()), strconv.Quote(err.Error()))
 	}
 	return res
+}
+
+// writeRepairGolden writes one repair step's golden: the capture (repo path
+// already normalized to $REPO; the repair output has no version surface) and
+// the repo's gitless tree.json.
+func (lr *liveRunner) writeRepairGolden(dir string, cap harness.SideCapture, repo string) error {
+	if cap.TimedOut {
+		return fmt.Errorf("capture timed out")
+	}
+	if cap.Err != "" {
+		return fmt.Errorf("capture failed: %s", cap.Err)
+	}
+	tree, err := harness.TreeSnapshotRepo(repo)
+	if err != nil {
+		return err
+	}
+	if err := harness.WriteGoldenCase(dir, cap, tree); err != nil {
+		return err
+	}
+	lr.captured++
+	return nil
+}
+
+// repairGo runs bin/turepair against the repair repo.
+func (lr *liveRunner) repairGo(repo string, write bool) harness.SideCapture {
+	env := pinnedGitEnv(os.Getenv("PATH"), lr.cfg.tmpRoot)
+	return harness.RunPipe(lr.cfg.turepairPath,
+		append([]string{"--repo", repo}, writeFlag(write)...), lr.cfg.tmpRoot, env, liveTimeout)
 }
 
 func writeFlag(write bool) []string {
@@ -854,157 +1119,27 @@ func checkEqual(res *harness.Result, channel, node, goText string) {
 	redden(res, channel, harness.Excerpt([]byte(node), off), harness.Excerpt([]byte(goText), off))
 }
 
-// sideLog is the side's `git log --format=%H%n%s -p main` bytes — hashes
-// included, which the pinned dates make comparable across sides.
-func (lr *liveRunner) sideLog(side liveSide) (string, error) {
-	return liveGit(lr.baseEnv, side.repo, "log", "--format=%H%n%s", "-p", "main")
+// sideLog is the clone's `git log --format=%H%n%s -p main` bytes — hashes
+// included, which the pinned dates make reproducible across runs.
+func (lr *liveRunner) sideLog() (string, error) {
+	return liveGit(lr.baseEnv, lr.side.repo, "log", "--format=%H%n%s", "-p", "main")
 }
 
-// checkLogsEqual reddens when the two clones' log -p outputs differ.
-func (lr *liveRunner) checkLogsEqual(res *harness.Result) {
-	n, errN := lr.sideLog(lr.node)
-	g, errG := lr.sideLog(lr.goSide)
-	if errN != nil || errG != nil {
-		redden(res, "log", fmt.Sprint(errN), fmt.Sprint(errG))
-		return
-	}
-	checkEqual(res, "log", n, g)
-}
-
-// checkStatusClean reddens when either clone's `git status --porcelain` is
-// non-empty.
-func (lr *liveRunner) checkStatusClean(res *harness.Result) {
-	n, errN := liveGit(lr.baseEnv, lr.node.repo, "status", "--porcelain")
-	g, errG := liveGit(lr.baseEnv, lr.goSide.repo, "status", "--porcelain")
-	if errN != nil || errG != nil {
-		redden(res, "status", fmt.Sprint(errN), fmt.Sprint(errG))
-		return
-	}
-	if strings.TrimSpace(n) != "" || strings.TrimSpace(g) != "" {
-		redden(res, "status", strconv.Quote(n), strconv.Quote(g))
-	}
-}
-
-// cloneTree lists the relative slash paths and bytes of every file under
-// root, .git excluded — the two clones' .git contents legitimately differ
-// (the remote path), their tracked trees must not.
-func cloneTree(root string) (map[string][]byte, error) {
-	files := map[string][]byte{}
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if rel == ".git" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		files[filepath.ToSlash(rel)] = raw
-		return nil
-	})
-	return files, err
-}
-
-// compareTrees reddens on the first path-set or byte difference between two
-// file maps (sorted order, so the reported path is stable).
-func compareTrees(res *harness.Result, channel string, node, goTree map[string][]byte) {
-	paths := make([]string, 0, len(node)+len(goTree))
-	for p := range node {
-		paths = append(paths, p)
-	}
-	for p := range goTree {
-		if _, ok := node[p]; !ok {
-			paths = append(paths, p)
-		}
-	}
-	sort.Strings(paths)
-	for _, p := range paths {
-		nb, nOK := node[p]
-		gb, gOK := goTree[p]
-		if nOK != gOK {
-			nState, gState := p+": absent", p+": present"
-			if nOK {
-				nState, gState = gState, nState
-			}
-			redden(res, channel, nState, gState)
-			return
-		}
-		if !bytes.Equal(nb, gb) {
-			m := min(len(nb), len(gb))
-			off := m
-			for i := 0; i < m; i++ {
-				if nb[i] != gb[i] {
-					off = i
-					break
-				}
-			}
-			redden(res, channel, p+": "+harness.Excerpt(nb, off), p+": "+harness.Excerpt(gb, off))
-			return
-		}
-	}
-}
-
-// checkCloneTrees reddens when the two clones' day-file trees (minus .git)
-// differ.
-func (lr *liveRunner) checkCloneTrees(res *harness.Result) {
-	nt, errN := cloneTree(lr.node.repo)
-	gt, errG := cloneTree(lr.goSide.repo)
-	if errN != nil || errG != nil {
-		redden(res, "tree", fmt.Sprint(errN), fmt.Sprint(errG))
-		return
-	}
-	compareTrees(res, "tree", nt, gt)
-}
-
-// checkRepairTrees reddens when the two repaired repos' working trees differ.
-func (lr *liveRunner) checkRepairTrees(res *harness.Result, repoA, repoB string) {
-	nt, errN := cloneTree(repoA)
-	gt, errG := cloneTree(repoB)
-	if errN != nil || errG != nil {
-		redden(res, "tree", fmt.Sprint(errN), fmt.Sprint(errG))
-		return
-	}
-	compareTrees(res, "tree", nt, gt)
-}
-
-// checkLastSyncPresent reddens unless .last-sync exists on BOTH sides.
-func (lr *liveRunner) checkLastSyncPresent(res *harness.Result) {
-	n := liveFilePresent(filepath.Join(lr.node.home, ".tu", ".last-sync"))
-	g := liveFilePresent(filepath.Join(lr.goSide.home, ".tu", ".last-sync"))
-	if !n || !g {
-		nState, gState := ".last-sync: present", ".last-sync: present"
-		if !n {
-			nState = ".last-sync: absent"
-		}
-		if !g {
-			gState = ".last-sync: absent"
-		}
-		redden(res, "state", nState, gState)
-	}
-}
-
-// checkStderrContains reddens unless both sides' stderr carries needle (byte
-// equality alone cannot catch both sides silently missing a mandated line).
-func checkStderrContains(res *harness.Result, nodeCap, goCap harness.SideCapture, needle string) {
-	n := bytes.Contains(nodeCap.Stderr, []byte(needle))
-	g := bytes.Contains(goCap.Stderr, []byte(needle))
-	if !n || !g {
+// checkStderrContains reddens unless both positions' stderr carries needle
+// (byte equality alone cannot catch the corpus AND the binary both silently
+// missing a mandated line).
+func checkStderrContains(res *harness.Result, oracleCap, cap harness.SideCapture, needle string) {
+	o := bytes.Contains(oracleCap.Stderr, []byte(needle))
+	g := bytes.Contains(cap.Stderr, []byte(needle))
+	if !o || !g {
 		redden(res, "expect",
-			fmt.Sprintf("stderr contains %q: %t", needle, n),
+			fmt.Sprintf("stderr contains %q: %t", needle, o),
 			fmt.Sprintf("stderr contains %q: %t", needle, g))
 	}
 }
 
-// checkExit reddens unless both sides exited with want.
+// checkExit reddens unless both positions exited with want (in compare mode
+// the oracle position is the golden's stored exit code).
 func checkExit(res *harness.Result, want int) {
 	if res.NodeExit != want || res.GoExit != want {
 		redden(res, "expect",
@@ -1013,10 +1148,99 @@ func checkExit(res *harness.Result, want int) {
 	}
 }
 
-// --- file helpers ---
+// --- Transitional Node capture arm (plan R5) --------------------------------
+// Everything between these markers exists only to capture the committed
+// golden corpus from the Node oracle while src/node/ still exists; T006
+// deletes the whole arm (the --from-node flag, preflightLiveFromNode,
+// executeLiveNodeCapture, execNode, repairNode, and liveConfig's
+// nodeBin/nodeBundle/repairScript fields).
 
-// liveFilePresent reports whether path exists as a regular file.
-func liveFilePresent(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && !info.IsDir()
+// preflightLiveFromNode runs the arm's extra checks: the bundle and node on
+// PATH.
+func preflightLiveFromNode(opts *liveOptions, root string, fail func(string, ...any) int) (nodeBin string, code int) {
+	if !fileExists(opts.resolve(root, "from-node", opts.fromNode)) {
+		return "", fail("%s not found (run npm ci && npm run build)", opts.fromNode)
+	}
+	nodeBin, err := exec.LookPath("node")
+	if err != nil {
+		return "", fail("node not found on PATH (required by --from-node)")
+	}
+	return nodeBin, 0
 }
+
+// executeLiveNodeCapture is the --update --from-node path: the live goldens
+// are captured from the staged Node oracle (tu through node, repair through
+// node scripts/repair-metrics.mjs) on the real clock, guarded so the capture
+// date agrees in both matrix timezones before the first step and after the
+// last; manifest.now is that date at noon.
+func executeLiveNodeCapture(opts *liveOptions, root string, old *harness.GoldenManifest, goldenDir, nodeBin string, stdout, stderr io.Writer) int {
+	fail := func(format string, a ...any) int {
+		fmt.Fprintf(stderr, "tudiff: "+format+"\n", a...)
+		return 2
+	}
+	date, ok := captureDateOK(captureClock())
+	if !ok {
+		return fail("capture date differs between UTC and Asia/Kolkata — retry between 06:00 and 18:30 UTC")
+	}
+	lr, cleanup, code := stageLive(opts, root, string(harness.SideNode), stderr)
+	if code != 0 {
+		return code
+	}
+	defer cleanup()
+	bundle, err := harness.StageOracle(lr.cfg.tmpRoot, opts.resolve(root, "from-node", opts.fromNode),
+		filepath.Join(root, "tu.default.conf"), filepath.Join(lr.cfg.livebin, "ccusage"))
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	lr.cfg.nodeBin, lr.cfg.nodeBundle = nodeBin, bundle
+	lr.cfg.repairScript = filepath.Join(root, "scripts", "repair-metrics.mjs")
+	lr.cfg.goldenDir = goldenDir
+	lr.cfg.update = true
+	lr.cfg.now = "" // the Node side runs on the real clock
+	lr.exec = lr.execNode
+	lr.repair = lr.repairNode
+	if lr.cfg.version, err = harness.ProbeVersion(nodeBin, bundle, "--version"); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	nodeVersion, err := harness.ProbeVersion(nodeBin, "--version")
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	if _, err := lr.runSequence(stdout); err != nil {
+		return fail("%v", err)
+	}
+	if _, ok := captureDateOK(captureClock()); !ok {
+		return fail("capture date differs between UTC and Asia/Kolkata — retry between 06:00 and 18:30 UTC")
+	}
+	m, err := newManifest(old, filepath.Join(root, defaultMatrix), date+"T12:00:00")
+	if err != nil {
+		return fail("%v", err)
+	}
+	m.Oracle = "node " + opts.fromNode
+	m.OracleVersion = lr.cfg.version
+	m.NodeVersion = nodeVersion
+	m.LiveSteps = lr.captured
+	if err := harness.WriteGoldenManifest(goldenDir, m); err != nil {
+		return fail("writing manifest: %v", err)
+	}
+	fmt.Fprintf(stdout, "tudiff: wrote %d goldens under %s (now %s)\n", lr.captured, opts.golden+"/live", m.Now)
+	return 0
+}
+
+// execNode runs the staged oracle bundle through node against the staged home.
+func (lr *liveRunner) execNode(args []string, fixtures string) harness.SideCapture {
+	return harness.RunPipe(lr.cfg.nodeBin, append([]string{lr.cfg.nodeBundle}, args...),
+		lr.side.dir, lr.childEnv(lr.side.home, fixtures), liveTimeout)
+}
+
+// repairNode runs the TS repair script through node against the repair repo.
+func (lr *liveRunner) repairNode(repo string, write bool) harness.SideCapture {
+	env := pinnedGitEnv(os.Getenv("PATH"), lr.cfg.tmpRoot)
+	return harness.RunPipe(lr.cfg.nodeBin,
+		append([]string{lr.cfg.repairScript, "--repo", repo}, writeFlag(write)...), lr.cfg.tmpRoot, env, liveTimeout)
+}
+
+// --- end of the transitional Node capture arm ---

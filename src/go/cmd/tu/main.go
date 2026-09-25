@@ -74,6 +74,22 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
+// nowEnvVar pins the edge clock for the differential harness's golden runs
+// (a zone-less local timestamp read in the process TZ).
+const nowEnvVar = "TUDIFF_NOW"
+
+// now is the edge clock. TUDIFF_NOW (a zone-less local timestamp,
+// "2006-01-02T15:04:05", read in the process TZ) pins it for the
+// differential harness's golden runs; unset or malformed → time.Now.
+func now() time.Time {
+	if v := os.Getenv(nowEnvVar); v != "" {
+		if t, err := time.ParseInLocation("2006-01-02T15:04:05", v, time.Local); err == nil {
+			return t
+		}
+	}
+	return time.Now()
+}
+
 // currentUsername is the edge's Env.Username: os/user Current().Username (the
 // TS safeUsername source; Load substitutes "unknown" on error).
 func currentUsername() (string, error) {
@@ -145,7 +161,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	// between Load and the reserved-user check on the data path only — setup
 	// commands never clone here (init-metrics has its own interactive clone;
 	// status only reads). Its lines go to stderr in order.
-	cfg, guardLines := config.MetricsDirGuard(cfg, config.StateDir(paths.Home), time.Now(), metricsync.Exec{})
+	cfg, guardLines := config.MetricsDirGuard(cfg, config.StateDir(paths.Home), now(), metricsync.Exec{})
 	writeLines(stderr, guardLines)
 	// The reserved-user guard (the TS assertUserNotReserved) runs right after
 	// the guard: a bad config value is invocation-fixable, so it exits with
@@ -162,12 +178,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		Source: src,
 		Repo:   metrics.Source{Dir: cfg.MetricsDir},
 		Writer: metricsync.Writer{Dir: cfg.MetricsDir},
-		Now:    time.Now,
+		Now:    now,
 		Colors: ansi.Colors{Enabled: !req.Flags.NoColor && os.Getenv("NO_COLOR") == ""},
 		Width:  terminalWidth(stdout),
 		// The leaderboard footer's staleness text — a closure like Now,
 		// evaluated only by the lb path so no other command reads the file.
-		LastSync: func() string { return config.LastSync(config.StateDir(paths.Home), time.Now()) },
+		LastSync: func() string { return config.LastSync(config.StateDir(paths.Home), now()) },
 	}
 
 	// The --sync block (TS main() lines 1931–1938): it sits after the
@@ -183,7 +199,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		out, err := metricsync.FullSync(ctx, metricsync.Inputs{
 			Config:   cfg,
 			StateDir: config.StateDir(paths.Home),
-			Now:      time.Now(),
+			Now:      now(),
 			Source:   src,
 			Git:      metricsync.Exec{},
 		}, false)
@@ -247,7 +263,7 @@ func runWatchBranch(req command.Request, cfg config.Config, deps command.Deps, s
 	// The notices come from one edge call to Normalize; per-poll
 	// Result.Notices are discarded (the --full notice would otherwise repeat
 	// every poll — Normalize does not clear it).
-	_, notices, _ := command.Normalize(req, cfg.Mode, time.Now())
+	_, notices, _ := command.Normalize(req, cfg.Mode, now())
 	// The polls run the ORIGINAL request — Run normalizes per poll.
 	for _, n := range notices {
 		fmt.Fprintln(stderr, n)
@@ -289,7 +305,7 @@ func runWatchBranch(req command.Request, cfg config.Config, deps command.Deps, s
 		Term:     newWatchTerminal(),
 		Stderr:   stderr,
 		Colors:   deps.Colors,
-		Now:      time.Now,
+		Now:      now,
 		Rand:     rand.New(rand.NewPCG(seed, ^seed)),
 	})
 	for _, l := range last {
@@ -349,7 +365,7 @@ func runCommand(req command.Request, env config.Env, stdout, stderr io.Writer) i
 	case "sync":
 		return runSync(req, env, paths, stdout, stderr)
 	case "status":
-		data, warnings := config.Status(paths, env, time.Now())
+		data, warnings := config.Status(paths, env, now())
 		writeLines(stderr, warnings)
 		writeLines(stdout, data.Lines())
 		return command.ExitOK
@@ -407,7 +423,7 @@ func runSync(req command.Request, env config.Env, paths config.Paths, stdout, st
 		})
 		return command.ExitOperational
 	}
-	cfg, guardLines := config.MetricsDirGuard(cfg, config.StateDir(paths.Home), time.Now(), metricsync.Exec{})
+	cfg, guardLines := config.MetricsDirGuard(cfg, config.StateDir(paths.Home), now(), metricsync.Exec{})
 	writeLines(stderr, guardLines)
 	if cfg.Mode != config.Multi {
 		// Auto-clone failed or the metrics dir is still missing (demoted).
@@ -420,7 +436,7 @@ func runSync(req command.Request, env config.Env, paths config.Paths, stdout, st
 	inputs := metricsync.Inputs{
 		Config:   cfg,
 		StateDir: config.StateDir(paths.Home),
-		Now:      time.Now(),
+		Now:      now(),
 		Source:   src,
 		Git:      metricsync.Exec{},
 	}

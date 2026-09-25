@@ -40,6 +40,24 @@ func TestBuildEnvExact(t *testing.T) {
 	}
 }
 
+// The golden manifest's pinned clock rides the child environment as
+// TUDIFF_NOW; an empty Now leaves the variable unset (real clock).
+func TestBuildEnvNow(t *testing.T) {
+	spec := baseSpec("/abs/home")
+	spec.Now = "2026-09-26T12:00:00"
+	env := BuildEnv(baseCase(), spec)
+	want := append(append([]string(nil), BuildEnv(baseCase(), baseSpec("/abs/home"))...),
+		"TUDIFF_NOW=2026-09-26T12:00:00")
+	if strings.Join(env, "\n") != strings.Join(want, "\n") {
+		t.Errorf("env =\n%s\nwant =\n%s", strings.Join(env, "\n"), strings.Join(want, "\n"))
+	}
+	for _, kv := range BuildEnv(baseCase(), baseSpec("/abs/home")) {
+		if strings.HasPrefix(kv, "TUDIFF_NOW=") {
+			t.Errorf("TUDIFF_NOW present with an empty Now: %q", kv)
+		}
+	}
+}
+
 // R9: exported TU_METRICS_REPO / NO_COLOR in the harness process must not
 // leak into a default-env case.
 func TestBuildEnvNoLeak(t *testing.T) {
@@ -252,7 +270,8 @@ func TestCompareCallsInformational(t *testing.T) {
 		t.Errorf("CompareCallLogs = %d/%d differ=%v err=%v", nodeN, goN, differ, err)
 	}
 
-	// Six calls vs none: differ, but the case status stays green.
+	// Six calls vs none: differ (the set comparison is transitional — T006
+	// deletes CompareCallLogs with the Node capture arm).
 	six := strings.Repeat(lines[0]+"\n", 6)
 	if err := os.WriteFile(nodeLog, []byte(six), 0o644); err != nil {
 		t.Fatal(err)
@@ -264,12 +283,14 @@ func TestCompareCallsInformational(t *testing.T) {
 	if err != nil || !differ || nodeN != 6 || goN != 0 {
 		t.Errorf("CompareCallLogs = %d/%d differ=%v err=%v", nodeN, goN, differ, err)
 	}
-	cap := SideCapture{Stdout: []byte("x"), Exit: 0}
-	r := Compare(baseCase(), cap, cap)
-	r.CallsDiffer = differ
-	r.NodeCalls, r.GoCalls = nodeN, goN
-	if r.Status != StatusGreen || !r.CallsDiffer {
-		t.Errorf("status = %q, CallsDiffer = %v", r.Status, r.CallsDiffer)
+
+	// CountCalls backs report.json's go_calls in golden mode.
+	n, err := CountCalls(nodeLog)
+	if err != nil || n != 6 {
+		t.Errorf("CountCalls = %d, %v; want 6", n, err)
+	}
+	if n, err := CountCalls(goLog); err != nil || n != 0 {
+		t.Errorf("CountCalls (missing log) = %d, %v; want 0", n, err)
 	}
 }
 

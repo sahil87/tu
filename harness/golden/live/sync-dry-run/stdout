@@ -1,0 +1,22 @@
+Would write 17 day-file(s) under ~/.tu/metrics_repo/harness-user/:
+  2026/harness-machine/cc-2026-01-05.jsonl  $0.50  (update: $0.25 → $0.50)
+  2026/harness-machine/cc-2026-01-07.jsonl  $0.50  (new)
+  2026/harness-machine/codex-2026-01-05.jsonl  $0.50  (new)
+  2026/harness-machine/codex-2026-01-06.jsonl  $0.50  (new)
+  2026/harness-machine/codex-2026-01-07.jsonl  $0.50  (new)
+  2026/harness-machine/oc-2026-01-05.jsonl  $0.50  (new)
+  2026/harness-machine/oc-2026-01-06.jsonl  $0.50  (new)
+  2026/harness-machine/oc-2026-01-07.jsonl  $0.50  (new)
+  2026/harness-machine/gemini-2026-01-05.jsonl  $0.50  (new)
+  2026/harness-machine/gemini-2026-01-06.jsonl  $0.50  (new)
+  2026/harness-machine/gemini-2026-01-07.jsonl  $0.50  (new)
+  2026/harness-machine/copilot-2026-01-05.jsonl  $0.50  (new)
+  2026/harness-machine/copilot-2026-01-06.jsonl  $0.50  (new)
+  2026/harness-machine/copilot-2026-01-07.jsonl  $0.50  (new)
+  2026/harness-machine/kimi-2026-01-05.jsonl  $0.50  (new)
+  2026/harness-machine/kimi-2026-01-06.jsonl  $0.50  (new)
+  2026/harness-machine/kimi-2026-01-07.jsonl  $0.50  (new)
+Would skip 1 file(s) (never-shrink guard):
+  2026/harness-machine/cc-2026-01-06.jsonl  incoming $0.50 < existing $0.75
+Would commit: "# harness-user: update 2026-09-25", then pull --rebase origin main, then push
+Dry run — nothing written, committed, or pushed.

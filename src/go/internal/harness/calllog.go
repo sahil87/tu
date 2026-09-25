@@ -9,8 +9,8 @@ import (
 )
 
 // CallLogEnv names the environment variable both fakes append their
-// invocation log to; each line lets P4 byte-compare the *sequence* of
-// ccusage/git calls between the TypeScript and Go binaries.
+// invocation log to; the harness reads it for the unconfirmed-fixture gate
+// and the report's go.calls.jsonl capture.
 const CallLogEnv = "TUDIFF_CALL_LOG"
 
 // callLogLine is the JSON-lines shape appended to $TUDIFF_CALL_LOG. Matched
@@ -47,6 +47,17 @@ func LogCall(tool string, argv []string, matched string) {
 	}
 	defer f.Close()
 	_, _ = f.Write(append(raw, '\n'))
+}
+
+// CountCalls returns the number of logged invocations in the call log at
+// path (a missing log counts as empty).
+func CountCalls(path string) (int, error) {
+	n := 0
+	err := readCallLog(path, func(callLogLine) error {
+		n++
+		return nil
+	})
+	return n, err
 }
 
 // readCallLog invokes fn for every parsed line of the JSON-lines call log at

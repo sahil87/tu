@@ -1,0 +1,14 @@
+[
+  {
+    "label": "2026-01",
+    "totalCost": 1.5,
+    "inputTokens": 9000,
+    "outputTokens": 1200,
+    "cacheCreationTokens": 3000,
+    "cacheReadTokens": 60000,
+    "totalTokens": 73200,
+    "machines": {
+      "dev-ws-sahil02": 1.5
+    }
+  }
+]

@@ -1,0 +1,2 @@
+date,input,output,cache_write,cache_read,total,cost,machine_harness-machine_cost,machine_other-box_cost
+2026-01,12000,1600,4000,80000,97600,2.15,1.75,0.40

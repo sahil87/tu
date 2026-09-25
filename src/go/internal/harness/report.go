@@ -12,16 +12,19 @@ import (
 // ReportHeader carries the run metadata printed at the top of report.txt and
 // embedded in report.json.
 type ReportHeader struct {
-	Timestamp   time.Time // UTC
-	NodePath    string    // as given on the command line
-	NodeVersion string    // `node --version` output
-	GoPath      string    // as given on the command line
-	GoVersion   string    // `<go> --version` first line
-	Fixtures    []string  // resolved fixture alias names, search order
-	Script      string    // script(1) flavour: util-linux, bsd, or "n/a"
-	MatrixPath  string    // as given on the command line
-	Cases       int       // expanded, filtered case count
-	Filter      string    // --filter substring, empty when unset
+	Timestamp           time.Time // UTC
+	GoldenDir           string    // --golden as given on the command line
+	GoldenCapturedAt    string    // golden manifest's captured_at
+	GoldenOracle        string    // golden manifest's oracle (what produced the corpus)
+	GoldenOracleVersion string    // golden manifest's oracle_version
+	GoldenNow           string    // golden manifest's now (the pinned clock)
+	GoPath              string    // as given on the command line
+	GoVersion           string    // `<go> --version` first line
+	Fixtures            []string  // resolved fixture alias names, search order
+	Script              string    // script(1) flavour: util-linux, bsd, or "n/a"
+	MatrixPath          string    // as given on the command line
+	Cases               int       // expanded, filtered case count
+	Filter              string    // --filter substring, empty when unset
 	// ExpectedPath is the --expected path as given on the command line;
 	// ExpectedEntries is the loaded set's entry count (0 for the empty set).
 	ExpectedPath    string
@@ -130,7 +133,8 @@ func RenderHeader(h ReportHeader) []string {
 	matrix += ")"
 	return []string{
 		"tudiff run  " + h.Timestamp.UTC().Format(time.RFC3339),
-		fmt.Sprintf("node: %s (%s)", h.NodePath, h.NodeVersion),
+		fmt.Sprintf("golden: %s (captured %s from %s %s; now %s)",
+			h.GoldenDir, h.GoldenCapturedAt, h.GoldenOracle, h.GoldenOracleVersion, h.GoldenNow),
 		fmt.Sprintf("go: %s (%s)", h.GoPath, h.GoVersion),
 		"fixtures: " + strings.Join(h.Fixtures, ", "),
 		"script: " + script,
@@ -141,20 +145,20 @@ func RenderHeader(h ReportHeader) []string {
 
 // RenderCaseLine renders one case's report line: the padded verdict and ID,
 // the first-divergence detail for red/timeout, then the informational
-// unconfirmed/calls-differ markers.
+// unconfirmed marker.
 func RenderCaseLine(r Result) string {
 	line := fmt.Sprintf("%-7s %s", strings.ToUpper(r.Status), r.Case.ID)
 	switch r.Status {
 	case StatusTimeout:
-		line += fmt.Sprintf("  timeout: node=%t go=%t", r.NodeTimeout, r.GoTimeout)
+		line += fmt.Sprintf("  timeout: golden=%t go=%t", r.NodeTimeout, r.GoTimeout)
 	case StatusRed:
 		switch r.Channel {
 		case "exit":
-			line += fmt.Sprintf("  exit: node=%d go=%d", r.NodeExit, r.GoExit)
+			line += fmt.Sprintf("  exit: golden=%d go=%d", r.NodeExit, r.GoExit)
 		case "tree":
-			line += fmt.Sprintf("  tree: node=%s go=%s", r.NodeExcerpt, r.GoExcerpt)
+			line += fmt.Sprintf("  tree: golden=%s go=%s", r.NodeExcerpt, r.GoExcerpt)
 		default:
-			line += fmt.Sprintf("  %s @%d (line %d): node=%s go=%s",
+			line += fmt.Sprintf("  %s @%d (line %d): golden=%s go=%s",
 				r.Channel, r.Offset, r.Line, r.NodeExcerpt, r.GoExcerpt)
 		}
 	}
@@ -163,9 +167,6 @@ func RenderCaseLine(r Result) string {
 	}
 	if r.Unconfirmed {
 		line += " [unconfirmed]"
-	}
-	if r.CallsDiffer {
-		line += fmt.Sprintf(" [calls differ: node=%d go=%d]", r.NodeCalls, r.GoCalls)
 	}
 	return line
 }
@@ -229,18 +230,18 @@ type reportJSON struct {
 }
 
 type reportHeaderJ struct {
-	Timestamp       string   `json:"timestamp"`
-	Node            string   `json:"node"`
-	NodeVersion     string   `json:"node_version"`
-	Go              string   `json:"go"`
-	GoVersion       string   `json:"go_version"`
-	Fixtures        []string `json:"fixtures"`
-	Script          string   `json:"script"`
-	Matrix          string   `json:"matrix"`
-	Cases           int      `json:"cases"`
-	Filter          string   `json:"filter"`
-	Expected        string   `json:"expected"`
-	ExpectedEntries int      `json:"expected_entries"`
+	Timestamp        string   `json:"timestamp"`
+	Golden           string   `json:"golden"`
+	GoldenCapturedAt string   `json:"golden_captured_at"`
+	Go               string   `json:"go"`
+	GoVersion        string   `json:"go_version"`
+	Fixtures         []string `json:"fixtures"`
+	Script           string   `json:"script"`
+	Matrix           string   `json:"matrix"`
+	Cases            int      `json:"cases"`
+	Filter           string   `json:"filter"`
+	Expected         string   `json:"expected"`
+	ExpectedEntries  int      `json:"expected_entries"`
 }
 
 type reportSummaryJ struct {
@@ -255,29 +256,26 @@ type reportSummaryJ struct {
 }
 
 type reportCaseJ struct {
-	ID          string   `json:"id"`
-	Group       string   `json:"group"`
-	Args        []string `json:"args"`
-	Conf        string   `json:"conf"`
-	Env         string   `json:"env"`
-	IO          string   `json:"io"`
-	TZ          string   `json:"tz"`
-	Status      string   `json:"status"`
-	Channel     string   `json:"channel"`
-	Offset      int      `json:"offset"`
-	Line        int      `json:"line"`
-	NodeExcerpt string   `json:"node_excerpt"`
-	GoExcerpt   string   `json:"go_excerpt"`
-	NodeExit    int      `json:"node_exit"`
-	GoExit      int      `json:"go_exit"`
-	NodeMs      int64    `json:"node_ms"`
-	GoMs        int64    `json:"go_ms"`
-	Unconfirmed bool     `json:"unconfirmed"`
-	CallsDiffer bool     `json:"calls_differ"`
-	NodeCalls   int      `json:"node_calls"`
-	GoCalls     int      `json:"go_calls"`
-	Rerun       bool     `json:"rerun"`
-	Expected    string   `json:"expected"`
+	ID            string   `json:"id"`
+	Group         string   `json:"group"`
+	Args          []string `json:"args"`
+	Conf          string   `json:"conf"`
+	Env           string   `json:"env"`
+	IO            string   `json:"io"`
+	TZ            string   `json:"tz"`
+	Status        string   `json:"status"`
+	Channel       string   `json:"channel"`
+	Offset        int      `json:"offset"`
+	Line          int      `json:"line"`
+	GoldenExcerpt string   `json:"golden_excerpt"`
+	GoExcerpt     string   `json:"go_excerpt"`
+	GoldenExit    int      `json:"golden_exit"`
+	GoExit        int      `json:"go_exit"`
+	GoMs          int64    `json:"go_ms"`
+	Unconfirmed   bool     `json:"unconfirmed"`
+	GoCalls       int      `json:"go_calls"`
+	Rerun         bool     `json:"rerun"`
+	Expected      string   `json:"expected"`
 }
 
 // WriteReport writes report.txt and report.json under dir (created as
@@ -302,18 +300,18 @@ func WriteReport(dir string, h ReportHeader, exp *Expected, results []Result) er
 	doc := reportJSON{
 		Schema: 1,
 		Header: reportHeaderJ{
-			Timestamp:       h.Timestamp.UTC().Format(time.RFC3339),
-			Node:            h.NodePath,
-			NodeVersion:     h.NodeVersion,
-			Go:              h.GoPath,
-			GoVersion:       h.GoVersion,
-			Fixtures:        h.Fixtures,
-			Script:          script,
-			Matrix:          h.MatrixPath,
-			Cases:           h.Cases,
-			Filter:          h.Filter,
-			Expected:        h.ExpectedPath,
-			ExpectedEntries: h.ExpectedEntries,
+			Timestamp:        h.Timestamp.UTC().Format(time.RFC3339),
+			Golden:           h.GoldenDir,
+			GoldenCapturedAt: h.GoldenCapturedAt,
+			Go:               h.GoPath,
+			GoVersion:        h.GoVersion,
+			Fixtures:         h.Fixtures,
+			Script:           script,
+			Matrix:           h.MatrixPath,
+			Cases:            h.Cases,
+			Filter:           h.Filter,
+			Expected:         h.ExpectedPath,
+			ExpectedEntries:  h.ExpectedEntries,
 		},
 		Summary: reportSummaryJ{
 			Total:       s.Total,
@@ -328,29 +326,26 @@ func WriteReport(dir string, h ReportHeader, exp *Expected, results []Result) er
 	}
 	for _, r := range results {
 		doc.Cases = append(doc.Cases, reportCaseJ{
-			ID:          r.Case.ID,
-			Group:       r.Case.Group,
-			Args:        r.Case.Args,
-			Conf:        r.Case.Conf,
-			Env:         r.Case.Env,
-			IO:          r.Case.IO,
-			TZ:          r.Case.TZ,
-			Status:      r.Status,
-			Channel:     r.Channel,
-			Offset:      r.Offset,
-			Line:        r.Line,
-			NodeExcerpt: r.NodeExcerpt,
-			GoExcerpt:   r.GoExcerpt,
-			NodeExit:    r.NodeExit,
-			GoExit:      r.GoExit,
-			NodeMs:      r.NodeMs,
-			GoMs:        r.GoMs,
-			Unconfirmed: r.Unconfirmed,
-			CallsDiffer: r.CallsDiffer,
-			NodeCalls:   r.NodeCalls,
-			GoCalls:     r.GoCalls,
-			Rerun:       r.Rerun,
-			Expected:    r.Expected,
+			ID:            r.Case.ID,
+			Group:         r.Case.Group,
+			Args:          r.Case.Args,
+			Conf:          r.Case.Conf,
+			Env:           r.Case.Env,
+			IO:            r.Case.IO,
+			TZ:            r.Case.TZ,
+			Status:        r.Status,
+			Channel:       r.Channel,
+			Offset:        r.Offset,
+			Line:          r.Line,
+			GoldenExcerpt: r.NodeExcerpt,
+			GoExcerpt:     r.GoExcerpt,
+			GoldenExit:    r.NodeExit,
+			GoExit:        r.GoExit,
+			GoMs:          r.GoMs,
+			Unconfirmed:   r.Unconfirmed,
+			GoCalls:       r.GoCalls,
+			Rerun:         r.Rerun,
+			Expected:      r.Expected,
 		})
 	}
 	raw, err := json.MarshalIndent(doc, "", "  ")
@@ -360,14 +355,16 @@ func WriteReport(dir string, h ReportHeader, exp *Expected, results []Result) er
 	return os.WriteFile(filepath.Join(dir, "report.json"), append(raw, '\n'), 0o644)
 }
 
-// WriteCaseCaptures writes one case's per-side captures under
-// <reportDir>/cases/<case ID as nested dirs>/: {node,go}.{stdout,stderr,exit}
-// for pipe cases, {node,go}.{tty,exit} for tty cases. The byte channels are
-// home-normalized with each side's staged Home, so the files hold exactly
-// what Compare compared and `diff node.stdout go.stdout` stays useful. The
-// call logs are written by the fakes themselves (TUDIFF_CALL_LOG points
-// here).
-func WriteCaseCaptures(reportDir string, r Result, node, goCap SideCapture) error {
+// WriteCaseCaptures writes one case's Go-side captures under
+// <reportDir>/cases/<case ID as nested dirs>/: go.{stdout,stderr,exit} for
+// pipe cases, go.{tty,exit} for tty cases. The byte channels are
+// home-normalized with the Go side's staged Home, so the files hold exactly
+// what Compare compared. On a tree red the Go side's written tree lands under
+// go.tree/ (metrics_repo/ plus .last-sync when present) so the bytes can be
+// inspected without re-running; the golden side needs no copy — it is the
+// committed corpus. go.calls.jsonl is written by the fakes themselves
+// (TUDIFF_CALL_LOG points here).
+func WriteCaseCaptures(reportDir string, r Result, goCap SideCapture) error {
 	dir := filepath.Join(reportDir, "cases", filepath.FromSlash(r.Case.ID))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -375,27 +372,40 @@ func WriteCaseCaptures(reportDir string, r Result, node, goCap SideCapture) erro
 	write := func(name string, data []byte) error {
 		return os.WriteFile(filepath.Join(dir, name), data, 0o644)
 	}
-	sides := []struct {
-		name string
-		cap  SideCapture
-	}{
-		{string(SideNode), node},
-		{string(SideGo), goCap},
-	}
-	for _, side := range sides {
-		if r.Case.IO == IOTTY {
-			if err := write(side.name+".tty", NormalizeHome(side.cap.TTY, side.cap.Home)); err != nil {
-				return err
-			}
-		} else {
-			if err := write(side.name+".stdout", NormalizeHome(side.cap.Stdout, side.cap.Home)); err != nil {
-				return err
-			}
-			if err := write(side.name+".stderr", NormalizeHome(side.cap.Stderr, side.cap.Home)); err != nil {
-				return err
-			}
+	if r.Case.IO == IOTTY {
+		if err := write("go.tty", NormalizeHome(goCap.TTY, goCap.Home)); err != nil {
+			return err
 		}
-		if err := write(side.name+".exit", []byte(fmt.Sprintf("%d\n", side.cap.Exit))); err != nil {
+	} else {
+		if err := write("go.stdout", NormalizeHome(goCap.Stdout, goCap.Home)); err != nil {
+			return err
+		}
+		if err := write("go.stderr", NormalizeHome(goCap.Stderr, goCap.Home)); err != nil {
+			return err
+		}
+	}
+	if err := write("go.exit", []byte(fmt.Sprintf("%d\n", goCap.Exit))); err != nil {
+		return err
+	}
+	if r.Status == StatusRed && r.Channel == "tree" && goCap.Home != "" {
+		return writeGoTree(goCap.Home, filepath.Join(dir, "go.tree"))
+	}
+	return nil
+}
+
+// writeGoTree copies the Go side's .tu/metrics_repo (and .last-sync, when
+// present) under dir for a tree-red case's inspection. A real clone's .git
+// (the live harness) is excluded — the tree channel never compares it.
+func writeGoTree(home, dir string) error {
+	repo := filepath.Join(home, ".tu", "metrics_repo")
+	if info, err := os.Stat(repo); err == nil && info.IsDir() {
+		if err := CopyTreeExcept(repo, filepath.Join(dir, "metrics_repo"), SkipGit); err != nil {
+			return err
+		}
+	}
+	lastSync := filepath.Join(home, ".tu", ".last-sync")
+	if filePresent(lastSync) {
+		if err := CopyFile(lastSync, filepath.Join(dir, ".last-sync"), 0o644); err != nil {
 			return err
 		}
 	}
