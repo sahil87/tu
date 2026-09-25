@@ -1,0 +1,11 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-25T06:33:50Z"}
+{"args":"Context: fab/plans/sahil/26-09-15-go-port.md, row Z2. Scope: re-triage fab/backlog.md — rows written against src/node/core/*.ts paths get re-pointed at the Go packages under src/go/internal/ (per the plan's Target architecture section mapping); rows already shipped by the Go port change breakdown get closed with the PR that shipped them.","cmd":"fab-new","event":"command","ts":"2026-09-25T06:33:50Z"}
+{"delta":"+4.8","event":"confidence","score":4.8,"trigger":"calc-score","ts":"2026-09-25T06:35:45Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-25T06:37:42Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-25T06:37:58Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-25T06:39:32Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-25T06:42:07Z"}
+{"event":"review","result":"passed","ts":"2026-09-25T06:42:07Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-25T06:42:14Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-09-25T06:44:07Z"}
+{"event":"review","result":"passed","ts":"2026-09-25T06:49:07Z"}
