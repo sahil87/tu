@@ -10,7 +10,7 @@ progress:
     review: done
     hydrate: done
     ship: done
-    review-pr: active
+    review-pr: done
 plan:
     generated: true
     task_count: 12
@@ -34,7 +34,7 @@ stage_metrics:
     review: {started_at: "2026-09-25T05:54:11Z", driver: fab-fff, iterations: 2, completed_at: "2026-09-25T05:57:56Z"}
     hydrate: {started_at: "2026-09-25T05:57:56Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-25T06:10:52Z"}
     ship: {started_at: "2026-09-25T06:10:52Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-25T06:13:23Z"}
-    review-pr: {started_at: "2026-09-25T06:13:23Z", driver: git-pr, iterations: 1}
+    review-pr: {started_at: "2026-09-25T06:13:23Z", driver: git-pr, iterations: 1, completed_at: "2026-09-25T06:25:24Z"}
 prs:
     - https://github.com/sahil87/tu/pull/101
 change_type_source: explicit
@@ -56,4 +56,4 @@ true_impact:
 summary: 'retires the Node oracle and toolchain: tudiff run/live compare bin/tu against the committed golden corpus harness/golden/ (new golden-corpus memory: layout, manifest, tree.json, $HOME/$VERSION/$MACHINE/$USER + $TMP/$REPO normalisation, pinned TUDIFF_NOW clock, --update discipline), the version anchor is the git tag (tag-only release.sh, fetch-depth: 0), and the parity rationale lines now cite the golden corpus'
 # base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-09-25T06:13:23Z
+last_updated: 2026-09-25T06:25:24Z
