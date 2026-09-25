@@ -56,7 +56,7 @@ var liveSteps = []string{
 // resolution rule as run).
 type liveOptions struct {
 	goBin, turepair, harnessBin, report, expected string
-	golden, now, fromNode                         string
+	golden, now                                   string
 	keep, update                                  bool
 	set                                           map[string]bool
 }
@@ -74,7 +74,6 @@ func runLive(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&opts.golden, "golden", harness.DefaultGoldenDir, "golden corpus directory (manifest.json plus live/<step>/ captures)")
 	fs.BoolVar(&opts.update, "update", false, "rewrite the live goldens from the Go side instead of comparing")
 	fs.StringVar(&opts.now, "now", "", "pin the golden clock (zone-less 2006-01-02T15:04:05) for --update")
-	fs.StringVar(&opts.fromNode, "from-node", "", "TRANSITIONAL (deleted with src/node): capture the goldens from this Node oracle bundle instead of the Go binary")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -83,9 +82,6 @@ func runLive(args []string, stdout, stderr io.Writer) int {
 	fail := func(format string, a ...any) int {
 		fmt.Fprintf(stderr, "tudiff: "+format+"\n", a...)
 		return 2
-	}
-	if opts.fromNode != "" && !opts.update {
-		return fail("--from-node requires --update")
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -102,13 +98,6 @@ func runLive(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	if opts.update {
-		if opts.fromNode != "" {
-			nodeBin, code := preflightLiveFromNode(&opts, root, fail)
-			if code != 0 {
-				return code
-			}
-			return executeLiveNodeCapture(&opts, root, manifest, goldenDir, nodeBin, stdout, stderr)
-		}
 		return executeLiveUpdate(&opts, root, manifest, goldenDir, stdout, stderr)
 	}
 	return executeLive(&opts, root, manifest, exp, stdout, stderr)
@@ -203,26 +192,19 @@ type liveConfig struct {
 	goPath, turepairPath, goldenDir string
 	seedDir, placeholder, reportDir string
 	// now is the golden manifest's pinned clock, emitted as TUDIFF_NOW in the
-	// child's environment (empty for the transitional Node capture arm — the
-	// Node side has no clock seam and runs on real time).
+	// child's environment.
 	now string
-	// version is the capture/compare side's probed --version value, for
-	// NormalizeVersion on the byte channels.
-	version string
-	// captureSide names the staged temp segment (SideGo; SideNode only in the
-	// transitional --from-node arm).
-	captureSide string
-	keep        bool
-	update      bool // write goldens instead of comparing
-	expected    *harness.Expected
-
-	// --- transitional --from-node arm state (T006 deletes) ---
-	nodeBin, nodeBundle, repairScript string
+	// version is the Go binary's probed --version value, for NormalizeVersion
+	// on the byte channels.
+	version  string
+	keep     bool
+	update   bool // write goldens instead of comparing
+	expected *harness.Expected
 }
 
 // liveSide holds the staged side's paths.
 type liveSide struct {
-	name string // "go" ("node" only in the --from-node arm)
+	name string // "go"
 	dir  string // working directory (<tmp>/<side>/)
 	home string // staged $HOME (<dir>/home)
 	repo string // <home>/.tu/metrics_repo — a real clone of the bare
@@ -243,7 +225,7 @@ type liveRunner struct {
 // executeLive runs the sequence against the live goldens and writes the
 // report under --report.
 func executeLive(opts *liveOptions, root string, manifest *harness.GoldenManifest, exp *harness.Expected, stdout, stderr io.Writer) int {
-	lr, cleanup, code := stageLive(opts, root, string(harness.SideGo), stderr)
+	lr, cleanup, code := stageLive(opts, root, stderr)
 	if code != 0 {
 		return code
 	}
@@ -299,7 +281,7 @@ func executeLive(opts *liveOptions, root string, manifest *harness.GoldenManifes
 // the manifest with live_steps set and cases preserved from the old manifest.
 func executeLiveUpdate(opts *liveOptions, root string, old *harness.GoldenManifest, goldenDir string, stdout, stderr io.Writer) int {
 	now := resolveNow(opts.now, old)
-	lr, cleanup, code := stageLive(opts, root, string(harness.SideGo), stderr)
+	lr, cleanup, code := stageLive(opts, root, stderr)
 	if code != 0 {
 		return code
 	}
@@ -340,7 +322,7 @@ func executeLiveUpdate(opts *liveOptions, root string, old *harness.GoldenManife
 // the fake git is deliberately absent so every git a tu child spawns is the
 // real one), seeds the bare remote, and stages the side's home as a real
 // clone of it. cleanup removes the temp root unless --keep.
-func stageLive(opts *liveOptions, root, captureSide string, stderr io.Writer) (*liveRunner, func(), int) {
+func stageLive(opts *liveOptions, root string, stderr io.Writer) (*liveRunner, func(), int) {
 	cfg := liveConfig{
 		root:         root,
 		goPath:       opts.resolve(root, "go", opts.goBin),
@@ -348,7 +330,6 @@ func stageLive(opts *liveOptions, root, captureSide string, stderr io.Writer) (*
 		seedDir:      filepath.Join(root, "harness", "metrics-repo"),
 		placeholder:  filepath.Join(root, "harness", "fixtures", harness.PlaceholderAlias),
 		reportDir:    opts.resolve(root, "report", opts.report),
-		captureSide:  captureSide,
 		keep:         opts.keep,
 	}
 	fail := func(format string, a ...any) (*liveRunner, func(), int) {
@@ -391,7 +372,7 @@ func (lr *liveRunner) stage() error {
 	if err != nil {
 		return err
 	}
-	s, err := stageLiveSide(lr.cfg.tmpRoot, lr.cfg.captureSide, bare, lr.cfg.seedDir, lr.baseEnv)
+	s, err := stageLiveSide(lr.cfg.tmpRoot, string(harness.SideGo), bare, lr.cfg.seedDir, lr.baseEnv)
 	if err != nil {
 		return err
 	}
@@ -1147,100 +1128,3 @@ func checkExit(res *harness.Result, want int) {
 			fmt.Sprintf("exit %d, want %d", res.GoExit, want))
 	}
 }
-
-// --- Transitional Node capture arm (plan R5) --------------------------------
-// Everything between these markers exists only to capture the committed
-// golden corpus from the Node oracle while src/node/ still exists; T006
-// deletes the whole arm (the --from-node flag, preflightLiveFromNode,
-// executeLiveNodeCapture, execNode, repairNode, and liveConfig's
-// nodeBin/nodeBundle/repairScript fields).
-
-// preflightLiveFromNode runs the arm's extra checks: the bundle and node on
-// PATH.
-func preflightLiveFromNode(opts *liveOptions, root string, fail func(string, ...any) int) (nodeBin string, code int) {
-	if !fileExists(opts.resolve(root, "from-node", opts.fromNode)) {
-		return "", fail("%s not found (run npm ci && npm run build)", opts.fromNode)
-	}
-	nodeBin, err := exec.LookPath("node")
-	if err != nil {
-		return "", fail("node not found on PATH (required by --from-node)")
-	}
-	return nodeBin, 0
-}
-
-// executeLiveNodeCapture is the --update --from-node path: the live goldens
-// are captured from the staged Node oracle (tu through node, repair through
-// node scripts/repair-metrics.mjs) on the real clock, guarded so the capture
-// date agrees in both matrix timezones before the first step and after the
-// last; manifest.now is that date at noon.
-func executeLiveNodeCapture(opts *liveOptions, root string, old *harness.GoldenManifest, goldenDir, nodeBin string, stdout, stderr io.Writer) int {
-	fail := func(format string, a ...any) int {
-		fmt.Fprintf(stderr, "tudiff: "+format+"\n", a...)
-		return 2
-	}
-	date, ok := captureDateOK(captureClock())
-	if !ok {
-		return fail("capture date differs between UTC and Asia/Kolkata — retry between 06:00 and 18:30 UTC")
-	}
-	lr, cleanup, code := stageLive(opts, root, string(harness.SideNode), stderr)
-	if code != 0 {
-		return code
-	}
-	defer cleanup()
-	bundle, err := harness.StageOracle(lr.cfg.tmpRoot, opts.resolve(root, "from-node", opts.fromNode),
-		filepath.Join(root, "tu.default.conf"), filepath.Join(lr.cfg.livebin, "ccusage"))
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 2
-	}
-	lr.cfg.nodeBin, lr.cfg.nodeBundle = nodeBin, bundle
-	lr.cfg.repairScript = filepath.Join(root, "scripts", "repair-metrics.mjs")
-	lr.cfg.goldenDir = goldenDir
-	lr.cfg.update = true
-	lr.cfg.now = "" // the Node side runs on the real clock
-	lr.exec = lr.execNode
-	lr.repair = lr.repairNode
-	if lr.cfg.version, err = harness.ProbeVersion(nodeBin, bundle, "--version"); err != nil {
-		fmt.Fprintln(stderr, err)
-		return 2
-	}
-	nodeVersion, err := harness.ProbeVersion(nodeBin, "--version")
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 2
-	}
-	if _, err := lr.runSequence(stdout); err != nil {
-		return fail("%v", err)
-	}
-	if _, ok := captureDateOK(captureClock()); !ok {
-		return fail("capture date differs between UTC and Asia/Kolkata — retry between 06:00 and 18:30 UTC")
-	}
-	m, err := newManifest(old, filepath.Join(root, defaultMatrix), date+"T12:00:00")
-	if err != nil {
-		return fail("%v", err)
-	}
-	m.Oracle = "node " + opts.fromNode
-	m.OracleVersion = lr.cfg.version
-	m.NodeVersion = nodeVersion
-	m.LiveSteps = lr.captured
-	if err := harness.WriteGoldenManifest(goldenDir, m); err != nil {
-		return fail("writing manifest: %v", err)
-	}
-	fmt.Fprintf(stdout, "tudiff: wrote %d goldens under %s (now %s)\n", lr.captured, opts.golden+"/live", m.Now)
-	return 0
-}
-
-// execNode runs the staged oracle bundle through node against the staged home.
-func (lr *liveRunner) execNode(args []string, fixtures string) harness.SideCapture {
-	return harness.RunPipe(lr.cfg.nodeBin, append([]string{lr.cfg.nodeBundle}, args...),
-		lr.side.dir, lr.childEnv(lr.side.home, fixtures), liveTimeout)
-}
-
-// repairNode runs the TS repair script through node against the repair repo.
-func (lr *liveRunner) repairNode(repo string, write bool) harness.SideCapture {
-	env := pinnedGitEnv(os.Getenv("PATH"), lr.cfg.tmpRoot)
-	return harness.RunPipe(lr.cfg.nodeBin,
-		append([]string{lr.cfg.repairScript, "--repo", repo}, writeFlag(write)...), lr.cfg.tmpRoot, env, liveTimeout)
-}
-
-// --- end of the transitional Node capture arm ---

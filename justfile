@@ -1,20 +1,7 @@
 # tu
-setup:
-    npm install
 
-# Run the test suite. Delegates to `npm test` so `just test` matches exactly
-# what CI's ci-gate enforces (the prior inline `**` glob did not resolve under
-# Node 20 — see package.json's find-based runner).
-test:
-    npm test
-
-run *ARGS:
-    npx tsx src/node/core/cli.ts {{ARGS}}
-
-build:
-    scripts/build.sh
-
-# Bump version, commit, tag, and push (CI handles the rest)
+# Create and push the next version tag; CI takes it from there (the tag is the
+# version anchor — no file edits, no commit).
 release bump="patch":
     scripts/release.sh {{bump}}
 
@@ -22,30 +9,27 @@ release bump="patch":
 release-notes tag="":
     scripts/release-notes.sh {{tag}}
 
-# ── Go successor (src/go/) — what the Homebrew formula ships from the first release
-# after the cutover (plan row X1); src/node/ stays the harness oracle and the D10
-# rollback build until Z1 removes it. Constitution v1.2.0 § Go Transition; plan:
-# fab/plans/sahil/26-09-15-go-port.md.
+# ── The Go module (src/go/) is the whole tool: what the Homebrew formula ships,
+# what CI gates on, what the differential harness checks against the committed
+# golden corpus (harness/golden/). Plan: fab/plans/sahil/26-09-15-go-port.md.
 
-# Version stamp for the Go binary. package.json is the single version anchor
-# during the transition (release.sh bumps it; the v* tag is derived from it),
-# and the TS binary prints exactly this value — so the differential harness
-# (plan row P4) byte-matches `--version` across both implementations. Z1
-# switches this to `git describe` when package.json goes away.
-go_version := `node -p 'require("./package.json").version'`
+# Version stamp for the Go binary: the git tag is the single version anchor
+# (release.sh only tags; the tag carries the v). The golden corpus's $VERSION
+# normalization keeps the differential harness byte-matching `--version`
+# across tags.
+go_version := `git describe --tags --always 2>/dev/null || echo dev`
 
 # Build-time drift guard for the embedded skill bundle — fails before `go build`
-# when the committed copy drifts from the canonical docs/site/skill.md (mirrors
-# scripts/build.sh's post-build guard for the Node bundle). Shared by go-build
-# and go-build-target.
+# when the committed copy drifts from the canonical docs/site/skill.md. Shared
+# by go-build and go-build-target.
 _go-skill-guard:
     cmp -s docs/site/skill.md src/go/internal/toolkit/skill.md || { echo "error: src/go/internal/toolkit/skill.md drifted from docs/site/skill.md — run scripts/sync-skill.sh" >&2; exit 1; }
 
-# Build the Go binary into bin/tu (gitignored; not dist/, which is the shipped Node artifact).
+# Build the Go binary into bin/tu (gitignored).
 go-build:
     just _go-skill-guard
     mkdir -p bin
-    cd src/go && go build -ldflags "-X main.version=v{{go_version}}" -o ../../bin/tu ./cmd/tu
+    cd src/go && go build -ldflags "-X main.version={{go_version}}" -o ../../bin/tu ./cmd/tu
     cd src/go && go build -o ../../bin/turepair ./cmd/turepair
 
 # Cross-compile bin for one target into dist/bin/tu-<os>-<arch> (release artifact
@@ -54,7 +38,7 @@ go-build:
 go-build-target os arch:
     just _go-skill-guard
     mkdir -p dist/bin
-    cd src/go && CGO_ENABLED=0 GOOS={{os}} GOARCH={{arch}} go build -ldflags "-X main.version=v{{go_version}}" -o ../../dist/bin/tu-{{os}}-{{arch}} ./cmd/tu
+    cd src/go && CGO_ENABLED=0 GOOS={{os}} GOARCH={{arch}} go build -ldflags "-X main.version={{go_version}}" -o ../../dist/bin/tu-{{os}}-{{arch}} ./cmd/tu
 
 # The four release targets (Homebrew's matrix: darwin/linux x arm64/amd64).
 go-build-all:
@@ -93,22 +77,23 @@ harness-build:
 harness-capture *ARGS: harness-build
     bin/harness/tudiff capture {{ARGS}}
 
-# Byte-diff node dist/tu.mjs against bin/tu over harness/matrix.json (plan row P4).
-# Gate (plan row R3): exit 1 on an unexpected red case, a timeout, an
-# unconfirmed-fixture replay, or a stale entry in harness/expected-diffs.json.
-go-diff *ARGS: build go-build harness-build
+# Byte-diff bin/tu against the committed golden corpus (harness/golden/) over
+# harness/matrix.json (plan row Z1).
+# Gate: exit 1 on an unexpected red case, a timeout, an unconfirmed-fixture
+# replay, or a stale entry in harness/expected-diffs.json.
+go-diff *ARGS: go-build harness-build
     bin/harness/tudiff run {{ARGS}}
 
-# Real-git parity: the intake § 10 sync/repair sequence against temp bare repos,
-# reported under bin/harness/report-live/ (plan R14). Same gate rule as go-diff:
-# exit 1 on an unexpected red step, a timeout, an unconfirmed-fixture replay, or
-# a stale expected-diffs entry.
-go-live *ARGS: build go-build harness-build
+# Real-git parity: the sync/repair sequence against temp bare repos, compared
+# against harness/golden/live/ and reported under bin/harness/report-live/.
+# Same gate rule as go-diff: exit 1 on an unexpected red step, a timeout, an
+# unconfirmed-fixture replay, or a stale expected-diffs entry.
+go-live *ARGS: go-build harness-build
     bin/harness/tudiff live {{ARGS}}
 
 # Package the four tu-go-<os>-<arch>.tar.gz release archives (+ SHA256SUMS, host
 # smoke test) into dist/. Requires go-build-all; fetches the pinned ccusage
-# tarballs from the npm registry by curl (no node/npm in the fetch path).
+# tarballs from the package registry by curl (no package manager in the fetch path).
 go-package:
     scripts/package-go.sh
 

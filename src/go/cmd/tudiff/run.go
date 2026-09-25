@@ -29,7 +29,7 @@ const (
 // relative values against the caller's cwd).
 type runOptions struct {
 	matrix, expected, goBin, harnessBin, report, filter, fixtures string
-	golden, now, fromNode                                         string
+	golden, now                                                   string
 	placeholder, list, update                                     bool
 	jobs                                                          int
 	timeout                                                       time.Duration
@@ -54,17 +54,10 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&opts.golden, "golden", harness.DefaultGoldenDir, "golden corpus directory (manifest.json plus run/<case>/ captures)")
 	fs.BoolVar(&opts.update, "update", false, "rewrite the goldens from the Go side instead of comparing")
 	fs.StringVar(&opts.now, "now", "", "pin the golden clock (zone-less 2006-01-02T15:04:05) for --update")
-	fs.StringVar(&opts.fromNode, "from-node", "", "TRANSITIONAL (deleted with src/node): capture the goldens from this Node oracle bundle instead of the Go binary")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	fs.Visit(func(f *flag.Flag) { opts.set[f.Name] = true })
-
-	// --from-node implies --placeholder: the committed corpus never carries
-	// real usage data.
-	if opts.fromNode != "" {
-		opts.placeholder = true
-	}
 
 	fail := func(format string, a ...any) int {
 		fmt.Fprintf(stderr, "tudiff: "+format+"\n", a...)
@@ -74,9 +67,6 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	// Preflight, in R3 order.
 	if opts.fixtures != "" && opts.placeholder {
 		return fail("--fixtures and --placeholder are mutually exclusive")
-	}
-	if opts.fromNode != "" && !opts.update {
-		return fail("--from-node requires --update")
 	}
 	// Golden mode compares against placeholder-only goldens; a real-fixture
 	// run against them is meaningless. The one exception: --update targeting
@@ -145,13 +135,6 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if opts.update {
-		if opts.fromNode != "" {
-			nodeBin, code := preflightFromNode(&opts, root, fail)
-			if code != 0 {
-				return code
-			}
-			return executeNodeCapture(&opts, root, cases, manifest, goldenDir, matrixPath, scriptPath, flavor, aliasDirs, nodeBin, stdout, stderr)
-		}
 		return executeUpdate(&opts, root, cases, manifest, goldenDir, matrixPath, scriptPath, flavor, aliasDirs, stdout, stderr)
 	}
 	return executeRun(&opts, root, cases, exp, manifest, goldenDir, scriptPath, flavor, aliasDirs, stdout, stderr)
@@ -309,7 +292,6 @@ func executeUpdate(opts *runOptions, root string, cases []harness.Case, old *har
 	defer cleanup()
 	cfg.goldenDir = goldenDir
 	cfg.now = now
-	cfg.captureSide = string(harness.SideGo)
 	cfg.version, err = harness.ProbeVersion(cfg.goPath, "--version")
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -397,16 +379,12 @@ type runConfig struct {
 	timeout                                                    time.Duration
 	scriptPath, flavor                                         string
 	// now is the golden manifest's pinned clock, emitted as TUDIFF_NOW in the
-	// child's environment (empty for the transitional Node capture arm — the
-	// Node side has no clock seam and runs on real time).
+	// child's environment.
 	now string
-	// version is the capture/compare side's probed --version value: goldens
-	// are stored and Go captures are compared after NormalizeVersion with it.
-	version string
-	// captureSide names the staged temp/report segment for --update
-	// (SideGo; SideNode only in the transitional --from-node arm).
-	captureSide string
-	expected    *harness.Expected
+	// version is the Go binary's probed --version value: goldens are stored
+	// and Go captures are compared after NormalizeVersion with it.
+	version  string
+	expected *harness.Expected
 }
 
 // runAllCases executes the cases through a --jobs worker pool. Report lines
@@ -491,7 +469,7 @@ func captureAll(cases []harness.Case, cfg runConfig, jobs int, exec func(harness
 // run/<id>/ golden files: the byte channels (version-normalized here,
 // home-normalized by WriteGoldenCase), the decimal exit code, and tree.json.
 func captureCase(c harness.Case, cfg runConfig, exec func(harness.Case, caseSide) harness.SideCapture) error {
-	side, err := stageCase(c, cfg, cfg.captureSide)
+	side, err := stageCase(c, cfg)
 	if err != nil {
 		return err
 	}
@@ -574,7 +552,7 @@ type caseSide struct {
 // lookup, and the Go-side report captures.
 func runCase(c harness.Case, cfg runConfig) (harness.Result, error) {
 	res := harness.Result{Case: c, Status: harness.StatusRed, NodeExit: -1, GoExit: -1}
-	goSide, err := stageCase(c, cfg, string(harness.SideGo))
+	goSide, err := stageCase(c, cfg)
 	if err != nil {
 		return res, err
 	}
@@ -637,10 +615,8 @@ func runCase(c harness.Case, cfg runConfig) (harness.Result, error) {
 }
 
 // stageCase creates the case's temp and report directories, stages one $HOME,
-// and builds its environment. side names the temp/report segment: SideGo for
-// the compare and Go-capture paths, SideNode only in the transitional
-// --from-node arm.
-func stageCase(c harness.Case, cfg runConfig, side string) (caseSide, error) {
+// and builds its environment.
+func stageCase(c harness.Case, cfg runConfig) (caseSide, error) {
 	var s caseSide
 	safeID := strings.ReplaceAll(c.ID, "/", "-")
 	caseTmp := filepath.Join(cfg.tmpRoot, "cases", safeID)
@@ -648,9 +624,9 @@ func stageCase(c harness.Case, cfg runConfig, side string) (caseSide, error) {
 	if err := os.MkdirAll(reportCaseDir, 0o755); err != nil {
 		return s, err
 	}
-	s.dir = filepath.Join(caseTmp, side)
+	s.dir = filepath.Join(caseTmp, string(harness.SideGo))
 	s.home = filepath.Join(s.dir, "home")
-	s.callLog = filepath.Join(reportCaseDir, side+".calls.jsonl")
+	s.callLog = filepath.Join(reportCaseDir, string(harness.SideGo)+".calls.jsonl")
 	if err := harness.StageHome(s.home, c.Conf, cfg.seedDir); err != nil {
 		return s, err
 	}
@@ -689,116 +665,6 @@ func annotateCalls(res *harness.Result, goSide caseSide, fixtures []string) erro
 	res.GoCalls = n
 	return nil
 }
-
-// --- Transitional Node capture arm (plan R5) --------------------------------
-// Everything between these markers exists only to capture the committed
-// golden corpus from the Node oracle while src/node/ still exists; T006
-// deletes the whole arm (the --from-node flag, preflightFromNode,
-// captureDateOK/captureClock, executeNodeCapture, execNode) together with
-// harness.StageOracle and harness.SideNode.
-
-// captureClock is the injectable wall clock behind the capture-date guard.
-var captureClock = time.Now
-
-// preflightFromNode runs the arm's extra checks: the bundle and node on PATH.
-func preflightFromNode(opts *runOptions, root string, fail func(string, ...any) int) (nodeBin string, code int) {
-	if !fileExists(opts.resolve(root, "from-node", opts.fromNode)) {
-		return "", fail("%s not found (run npm ci && npm run build)", opts.fromNode)
-	}
-	nodeBin, err := exec.LookPath("node")
-	if err != nil {
-		return "", fail("node not found on PATH (required by --from-node)")
-	}
-	return nodeBin, 0
-}
-
-// captureDateOK reports the local calendar date when it agrees under TZ=UTC
-// and TZ=Asia/Kolkata — the 06:00–18:30 UTC window in which a Node capture on
-// the real clock yields one date for both tz-axis values.
-func captureDateOK(t time.Time) (string, bool) {
-	loc, err := time.LoadLocation(harness.TZAltName)
-	if err != nil {
-		loc = time.FixedZone(harness.TZAltName, 5*60*60+30*60)
-	}
-	utc := t.UTC().Format("2006-01-02")
-	if alt := t.In(loc).Format("2006-01-02"); alt != utc {
-		return "", false
-	}
-	return utc, true
-}
-
-// executeNodeCapture is the --update --from-node path: the goldens are
-// captured from the staged Node oracle on the real clock, guarded so the
-// capture date agrees in both matrix timezones before the first case and
-// after the last; manifest.now is that date at noon.
-func executeNodeCapture(opts *runOptions, root string, cases []harness.Case, old *harness.GoldenManifest, goldenDir, matrixPath, scriptPath, flavor string, aliasDirs []string, nodeBin string, stdout, stderr io.Writer) int {
-	fail := func(format string, a ...any) int {
-		fmt.Fprintf(stderr, "tudiff: "+format+"\n", a...)
-		return 2
-	}
-	date, ok := captureDateOK(captureClock())
-	if !ok {
-		return fail("capture date differs between UTC and Asia/Kolkata — retry between 06:00 and 18:30 UTC")
-	}
-	cfg, cleanup, err := stageRun(opts, root, scriptPath, flavor, aliasDirs)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 2
-	}
-	defer cleanup()
-	bundle, err := harness.StageOracle(cfg.tmpRoot, opts.resolve(root, "from-node", opts.fromNode),
-		filepath.Join(root, "tu.default.conf"), filepath.Join(cfg.harnessBin, "ccusage"))
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 2
-	}
-	cfg.goldenDir = goldenDir
-	cfg.now = "" // the Node side runs on the real clock
-	cfg.captureSide = string(harness.SideNode)
-	if cfg.version, err = harness.ProbeVersion(nodeBin, bundle, "--version"); err != nil {
-		fmt.Fprintln(stderr, err)
-		return 2
-	}
-	nodeVersion, err := harness.ProbeVersion(nodeBin, "--version")
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 2
-	}
-	n, err := captureAll(cases, cfg, opts.jobs, func(c harness.Case, s caseSide) harness.SideCapture {
-		return execNode(c, cfg, nodeBin, bundle, s)
-	})
-	if err != nil {
-		return fail("%v", err)
-	}
-	if _, ok := captureDateOK(captureClock()); !ok {
-		return fail("capture date differs between UTC and Asia/Kolkata — retry between 06:00 and 18:30 UTC")
-	}
-	m, err := newManifest(old, matrixPath, date+"T12:00:00")
-	if err != nil {
-		return fail("%v", err)
-	}
-	m.Oracle = "node " + opts.fromNode
-	m.OracleVersion = cfg.version
-	m.NodeVersion = nodeVersion
-	m.Cases = n
-	if err := harness.WriteGoldenManifest(goldenDir, m); err != nil {
-		return fail("writing manifest: %v", err)
-	}
-	fmt.Fprintf(stdout, "tudiff: wrote %d goldens under %s (now %s)\n", n, opts.golden+"/run", m.Now)
-	return 0
-}
-
-// execNode runs the Node side of a case: the staged oracle bundle through the
-// node binary, under script(1) for tty cases, pipes otherwise.
-func execNode(c harness.Case, cfg runConfig, nodeBin, bundle string, side caseSide) harness.SideCapture {
-	args := append([]string{bundle}, c.Args...)
-	if c.IO == harness.IOTTY {
-		return harness.RunTTY(cfg.scriptPath, nodeBin, args, side.dir, side.env, cfg.timeout, cfg.flavor)
-	}
-	return harness.RunPipe(nodeBin, args, side.dir, side.env, cfg.timeout)
-}
-
-// --- end of the transitional Node capture arm ---
 
 func fileExists(path string) bool {
 	info, err := os.Stat(path)

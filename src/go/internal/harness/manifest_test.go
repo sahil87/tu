@@ -56,7 +56,7 @@ func TestManifestRoundTrip(t *testing.T) {
 		Machine:        "dev-ws-sahil02",
 		CapturedAt:     "2026-09-16T04:55:12Z",
 		CcusageVersion: "20.0.19",
-		CcusagePath:    "node_modules/@ccusage/ccusage-linux-x64/bin/ccusage",
+		CcusagePath:    "dist/vendor/ccusage/bin/ccusage",
 		Platform:       "linux/amd64",
 		Timezone:       "Asia/Kolkata",
 		Fixtures: []Fixture{{

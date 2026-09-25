@@ -30,8 +30,9 @@ type Report struct {
 	CommitMessage string       // the same string a live commit uses
 }
 
-// Format is the TS formatDrySyncReport (src/node/core/cli.ts), returned as
-// stdout lines (the edge Fprintln's them). home tildefies the user prefix.
+// Format is the retired TypeScript implementation's formatDrySyncReport,
+// returned as stdout lines (the edge Fprintln's them). home tildefies the
+// user prefix.
 func (r Report) Format(home string) []string {
 	// fmtCost is the TS fmt: "$" + toFixed(2) — NO thousands separators in
 	// either block (the TS uses the same fmt for both, DC-22).

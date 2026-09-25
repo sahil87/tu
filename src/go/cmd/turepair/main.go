@@ -1,11 +1,9 @@
-// Command turepair is the Go twin of scripts/repair-metrics.mjs (R11): the
+// Command turepair is the Go port of the retired TS repair script (R11): the
 // one-time repair that restores shrunk metrics day-files to their historical
-// maximum. Like the mjs it is a standalone maintainer binary — not bundled
-// into the shipped CLI, run from a checkout (bin/turepair from `just
-// go-build`; the tudiff precedent). Arg parsing and every emitted byte match
-// the mjs, including the usage line's deliberate `node scripts/…` spelling
-// (changing it is a follow-up after Z1, so the two outputs diff clean until
-// then). main is the only writer; the algorithm lives in sync.Repair.
+// maximum. It is a standalone maintainer binary — not bundled into the
+// shipped CLI, run from a checkout (bin/turepair from `just go-build`; the
+// tudiff precedent). main is the only writer; the algorithm lives in
+// sync.Repair.
 package main
 
 import (
@@ -18,11 +16,9 @@ import (
 	"github.com/sahil87/tu/internal/sync"
 )
 
-// usageLine is the mjs USAGE, verbatim — node spelling included, so the two
-// implementations' outputs diff clean (a follow-up after Z1 owns changing it).
-const usageLine = "Usage: node scripts/repair-metrics.mjs [--repo <path>] [--write]"
+const usageLine = "Usage: turepair [--repo <path>] [--write]"
 
-// defaultRepo is the mjs default metrics repo.
+// defaultRepo is the retired script's default metrics repo.
 const defaultRepo = "~/.tu/metrics_repo"
 
 func main() {
@@ -30,7 +26,7 @@ func main() {
 	os.Exit(run(os.Args[1:], home, os.Stdout, os.Stderr))
 }
 
-// run is the testable entry point: parse args exactly as the mjs parseArgs
+// run is the testable entry point: parse args exactly as the retired script's parseArgs
 // does, then write Repair's returned lines and return its exit code.
 func run(args []string, home string, stdout, stderr io.Writer) int {
 	o, failMsg := parseArgs(args, home)
@@ -44,7 +40,7 @@ func run(args []string, home string, stdout, stderr io.Writer) int {
 	return exit
 }
 
-// parseArgs is the mjs parseArgs: --repo needs a value, --write flips the
+// parseArgs is the retired script's parseArgs: --repo needs a value, --write flips the
 // mode, anything else is an unknown argument; both failures carry the usage
 // line after a newline inside the fail message.
 func parseArgs(args []string, home string) (o sync.RepairOptions, failMsg string) {
@@ -66,8 +62,8 @@ func parseArgs(args []string, home string) (o sync.RepairOptions, failMsg string
 	return o, ""
 }
 
-// resolveRepairHome is the mjs resolveHome: a leading "~"/"~/" expands
-// against home, and every path is then resolved absolute (the mjs's
+// resolveRepairHome is the retired script's resolveHome: a leading "~"/"~/" expands
+// against home, and every path is then resolved absolute (the retired script's
 // path.resolve) so the printed repo path matches byte for byte.
 func resolveRepairHome(p, home string) string {
 	p = config.ExpandHome(p, home)
@@ -78,7 +74,7 @@ func resolveRepairHome(p, home string) string {
 }
 
 // writeLines emits one line per entry (Repair's lines joined by "\n" plus a
-// trailing "\n" are the mjs's bytes).
+// trailing "\n" are the retired script's bytes).
 func writeLines(w io.Writer, lines []string) {
 	for _, l := range lines {
 		fmt.Fprintln(w, l)

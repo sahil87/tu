@@ -5,12 +5,14 @@ import (
 )
 
 // completions holds the three static shell completion scripts, byte-identical
-// to the TS BASH_COMPLETION/ZSH_COMPLETION/FISH_COMPLETION constants
-// (src/node/core/completions.ts) with the template-literal escapes resolved.
+// to the retired TypeScript implementation's
+// BASH_COMPLETION/ZSH_COMPLETION/FISH_COMPLETION constants with the
+// template-literal escapes resolved.
 // They live as plain files — not Go strings — because the zsh script contains
 // backticks a Go raw string cannot hold, and hand-un-escaping is the
-// transcription error the harness exists to catch. Regenerate from the oracle
-// with `node dist/tu.mjs shell-init <shell>`.
+// transcription error the harness exists to catch. The frozen bytes are the
+// reference (a change is an output change); compare with
+// `bin/tu shell-init <shell>`.
 //
 //go:embed completions/tu.bash completions/tu.zsh completions/tu.fish
 var completions embed.FS

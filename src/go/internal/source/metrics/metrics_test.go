@@ -26,30 +26,30 @@ func seedRec(date, machine string, cost float64) fact.Record {
 }
 
 // seedDir returns a temp-dir copy of the committed harness/metrics-repo seed,
-// located by walking up to package.json (the defaults_test.go convention).
+// located by walking up to justfile (the defaults_test.go convention).
 func seedDir(t *testing.T) string {
 	t.Helper()
-	root := findPackageRoot(t)
+	root := findJustfileRoot(t)
 	dst := filepath.Join(t.TempDir(), "metrics_repo")
 	copyTree(t, filepath.Join(root, "harness", "metrics-repo"), dst)
 	return dst
 }
 
-// findPackageRoot walks up from the package directory (the test's cwd) to the
-// first directory containing package.json — the repo root.
-func findPackageRoot(t *testing.T) string {
+// findJustfileRoot walks up from the package directory (the test's cwd) to
+// the first directory containing justfile — the repo root.
+func findJustfileRoot(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for {
-		if _, err := os.Stat(filepath.Join(dir, "package.json")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, "justfile")); err == nil {
 			return dir
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			t.Fatal("no package.json found walking up from the package directory")
+			t.Fatal("no justfile found walking up from the package directory")
 		}
 		dir = parent
 	}
@@ -209,7 +209,7 @@ func TestReadPathLikeUser(t *testing.T) {
 // committed seed file's bytes (minus its trailing newline) — the same key
 // order JSON.stringify(toUsageEntry(...)) produces.
 func TestDayFileMarshalSeedBytes(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join(findPackageRoot(t),
+	raw, err := os.ReadFile(filepath.Join(findJustfileRoot(t),
 		"harness", "metrics-repo", "harness-user", "2026", "harness-machine", "cc-2026-01-05.jsonl"))
 	if err != nil {
 		t.Fatal(err)

@@ -3,11 +3,10 @@ package config
 import _ "embed"
 
 // DefaultConf is the shipped tu.default.conf, embedded so the binary carries
-// no runtime file dependency (the TS looks the file up beside the bundle,
-// then walks up to the project root — neither lookup is reproduced). The
-// sibling tu.default.conf is a byte-identical copy of the repo-root file that
-// scripts/build.sh copies beside tu.mjs; defaults_test.go guards the copy
-// against drift.
+// no runtime file dependency (the retired TS implementation looked the file
+// up beside the bundle, then walked up to the project root — neither lookup
+// is reproduced). The sibling tu.default.conf is a byte-identical copy of the
+// repo-root file; defaults_test.go guards the copy against drift.
 //
 //go:embed tu.default.conf
 var DefaultConf []byte

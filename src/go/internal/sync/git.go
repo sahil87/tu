@@ -27,7 +27,7 @@ import (
 type Exec struct {
 	// MaxBuffer caps captured stdout and stderr per stream in bytes, the TS
 	// maxBuffer: zero selects MaxBufferSync (sync.ts's execFile, 10 MiB);
-	// cmd/turepair passes MaxBufferRepair (repair-metrics.mjs, 64 MiB). On
+	// cmd/turepair passes MaxBufferRepair (the retired repair script, 64 MiB). On
 	// overflow the child is killed, as Node does.
 	MaxBuffer int
 }
@@ -35,7 +35,7 @@ type Exec struct {
 // MaxBufferSync is sync.ts's execFile maxBuffer: 10 * 1024 * 1024.
 const MaxBufferSync = 10 * 1024 * 1024
 
-// MaxBufferRepair is repair-metrics.mjs's MAX_GIT_BUFFER: 64 * 1024 * 1024.
+// MaxBufferRepair is the retired repair script's MAX_GIT_BUFFER: 64 * 1024 * 1024.
 const MaxBufferRepair = 64 * 1024 * 1024
 
 // IsRepo runs `git -C dir rev-parse --git-dir` with stdout/stderr discarded
@@ -57,7 +57,7 @@ type Runner interface {
 // stdout and stderr captured separately (each capped at e.MaxBuffer, the TS
 // maxBuffer — a stream overflowing its cap kills the child, as Node does);
 // stdout is returned on exit 0. On failure the error's text reproduces the TS
-// execFileAsync wrapper in src/node/sync/sync.ts exactly: "{summary}...
+// execFileAsync wrapper in the retired TypeScript implementation exactly: "{summary}...
 // failed: {message}" where summary = "git -C <dir>" (the binary plus the
 // first two args) and message is Node's — "Command failed: git -C <dir> <args
 // joined by single spaces>\n<stderr>" for a non-zero exit (the newline is

@@ -1,4 +1,4 @@
-// repair.go is the Go twin of scripts/repair-metrics.mjs (R11) — the
+// repair.go ports the retired TypeScript repair script (R11) — the
 // one-time repair that restores shrunk metrics day-files to their historical
 // maximum from the metrics repo's git history. Why: Claude Code purges
 // session transcripts older than ~30 days, so a machine's live ccusage view
@@ -6,9 +6,9 @@
 // Write shipped, every sync overwrote correct per-day snapshots with that
 // post-purge residue. Nothing was ever deleted from git history, so every
 // shrunk day-file is restored losslessly from the commit where its totalCost
-// was highest. Output is byte-exact with the mjs; the returned lines joined
-// by "\n" plus a trailing "\n" are the mjs's stdout bytes (streamBytes in
-// repair_test.go defines the split), and stderr lines are the mjs `fail`
+// was highest. Output is byte-exact with the retired script (the frozen live goldens under harness/golden/live/ pin the bytes); the returned lines joined
+// by "\n" plus a trailing "\n" are the retired script's stdout bytes (streamBytes in
+// repair_test.go defines the split), and stderr lines are the retired script's `fail`
 // messages.
 package sync
 
@@ -25,22 +25,22 @@ import (
 	"github.com/sahil87/tu/internal/render"
 )
 
-// centTolerance is the mjs CENT_TOLERANCE: a file is "shrunk" only when HEAD
+// centTolerance is the retired script's CENT_TOLERANCE: a file is "shrunk" only when HEAD
 // is below its historical max by more than a cent — float noise within a cent
 // is not worth touching.
 const centTolerance = 0.01
 
-// dayFileRE is the mjs DAY_FILE_RE: day-file names follow
+// dayFileRE is the retired script's DAY_FILE_RE: day-file names follow
 // {toolKey}-{YYYY-MM-DD}.jsonl (see Write).
 var dayFileRE = regexp.MustCompile(`-\d{4}-\d{2}-\d{2}\.jsonl$`)
 
 // commitLineRE matches one `git log --format=%H%x09%cs` header line.
 var commitLineRE = regexp.MustCompile(`^([0-9a-f]{40})\t(\d{4}-\d{2}-\d{2})$`)
 
-// failPrefix leads every mjs fail() message.
+// failPrefix leads every repair failure message (the retired script's fail()).
 const failPrefix = "repair-metrics: "
 
-// quotePathArgs lead every git call the mjs makes (["-C", repo, "-c",
+// quotePathArgs lead every git call the retired script makes (["-C", repo, "-c",
 // "core.quotePath=false", ...]) — raw UTF-8 paths, no C-style quoting to
 // unescape. Exec.Run prepends its own "-C <dir>" and passes these through.
 var quotePathArgs = []string{"-c", "core.quotePath=false"}
@@ -51,8 +51,8 @@ type RepairOptions struct {
 	Write bool   // --write; default dry-run
 }
 
-// Repair runs the mjs algorithm and returns its stdout lines and exit code;
-// stderr lines are the mjs `fail` messages ("repair-metrics: {msg}").
+// Repair runs the retired script's algorithm and returns its stdout lines and exit code;
+// stderr lines are the retired script's `fail` messages ("repair-metrics: {msg}").
 func Repair(o RepairOptions, git Runner) (stdout []string, stderr []string, exit int) {
 	repo := o.Repo
 	if _, err := os.Stat(repo); err != nil {
@@ -98,7 +98,7 @@ func Repair(o RepairOptions, git Runner) (stdout []string, stderr []string, exit
 	// just the cost field — each day-file stays an atomic snapshot that was
 	// real at some point in time. Working tree only: review, commit, and push
 	// are deliberately left to the user. A write failure is ignored as the
-	// mjs's uncaught throw leaves the same half-restored tree.
+	// retired script's uncaught throw leaves the same half-restored tree.
 	for _, s := range shrunk {
 		_ = os.WriteFile(filepath.Join(repo, s.path), []byte(s.max.content), 0o644)
 	}
@@ -108,7 +108,7 @@ func Repair(o RepairOptions, git Runner) (stdout []string, stderr []string, exit
 		"Then commit and push manually."), nil, 0
 }
 
-// FailLines renders the mjs fail(): one stderr write of
+// FailLines renders the retired script's fail(): one stderr write of
 // "repair-metrics: {msg}\n" (msg may itself carry a newline + usage line).
 // Exported for cmd/turepair's arg-parse failures so both failure surfaces
 // render identically.
@@ -118,8 +118,8 @@ func FailLines(msg string) []string {
 	return lines
 }
 
-// repairGit is the mjs git() helper: every call carries quotePathArgs before
-// the verb; ok is false on any failure (the mjs returns null).
+// repairGit is the retired script's git() helper: every call carries quotePathArgs before
+// the verb; ok is false on any failure (the retired script returns null).
 func repairGit(git Runner, repo string, args ...string) (out string, ok bool) {
 	argv := append(slices.Clone(quotePathArgs), args...)
 	out, err := git.Run(repo, argv...)
@@ -129,7 +129,7 @@ func repairGit(git Runner, repo string, args ...string) (out string, ok bool) {
 	return out, true
 }
 
-// listTrackedDayFiles is the mjs listTrackedDayFiles: tracked day-files at
+// listTrackedDayFiles is the retired script's listTrackedDayFiles: tracked day-files at
 // HEAD (paths relative to the repo root).
 func listTrackedDayFiles(git Runner, repo string) (files []string, stderr []string, exit int) {
 	out, ok := repairGit(git, repo, "ls-files", "-z", "--", "*.jsonl")
@@ -150,7 +150,7 @@ type fileCommit struct {
 	date string
 }
 
-// buildFileCommitMap is the mjs buildFileCommitMap: ONE history walk (avoids
+// buildFileCommitMap is the retired script's buildFileCommitMap: ONE history walk (avoids
 // a git log per file) — every commit on the checked-out branch that touches a
 // *.jsonl file, with the paths it touched. The per-file commit lists are
 // newest-first (git log order).
@@ -175,7 +175,7 @@ func buildFileCommitMap(git Runner, repo string) (commitCount int, fileCommits m
 	return commitCount, fileCommits, nil, 0
 }
 
-// historicalMax is the mjs findHistoricalMax result: the commit where the
+// historicalMax is the retired script's findHistoricalMax result: the commit where the
 // file's totalCost was highest, with that commit's full blob.
 type historicalMax struct {
 	cost    float64
@@ -184,7 +184,7 @@ type historicalMax struct {
 	content string
 }
 
-// findHistoricalMax is the mjs findHistoricalMax: the highest parseable
+// findHistoricalMax is the retired script's findHistoricalMax: the highest parseable
 // totalCost across every commit that touched the file. Deleted-at-commit
 // paths and unparseable blobs are skipped; nil when no version parses.
 func findHistoricalMax(git Runner, repo, path string, commits []fileCommit) *historicalMax {
@@ -205,7 +205,7 @@ func findHistoricalMax(git Runner, repo, path string, commits []fileCommit) *his
 	return max
 }
 
-// currentCost is the mjs currentCost: working-tree totalCost;
+// currentCost is the retired script's currentCost: working-tree totalCost;
 // missing/unparseable counts as 0 (fully shrunk).
 func currentCost(repo, path string) float64 {
 	raw, err := os.ReadFile(filepath.Join(repo, path))
@@ -218,7 +218,7 @@ func currentCost(repo, path string) float64 {
 	return 0
 }
 
-// parseCost is the mjs parseCost: parses the first line of a day-file blob;
+// parseCost is the retired script's parseCost: parses the first line of a day-file blob;
 // returns a finite totalCost or nil. The finite check and the Number()
 // coercion reuse the writer's jsNumber table (Number(parsed?.totalCost)).
 func parseCost(content string) *float64 {
@@ -260,7 +260,7 @@ type userAgg struct {
 	files int
 }
 
-// money is the mjs money: "$" + v.toFixed(2) (FixedHalfUp is the toFixed
+// money is the retired script's money: "$" + v.toFixed(2) (FixedHalfUp is the toFixed
 // twin).
 func money(v float64) string {
 	return "$" + render.FixedHalfUp(v, 2)
@@ -282,9 +282,9 @@ func padStart(s string, width int) string {
 	return strings.Repeat(" ", width-len(s)) + s
 }
 
-// repairReport is the mjs printReport: the scanned header, either the
+// repairReport is the retired script's printReport: the scanned header, either the
 // nothing-to-repair line or the shrunk table with per-user and grand totals.
-// The mjs emits this as out.join("\n") + "\n", so blank entries are blank
+// The retired script emits this as out.join("\n") + "\n", so blank entries are blank
 // lines.
 func repairReport(repo string, shrunk []shrunkFile, dayFileCount, commitCount int) []string {
 	out := []string{

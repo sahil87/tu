@@ -2,9 +2,9 @@ package toolkit
 
 import "testing"
 
-// R3's table: the TS prints `v${PKG_VERSION}` from a bare package.json
-// version, which DisplayVersion reproduces for every stamped build; an
-// unstamped "dev" stays bare.
+// R3's table: the retired TypeScript implementation printed `v${VERSION}` from
+// its package metadata's version field, which DisplayVersion reproduces for
+// every stamped build; an unstamped "dev" stays bare.
 func TestVersionHelpers(t *testing.T) {
 	cases := []struct {
 		in, bare, display, line string

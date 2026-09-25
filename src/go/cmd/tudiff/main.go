@@ -1,12 +1,11 @@
 // Command tudiff is the differential-harness driver for the Go port (plan
-// rows P3a and P4 in fab/plans/sahil/26-09-15-go-port.md; constitution v1.2.0
-// § Go Transition): `capture` records real ccusage output into
-// harness/fixtures/<machine-alias>/, `placeholder` writes the schema-derived,
-// committed placeholder corpus (real captures carry spend data and stay
-// local), and `run` byte-diffs node dist/tu.mjs against the Go binary over
-// harness/matrix.json. `live` is the real-git half of the gate: the intake
-// § 10 sync/repair sequence against temp bare repos (the fake git stays
-// unused), reported under bin/harness/report-live/.
+// row Z1 in fab/plans/sahil/26-09-15-go-port.md; constitution § Test Runner):
+// `capture` records real ccusage output into harness/fixtures/<machine-alias>/,
+// `placeholder` writes the schema-derived, committed placeholder corpus (real
+// captures carry spend data and stay local), and `run` byte-diffs bin/tu
+// against harness/golden over harness/matrix.json. `live` is the real-git
+// half of the gate: the intake § 10 sync/repair sequence against temp bare
+// repos (the fake git stays unused), reported under bin/harness/report-live/.
 package main
 
 import (
@@ -22,7 +21,7 @@ import (
 const usageText = `usage: tudiff <capture|placeholder|run|live> [flags]
   capture      record real ccusage output into harness/fixtures/<machine-alias>/
   placeholder  write the schema-derived placeholder corpus (all six sources by default)
-  run          byte-diff node dist/tu.mjs against the Go binary over harness/matrix.json
+  run          byte-diff bin/tu against harness/golden over harness/matrix.json
   live         real-git parity: the sync/repair sequence against temp bare repos
 `
 
@@ -65,7 +64,7 @@ func runCapture(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("capture", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	machine := fs.String("machine", "", "fixture alias (default: hostname)")
-	ccusage := fs.String("ccusage", "", "path to the ccusage binary (default: dist/vendor → node_modules → PATH)")
+	ccusage := fs.String("ccusage", "", "path to the ccusage binary (default: dist/vendor → vendor beside tu on PATH → PATH)")
 	out := fs.String("out", "harness/fixtures", "fixture root")
 	sources := fs.String("sources", "", "comma-separated ccusage subcommands (default: all six)")
 	periods := fs.String("periods", "", "comma-separated periods (default: daily)")

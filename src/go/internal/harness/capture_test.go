@@ -3,7 +3,6 @@ package harness
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -164,7 +163,7 @@ func TestCaptureLeavesSiblingAliasUntouched(t *testing.T) {
 
 func TestFindRepoRoot(t *testing.T) {
 	tmp := t.TempDir()
-	if err := os.WriteFile(filepath.Join(tmp, "package.json"), []byte("{}"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(tmp, "justfile"), []byte("x:\n\ttrue\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	deep := filepath.Join(tmp, "a", "b")
@@ -178,8 +177,12 @@ func TestFindRepoRoot(t *testing.T) {
 	if root != tmp {
 		t.Errorf("FindRepoRoot = %q, want %q", root, tmp)
 	}
-	if _, err := FindRepoRoot(filepath.Join(string(filepath.Separator), "definitely-no-package-json-here")); err == nil {
-		t.Error("FindRepoRoot without package.json must error")
+	_, err = FindRepoRoot(filepath.Join(string(filepath.Separator), "definitely-no-justfile-here"))
+	if err == nil {
+		t.Error("FindRepoRoot without justfile must error")
+	}
+	if want := "tudiff: no justfile found above "; !strings.HasPrefix(err.Error(), want) {
+		t.Errorf("error = %q, want prefix %q", err, want)
 	}
 }
 
@@ -195,16 +198,15 @@ func TestResolveCcusageExplicitAndMissing(t *testing.T) {
 	}
 }
 
-func TestResolveCcusageNodeModulesBeforePath(t *testing.T) {
+// The repo-root dist/vendor copy wins over PATH; the vendor beside the tu on
+// PATH (symlinks resolved) wins over a bare ccusage on PATH.
+func TestResolveCcusageVendorOrder(t *testing.T) {
 	tmp := t.TempDir()
-	if err := os.WriteFile(filepath.Join(tmp, "package.json"), []byte("{}"), 0o644); err != nil {
+	vendored := filepath.Join(tmp, "dist", "vendor", "ccusage", "bin")
+	if err := os.MkdirAll(vendored, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	native := filepath.Join(tmp, "node_modules", "@ccusage", "ccusage-"+nodePlatformArch(), "bin")
-	if err := os.MkdirAll(native, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	stub := filepath.Join(native, "ccusage")
+	stub := filepath.Join(vendored, "ccusage")
 	if err := os.WriteFile(stub, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -215,14 +217,39 @@ func TestResolveCcusageNodeModulesBeforePath(t *testing.T) {
 	if got != stub {
 		t.Errorf("ResolveCcusage = %q, want %q", got, stub)
 	}
-}
 
-func TestNodePlatformArchSpelling(t *testing.T) {
-	if runtime.GOOS == "linux" && runtime.GOARCH == "amd64" {
-		if got := nodePlatformArch(); got != "linux-x64" {
-			t.Errorf("nodePlatformArch = %q, want linux-x64 (Node spelling)", got)
+	// Without the repo-root vendor copy, the vendor tree beside the `tu`
+	// found on PATH is next (the brew layout; bin/tu symlinked into libexec).
+	t.Run("vendor beside tu on PATH", func(t *testing.T) {
+		root := t.TempDir()
+		libexec := filepath.Join(root, "libexec")
+		vendorBin := filepath.Join(libexec, "vendor", "ccusage", "bin")
+		if err := os.MkdirAll(vendorBin, 0o755); err != nil {
+			t.Fatal(err)
 		}
-	}
+		vendorStub := filepath.Join(vendorBin, "ccusage")
+		if err := os.WriteFile(vendorStub, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(libexec, "tu"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		binDir := filepath.Join(root, "bin")
+		if err := os.MkdirAll(binDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(libexec, "tu"), filepath.Join(binDir, "tu")); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", binDir)
+		got, err := ResolveCcusage(t.TempDir(), "")
+		if err != nil {
+			t.Fatalf("ResolveCcusage: %v", err)
+		}
+		if got != vendorStub {
+			t.Errorf("ResolveCcusage = %q, want %q", got, vendorStub)
+		}
+	})
 }
 
 func TestCcusageVersion(t *testing.T) {

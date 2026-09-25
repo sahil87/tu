@@ -9,9 +9,9 @@ import (
 const (
 	// Tool is the toolkit contract's tool name ("tu").
 	Tool = "tu"
-	// Description is the package.json "description" field, carried as a Go
-	// constant (the long-term shape — package.json goes away at the cutover);
-	// a transitional guard in helpdump_test.go pins it against package.json.
+	// Description is the CLI's one-line description, carried as a Go constant
+	// (the long-term shape; the retired TS implementation read it from its
+	// package metadata).
 	Description = "AI coding assistant cost tracking CLI"
 	// HelpSchemaVersion is the help-dump contract schema version.
 	HelpSchemaVersion = 1

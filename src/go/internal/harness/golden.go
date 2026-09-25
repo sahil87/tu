@@ -31,7 +31,7 @@ const DefaultGoldenDir = "harness/golden"
 // serialized key order.
 type GoldenManifest struct {
 	Schema        int      `json:"schema"`
-	Oracle        string   `json:"oracle"`         // e.g. "node dist/tu.mjs" or "bin/tu"
+	Oracle        string   `json:"oracle"`         // e.g. "node <bundle>" at the one-time capture, "bin/tu" after
 	OracleVersion string   `json:"oracle_version"` // probed `<oracle> --version`
 	NodeVersion   string   `json:"node_version"`   // empty when captured from Go
 	CapturedAt    string   `json:"captured_at"`    // RFC 3339 UTC

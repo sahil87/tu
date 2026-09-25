@@ -874,11 +874,11 @@ func TestE2ELeaderboardLastSync(t *testing.T) {
 
 // ── B6: the sync writer — tu sync, --dry-run, and --sync on a data command ──
 //
-// Byte references: the node oracle (node v24.15.0) against the committed seed
-// with the harness-staged homes, TZ=UTC, piped, captured 2026-09-17 through
-// the StageOracle layout (the fake ccusage in the vendor slot, the fake git
-// first on PATH). The commit-message date is computed, not pinned: both sides
-// take today's UTC date.
+// Byte references: the committed golden corpus (harness/golden/, captured from
+// the Node oracle at v0.12.2 with the harness-staged homes, TZ=UTC, piped —
+// the fake ccusage in the vendor slot, the fake git first on PATH). The
+// commit-message date is computed, not pinned: the sync cases take today's
+// UTC date.
 
 // dayFileBytes is the pinned day-file line for the placeholder corpus's daily
 // record (all six tools carry the same token counts) with the given label and

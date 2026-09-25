@@ -19,8 +19,7 @@ import (
 type Side string
 
 const (
-	SideNode Side = "node"
-	SideGo   Side = "go"
+	SideGo Side = "go"
 )
 
 // Case verdicts.
@@ -149,26 +148,6 @@ func BuildEnv(c Case, spec EnvSpec) []string {
 		env = append(env, "TUDIFF_GIT_SCRIPT="+script)
 	}
 	return env
-}
-
-// StageOracle copies the TS oracle into tmpDir so the repository's dist/ is
-// never mutated: the bundle, the shipped default conf beside it (the bundled
-// layout findDefaultConf checks first), and the fake ccusage in the fixed
-// vendor slot the TS fetcher execs.
-func StageOracle(tmpDir, nodePath, defaultConf, fakeCcusage string) (bundlePath string, err error) {
-	dist := filepath.Join(tmpDir, "oracle", "dist")
-	bundlePath = filepath.Join(dist, "tu.mjs")
-	if err := CopyFile(nodePath, bundlePath, 0o644); err != nil {
-		return "", fmt.Errorf("tudiff: staging oracle bundle: %w", err)
-	}
-	if err := CopyFile(defaultConf, filepath.Join(dist, "tu.default.conf"), 0o644); err != nil {
-		return "", fmt.Errorf("tudiff: staging tu.default.conf: %w", err)
-	}
-	vendor := filepath.Join(dist, "vendor", "ccusage", "bin", "ccusage")
-	if err := CopyFile(fakeCcusage, vendor, 0o755); err != nil {
-		return "", fmt.Errorf("tudiff: staging fake ccusage: %w", err)
-	}
-	return bundlePath, nil
 }
 
 // CopyFile copies one file to dst (parent dirs created) with the given mode.
@@ -393,63 +372,6 @@ func Excerpt(b []byte, offset int) string {
 		end = len(b)
 	}
 	return strconv.Quote(string(b[offset:end]))
-}
-
-// CompareCallLogs parses both sides' call logs and compares them as sorted
-// sets of tool+argv pairs (cwd differs by side by construction; matched is
-// alias metadata). Each side's argv entries are home-normalized with that
-// side's staged home, so `-C <dir>` and `clone <url> <dir>` shapes carrying
-// $HOME compare equal. Missing logs count as empty. The result is
-// informational — it must never redden a case.
-func CompareCallLogs(nodePath, goPath, nodeHome, goHome string) (nodeN, goN int, differ bool, err error) {
-	nodeSet, err := callSet(nodePath, nodeHome)
-	if err != nil {
-		return 0, 0, false, err
-	}
-	goSet, err := callSet(goPath, goHome)
-	if err != nil {
-		return 0, 0, false, err
-	}
-	nodeList, goList := sortedKeys(nodeSet), sortedKeys(goSet)
-	return len(nodeList), len(goList), !equalStrings(nodeList, goList), nil
-}
-
-// callSet reads a JSON-lines call log into a multiset of canonical call keys,
-// home-normalizing each argv entry first.
-func callSet(path, home string) (map[string]int, error) {
-	set := map[string]int{}
-	err := readCallLog(path, func(cl callLogLine) error {
-		argv := make([]string, len(cl.Argv))
-		for i, a := range cl.Argv {
-			argv[i] = string(NormalizeHome([]byte(a), home))
-		}
-		set[cl.Tool+"\x00"+strings.Join(argv, "\x00")]++
-		return nil
-	})
-	return set, err
-}
-
-func sortedKeys(set map[string]int) []string {
-	var out []string
-	for k, n := range set {
-		for i := 0; i < n; i++ {
-			out = append(out, k)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
-func equalStrings(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 // TreeDiff describes the first difference between the written trees of one

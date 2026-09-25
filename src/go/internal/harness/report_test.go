@@ -14,7 +14,7 @@ func testHeader() ReportHeader {
 		Timestamp:           time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC),
 		GoldenDir:           "harness/golden",
 		GoldenCapturedAt:    "2026-09-25T06:30:00Z",
-		GoldenOracle:        "node dist/tu.mjs",
+		GoldenOracle:        "oracle",
 		GoldenOracleVersion: "v0.12.2",
 		GoldenNow:           "2026-09-26T12:00:00",
 		GoPath:              "bin/tu",
@@ -32,7 +32,7 @@ func testHeader() ReportHeader {
 func TestRenderHeader(t *testing.T) {
 	got := strings.Join(RenderHeader(testHeader()), "\n")
 	want := `tudiff run  2026-09-16T12:00:00Z
-golden: harness/golden (captured 2026-09-25T06:30:00Z from node dist/tu.mjs v0.12.2; now 2026-09-26T12:00:00)
+golden: harness/golden (captured 2026-09-25T06:30:00Z from oracle v0.12.2; now 2026-09-26T12:00:00)
 go: bin/tu (tu version v0.11.5)
 fixtures: dev-ws-sahil02, _placeholder
 script: util-linux
@@ -172,7 +172,7 @@ func TestWriteReport(t *testing.T) {
 	text := string(txt)
 	for _, sub := range []string{
 		"tudiff run  2026-09-16T12:00:00Z\n",
-		"golden: harness/golden (captured 2026-09-25T06:30:00Z from node dist/tu.mjs v0.12.2; now 2026-09-26T12:00:00)\n",
+		"golden: harness/golden (captured 2026-09-25T06:30:00Z from oracle v0.12.2; now 2026-09-26T12:00:00)\n",
 		"matrix: harness/matrix.json (3 cases)\n",
 		"expected: harness/expected-diffs.json (1 entries)\n",
 		"GREEN   a/single/default/pipe/fixed\n",

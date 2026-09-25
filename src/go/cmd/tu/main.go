@@ -1,8 +1,8 @@
 // Command tu is the Go successor implementation of the tu CLI.
 //
-// It is built and tested in CI but NOT shipped: the Homebrew formula and every
-// release artifact still come from src/node/ until the cutover change flips the
-// formula (constitution v1.2.0 § Go Transition). Plan and decision log:
+// It is what the Homebrew formula and every release artifact ship (the
+// formula flipped at plan row X1; the retired TypeScript tree lived in the
+// repo until plan row Z1). Plan and decision log:
 // fab/plans/sahil/26-09-15-go-port.md.
 //
 // The binary answers the snapshot and history grammars in single AND multi
@@ -53,8 +53,8 @@ import (
 )
 
 // version is the binary version, overridden via -ldflags "-X main.version=..." at build time.
-// `just go-build` stamps it from package.json (the single version anchor during the
-// transition) so `--version` byte-matches the shipped TypeScript binary.
+// `just go-build` stamps it from `git describe --tags --always` (the tag is the single
+// version anchor — the tag carries the v), so `--version` reports the describe string.
 var version = "dev"
 
 const notImplementedMsg = "tu: not implemented (Go port in progress)"
@@ -403,7 +403,8 @@ func syncCtx() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), source.DefaultTimeout)
 }
 
-// runSync implements `tu sync` in the TS runSync order (src/node/core/cli.ts):
+// runSync implements `tu sync` in the retired TypeScript implementation's
+// runSync order:
 // Load (warnings to stderr) → the reserved-user guard (BEFORE the mode check)
 // → the single-mode gate → the metrics-dir guard (a demotion exits 1 with
 // just the guard's lines, so `tu sync --dry-run` with a missing dir still

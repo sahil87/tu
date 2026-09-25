@@ -1,18 +1,15 @@
 package sync
 
 import (
-	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// Port of src/node/sync/__tests__/repair-metrics.test.ts against real git
-// (R11), plus a byte-parity diff against scripts/repair-metrics.mjs when node
-// is on PATH. pinGitEnv and gitDo live in flow_test.go.
+// Port of the retired TS implementation's repair-metrics tests against real
+// git (R11). pinGitEnv and gitDo live in flow_test.go.
 
 // repairEntry is the TS entryLine: one day-file record with the same field
 // order. cost is a string so the fixture controls the exact bytes.
@@ -21,7 +18,7 @@ func repairEntry(label, cost string, tokens int) string {
 		label, cost, tokens) + "\n"
 }
 
-// streamBytes turns Repair's returned lines back into the mjs's stream bytes:
+// streamBytes turns Repair's returned lines back into the retired script's stream bytes:
 // lines joined by "\n" plus a single trailing "\n" (no lines → no output).
 func streamBytes(lines []string) string {
 	if len(lines) == 0 {
@@ -377,105 +374,4 @@ func readFileBytes(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(b)
-}
-
-// --- Byte parity with scripts/repair-metrics.mjs ---
-
-// runMJS runs the frozen oracle script and returns its raw streams and exit
-// code.
-func runMJS(t *testing.T, script, repo string, write bool) (stdout, stderr string, exit int) {
-	t.Helper()
-	args := []string{script, "--repo", repo}
-	if write {
-		args = append(args, "--write")
-	}
-	cmd := exec.Command("node", args...)
-	var outBuf, errBuf strings.Builder
-	cmd.Stdout = &outBuf
-	cmd.Stderr = &errBuf
-	err := cmd.Run()
-	if err == nil {
-		return outBuf.String(), errBuf.String(), 0
-	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return outBuf.String(), errBuf.String(), exitErr.ExitCode()
-	}
-	t.Fatalf("node %v: %v", args, err)
-	return "", "", -1
-}
-
-// copyTree copies a directory recursively (the mjs and Go sides need
-// byte-identical repos — git objects included).
-func copyTree(t *testing.T, src, dst string) {
-	t.Helper()
-	cmd := exec.Command("cp", "-a", src, dst)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("cp -a %s %s: %v\n%s", src, dst, err, out)
-	}
-}
-
-// jsonlTree returns the relative *.jsonl paths and their bytes under root.
-func jsonlTree(t *testing.T, root string) map[string]string {
-	t.Helper()
-	tree := make(map[string]string)
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() || !strings.HasSuffix(path, ".jsonl") {
-			return nil
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		tree[rel] = readFileBytes(t, path)
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return tree
-}
-
-// R11/A-011: the Go Repair and the mjs produce byte-identical stdout, stderr
-// and exit codes in both modes, and --write leaves byte-identical trees.
-// Skipped when node is not on PATH.
-func TestRepairNodeParity(t *testing.T) {
-	if _, err := exec.LookPath("node"); err != nil {
-		t.Skip("node not on PATH")
-	}
-	script, err := filepath.Abs("../../../../scripts/repair-metrics.mjs")
-	if err != nil {
-		t.Fatal(err)
-	}
-	repoA, _, _, _ := seedR11Repo(t)
-	repoB := filepath.Join(t.TempDir(), "metrics")
-	copyTree(t, repoA, repoB)
-
-	for _, write := range []bool{false, true} {
-		mjsOut, mjsErr, mjsExit := runMJS(t, script, repoA, write)
-		goOut, goErr, goExit := Repair(RepairOptions{Repo: repoB, Write: write}, Exec{})
-		norm := func(s, repo string) string { return strings.ReplaceAll(s, repo, "$REPO") }
-		if got, want := norm(streamBytes(goOut), repoB), norm(mjsOut, repoA); got != want {
-			t.Errorf("write=%v stdout differs:\n--- go ---\n%s\n--- mjs ---\n%s", write, got, want)
-		}
-		if got, want := norm(streamBytes(goErr), repoB), norm(mjsErr, repoA); got != want {
-			t.Errorf("write=%v stderr differs: go %q, mjs %q", write, got, want)
-		}
-		if goExit != mjsExit {
-			t.Errorf("write=%v exit: go %d, mjs %d", write, goExit, mjsExit)
-		}
-	}
-
-	treeA, treeB := jsonlTree(t, repoA), jsonlTree(t, repoB)
-	if len(treeA) != len(treeB) {
-		t.Fatalf("tree sizes differ: mjs %d, go %d", len(treeA), len(treeB))
-	}
-	for rel, contentA := range treeA {
-		if contentB, ok := treeB[rel]; !ok || contentA != contentB {
-			t.Errorf("tree differs at %s", rel)
-		}
-	}
 }

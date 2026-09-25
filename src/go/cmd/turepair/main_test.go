@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// Arg parsing and exit codes, byte-exact with the mjs (R11); the algorithm
+// Arg parsing and exit codes, byte-exact with the retired script (R11); the algorithm
 // itself is covered by internal/sync/repair_test.go.
 
 // pinGitEnv pins identity and commit.gpgsign through GIT_CONFIG_* and cuts
@@ -80,7 +80,7 @@ func TestDefaultRepoMissing(t *testing.T) {
 func TestRelativeRepoResolvedAbsolute(t *testing.T) {
 	var stderr bytes.Buffer
 	var stdout bytes.Buffer
-	// "somewhere" resolves against the process cwd (the mjs path.resolve).
+	// "somewhere" resolves against the process cwd (the retired script's path.resolve).
 	code := run([]string{"--repo", "definitely-not-here-turepair"}, t.TempDir(), &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1", code)

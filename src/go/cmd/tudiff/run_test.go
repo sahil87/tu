@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/sahil87/tu/internal/harness"
 )
@@ -40,7 +39,7 @@ func writeExe(t *testing.T, path, body string) {
 const smokeNow = "2026-09-26T12:00:00"
 
 // smokeEnv is a self-contained fake checkout for run tests: a repo root with
-// package.json, tu.default.conf, a minimal _placeholder manifest and the seed
+// justfile, tu.default.conf, a minimal _placeholder manifest and the seed
 // dir; a stand-in --go shell script; stub ccusage/git fakes; a golden corpus
 // under <root>/harness/golden whose manifest matches the matrix; and a report
 // dir, all under temp space. The real harness/golden is never touched.
@@ -73,7 +72,7 @@ fi
 func newSmokeEnv(t *testing.T, matrixBody string) *smokeEnv {
 	t.Helper()
 	root := t.TempDir()
-	writeFile(t, root, "package.json", "{}\n")
+	writeFile(t, root, "justfile", "go-build:\n\ttrue\n")
 	writeFile(t, root, "tu.default.conf", "version = 2\n")
 	writeFile(t, root, "harness/fixtures/_placeholder/manifest.json",
 		`{"schema":1,"machine":"_placeholder","captured_at":"2026-09-16T00:00:00Z","ccusage_version":"20.0.19","ccusage_path":"","platform":"derived","timezone":"","fixtures":[]}`+"\n")
@@ -311,13 +310,6 @@ func TestRunPreflight(t *testing.T) {
 		e := newSmokeEnv(t, smokeMatrix)
 		code, _, stderr := e.invoke(t, "--fixtures", "dev-ws-sahil02")
 		if code != 2 || stderr != "tudiff: --fixtures needs an oracle; goldens are placeholder-only\n" {
-			t.Errorf("code = %d, stderr = %q", code, stderr)
-		}
-	})
-	t.Run("from-node requires update", func(t *testing.T) {
-		e := newSmokeEnv(t, smokeMatrix)
-		code, _, stderr := e.invoke(t, "--from-node", "/no/such/tu.mjs")
-		if code != 2 || stderr != "tudiff: --from-node requires --update\n" {
 			t.Errorf("code = %d, stderr = %q", code, stderr)
 		}
 	})
@@ -740,91 +732,4 @@ func TestRunUpdateNowAndFilter(t *testing.T) {
 			t.Errorf("manifest cases = %d, want 1", m.Cases)
 		}
 	})
-}
-
-// R5: the capture guard — the local calendar date must agree under TZ=UTC and
-// TZ=Asia/Kolkata (the 06:00–18:30 UTC window).
-func TestCaptureDateOK(t *testing.T) {
-	cases := []struct {
-		at   string
-		date string
-		ok   bool
-	}{
-		{"2026-09-25T12:00:00Z", "2026-09-25", true},
-		{"2026-09-25T00:00:00Z", "2026-09-25", true},
-		{"2026-09-25T18:29:59Z", "2026-09-25", true},
-		{"2026-09-25T18:30:00Z", "", false}, // Kolkata rolls to the 26th
-		{"2026-09-25T23:59:00Z", "", false},
-	}
-	for _, c := range cases {
-		at, err := time.Parse(time.RFC3339, c.at)
-		if err != nil {
-			t.Fatal(err)
-		}
-		date, ok := captureDateOK(at)
-		if date != c.date || ok != c.ok {
-			t.Errorf("captureDateOK(%s) = %q, %v; want %q, %v", c.at, date, ok, c.date, c.ok)
-		}
-	}
-}
-
-// R5 (transitional; T006 deletes): --update --from-node captures the goldens
-// from the staged Node oracle with the guard's noon clock and node provenance.
-func TestRunFromNodeCapture(t *testing.T) {
-	e := newSmokeEnv(t, smokeMatrix)
-	golden2 := filepath.Join(t.TempDir(), "golden")
-
-	binDir := t.TempDir()
-	writeExe(t, filepath.Join(binDir, "node"), "#!/bin/sh\nif [ \"${1:-}\" = \"--version\" ]; then printf 'v24.0.0-smoke\\n'; exit 0; fi\nexec /bin/sh \"$@\"\n")
-	bundle := filepath.Join(t.TempDir(), "tu.mjs")
-	writeExe(t, bundle, "#!/bin/sh\nif [ \"${1:-}\" = \"--version\" ]; then printf 'tu version v0.12.2-smoke\\n'; exit 0; fi\nprintf 'from node\\n'\n")
-	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-
-	old := captureClock
-	t.Cleanup(func() { captureClock = old })
-	captureClock = func() time.Time { return time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC) }
-
-	code, stdout, stderr := e.invoke(t, "--golden", golden2, "--update", "--from-node", bundle)
-	if code != 0 {
-		t.Fatalf("exit = %d, stderr = %q", code, stderr)
-	}
-	if stdout != "tudiff: wrote 2 goldens under "+golden2+"/run (now 2026-09-25T12:00:00)\n" {
-		t.Errorf("stdout = %q", stdout)
-	}
-	m, err := harness.LoadGoldenManifest(golden2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if m.Oracle != "node "+bundle || m.OracleVersion != "v0.12.2-smoke" || m.NodeVersion != "v24.0.0-smoke" ||
-		m.Now != "2026-09-25T12:00:00" || m.Cases != 2 {
-		t.Errorf("manifest = %+v", m)
-	}
-	raw, err := os.ReadFile(filepath.Join(harness.GoldenCaseDir(golden2, "same/single/default/pipe/fixed"), "stdout"))
-	if err != nil || string(raw) != "from node\n" {
-		t.Errorf("golden stdout = %q, %v", raw, err)
-	}
-}
-
-// R5 (transitional; T006 deletes): outside the 06:00–18:30 UTC window the
-// capture refuses before writing anything.
-func TestRunFromNodeGuardRefuses(t *testing.T) {
-	e := newSmokeEnv(t, smokeMatrix)
-	golden2 := filepath.Join(t.TempDir(), "golden")
-	binDir := t.TempDir()
-	writeExe(t, filepath.Join(binDir, "node"), "#!/bin/sh\nif [ \"${1:-}\" = \"--version\" ]; then printf 'v24.0.0-smoke\\n'; exit 0; fi\nexec /bin/sh \"$@\"\n")
-	bundle := filepath.Join(t.TempDir(), "tu.mjs")
-	writeExe(t, bundle, "#!/bin/sh\nprintf 'from node\\n'\n")
-	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-
-	old := captureClock
-	t.Cleanup(func() { captureClock = old })
-	captureClock = func() time.Time { return time.Date(2026, 9, 25, 20, 0, 0, 0, time.UTC) }
-
-	code, _, stderr := e.invoke(t, "--golden", golden2, "--update", "--from-node", bundle)
-	if code != 2 || stderr != "tudiff: capture date differs between UTC and Asia/Kolkata — retry between 06:00 and 18:30 UTC\n" {
-		t.Errorf("code = %d, stderr = %q", code, stderr)
-	}
-	if _, err := os.Stat(golden2); !os.IsNotExist(err) {
-		t.Errorf("golden dir written despite the guard")
-	}
 }

@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/sahil87/tu/internal/harness"
 )
@@ -240,8 +239,8 @@ exit 0
 `
 
 // liveSmokeEnv is a self-contained fake checkout for live golden-mode tests:
-// a repo root (package.json, tu.default.conf, a minimal _placeholder corpus,
-// the matrix and expected-diffs files, the seed tree), shell stand-ins for
+// a repo root (justfile, tu.default.conf, a minimal _placeholder corpus, the
+// matrix and expected-diffs files, the seed tree), shell stand-ins for
 // --go and --turepair, the fake ccusage, and a golden dir — all under temp
 // space. The real harness/golden is never touched.
 type liveSmokeEnv struct {
@@ -256,7 +255,7 @@ type liveSmokeEnv struct {
 func newLiveSmokeEnv(t *testing.T) *liveSmokeEnv {
 	t.Helper()
 	root := t.TempDir()
-	writeFile(t, root, "package.json", "{}\n")
+	writeFile(t, root, "justfile", "go-build:\n\ttrue\n")
 	writeFile(t, root, "tu.default.conf", "version = 2\n")
 	writeFile(t, root, "harness/fixtures/_placeholder/manifest.json",
 		`{"schema":1,"machine":"_placeholder","captured_at":"2026-09-16T00:00:00Z","ccusage_version":"20.0.19","ccusage_path":"","platform":"derived","timezone":"","fixtures":[]}`+"\n")
@@ -356,13 +355,6 @@ func TestLiveGoldenPreflight(t *testing.T) {
 			t.Errorf("code = %d, stderr = %q", code, stderr)
 		}
 	})
-	t.Run("from-node requires update", func(t *testing.T) {
-		e := newLiveSmokeEnv(t)
-		code, _, stderr := e.invoke(t, "--from-node", "/no/such/tu.mjs")
-		if code != 2 || stderr != "tudiff: --from-node requires --update\n" {
-			t.Errorf("code = %d, stderr = %q", code, stderr)
-		}
-	})
 }
 
 // R4: --update captures the nine step goldens from the Go side and a compare
@@ -454,67 +446,6 @@ printf '%s\n' "${TUDIFF_NOW:-unset}"`, 1))
 	}
 	if !strings.Contains(stdout, "RED     cc-sync") || !strings.Contains(stdout, `golden="`) || !strings.Contains(stdout, `go="different\n"`) {
 		t.Errorf("stdout lacks the golden=/go= red line:\n%s", stdout)
-	}
-}
-
-// R5 (transitional; T006 deletes): --update --from-node captures the live
-// goldens from the Node oracle with the guard's noon clock and node
-// provenance — and never sets TUDIFF_NOW for the node side.
-func TestLiveFromNodeCapture(t *testing.T) {
-	e := newLiveSmokeEnv(t)
-	writeExe(t, filepath.Join(e.root, "scripts", "repair-metrics.mjs"), "#!/bin/sh\nprintf 'repair: scanned\\n'\n")
-
-	binDir := t.TempDir()
-	writeExe(t, filepath.Join(binDir, "node"), "#!/bin/sh\nif [ \"${1:-}\" = \"--version\" ]; then printf 'v24.0.0-smoke\\n'; exit 0; fi\nexec /bin/sh \"$@\"\n")
-	bundle := filepath.Join(t.TempDir(), "tu.mjs")
-	writeExe(t, bundle, strings.Replace(liveTuStandIn, "v0.0.0-live", "v0.12.2-node", 1))
-	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-
-	old := captureClock
-	t.Cleanup(func() { captureClock = old })
-	captureClock = func() time.Time { return time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC) }
-
-	code, stdout, stderr := e.invoke(t, "--update", "--from-node", bundle)
-	if code != 0 {
-		t.Fatalf("exit = %d, stderr = %q", code, stderr)
-	}
-	if stdout != "tudiff: wrote 9 goldens under "+e.golden+"/live (now 2026-09-25T12:00:00)\n" {
-		t.Errorf("stdout = %q", stdout)
-	}
-	m, err := harness.LoadGoldenManifest(e.golden)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if m.Oracle != "node "+bundle || m.OracleVersion != "v0.12.2-node" || m.NodeVersion != "v24.0.0-smoke" ||
-		m.Now != "2026-09-25T12:00:00" || m.LiveSteps != len(liveSteps) {
-		t.Errorf("manifest = %+v", m)
-	}
-	// The node side ran on the real clock: no TUDIFF_NOW in its environment.
-	if got := readLiveFile(t, filepath.Join(harness.GoldenLiveDir(e.golden, "sync"), "stdout")); got != "unset\n" {
-		t.Errorf("sync golden stdout = %q, want %q (no TUDIFF_NOW for the node side)", got, "unset\n")
-	}
-}
-
-// R5 (transitional; T006 deletes): outside the 06:00–18:30 UTC window the
-// capture refuses before writing anything.
-func TestLiveFromNodeGuardRefuses(t *testing.T) {
-	e := newLiveSmokeEnv(t)
-	binDir := t.TempDir()
-	writeExe(t, filepath.Join(binDir, "node"), "#!/bin/sh\nif [ \"${1:-}\" = \"--version\" ]; then printf 'v24.0.0-smoke\\n'; exit 0; fi\nexec /bin/sh \"$@\"\n")
-	bundle := filepath.Join(t.TempDir(), "tu.mjs")
-	writeExe(t, bundle, "#!/bin/sh\nexit 0\n")
-	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-
-	old := captureClock
-	t.Cleanup(func() { captureClock = old })
-	captureClock = func() time.Time { return time.Date(2026, 9, 25, 20, 0, 0, 0, time.UTC) }
-
-	code, _, stderr := e.invoke(t, "--update", "--from-node", bundle)
-	if code != 2 || stderr != "tudiff: capture date differs between UTC and Asia/Kolkata — retry between 06:00 and 18:30 UTC\n" {
-		t.Errorf("code = %d, stderr = %q", code, stderr)
-	}
-	if _, err := os.Stat(e.golden); !os.IsNotExist(err) {
-		t.Errorf("golden dir written despite the guard")
 	}
 }
 

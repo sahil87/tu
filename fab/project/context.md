@@ -9,10 +9,6 @@
 - **Distribution**: Homebrew tap (`sahil87/tap`), binary name `tu`; prebuilt `tu-go-<os>-<arch>.tar.gz` release assets (binary + vendored ccusage + `tu.default.conf`) behind a generated formula with no runtime dependencies
 - **License**: MIT
 
-## Retired TypeScript tree
-
-`src/node/` is the pre-cutover TypeScript implementation. It no longer ships (the formula flipped at plan row X1, plan: `fab/plans/sahil/26-09-15-go-port.md`) and is frozen: bug fixes only, each paired with a harness fixture and a Go port. It remains in the repo until plan row Z1 (two releases after cutover) as the differential harness's oracle (`node dist/tu.mjs` vs the Go binary via `cmd/tudiff`) and the D10 rollback build. Its toolchain (`npm ci && npm run build && npm test`, esbuild, `__tests__/` co-location) is recorded in `docs/memory/build/toolchain.md`; the constitution no longer governs it.
-
 ## Architecture
 
 CLI tool that aggregates cost/usage data from multiple AI coding assistant tools:
