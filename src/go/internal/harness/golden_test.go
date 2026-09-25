@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"os/user"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -141,6 +142,74 @@ func TestNormalizeVersion(t *testing.T) {
 	}
 }
 
+// R2: identity normalisation is whole-token, hostname first, both empty
+// values no-ops.
+func TestNormalizeIdentity(t *testing.T) {
+	const host, user = "dev-ws-sahil02", "sahil"
+	cases := []struct {
+		name               string
+		in                 string
+		hostname, username string
+		want               string
+	}{
+		{"by-machine column", "machine_dev-ws-sahil02_cost\n", host, user, "machine_$MACHINE_cost\n"},
+		{"by-machine listing", "Machines: A = dev-ws-sahil02\n", host, user, "Machines: A = $MACHINE\n"},
+		{"tree path", "sahil/2026/dev-ws-sahil02/cc-2026-01-05.jsonl", host, user, "$USER/2026/$MACHINE/cc-2026-01-05.jsonl"},
+		{"hostname first, no partial user match inside it", "dev-ws-sahil02", host, user, "$MACHINE"},
+		{"trailing token byte blocks the hostname", "dev-ws-sahil02x", host, user, "dev-ws-sahil02x"},
+		{"username suffix is not a token", "sahil02", host, user, "sahil02"},
+		{"username matches only as a path segment", "a sahil b", host, user, "a sahil b"},
+		{"a quoted key is not a segment", `"sahil": {`, host, user, `"sahil": {`},
+		{"whole input is the segment", "sahil", host, user, "$USER"},
+		{"segment at the end", "home/sahil", host, user, "home/$USER"},
+		{"mixed hit and near-miss", "sahil02 dev-ws-sahil02", host, user, "sahil02 $MACHINE"},
+		{"no occurrence", "nothing here\n", host, user, "nothing here\n"},
+		{"empty hostname is a no-op", "sahil/x/dev-ws-sahil02", "", user, "$USER/x/dev-ws-sahil02"},
+		{"empty username is a no-op", "sahil dev-ws-sahil02", host, "", "sahil $MACHINE"},
+		{"repeated segments", "sahil/x/sahil", host, user, "$USER/x/$USER"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := NormalizeIdentity([]byte(c.in), c.hostname, c.username); string(got) != c.want {
+				t.Errorf("NormalizeIdentity(%q, %q, %q) = %q, want %q", c.in, c.hostname, c.username, got, c.want)
+			}
+		})
+	}
+}
+
+// R2: tree.json path keys are identity-normalized; hashes and last_sync pass
+// through untouched.
+func TestNormalizeTreeIdentity(t *testing.T) {
+	tree := Tree{Files: map[string]TreeFile{
+		"sahil/2026/dev-ws-sahil02/cc-2026-01-05.jsonl": {SHA256: "ab12", Size: 3},
+		"docs/README.md": {SHA256: "cd34", Size: 5},
+	}, LastSync: true}
+	got := NormalizeTreeIdentity(tree, "dev-ws-sahil02", "sahil")
+	want := Tree{Files: map[string]TreeFile{
+		"$USER/2026/$MACHINE/cc-2026-01-05.jsonl": {SHA256: "ab12", Size: 3},
+		"docs/README.md": {SHA256: "cd34", Size: 5},
+	}, LastSync: true}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("NormalizeTreeIdentity = %+v, want %+v", got, want)
+	}
+	// The input is not mutated.
+	if _, ok := tree.Files["sahil/2026/dev-ws-sahil02/cc-2026-01-05.jsonl"]; !ok {
+		t.Errorf("input tree mutated: %+v", tree)
+	}
+}
+
+// ProbeIdentity derives both values exactly as cmd/tu's edge does.
+func TestProbeIdentity(t *testing.T) {
+	host, username := ProbeIdentity()
+	wantHost, _ := os.Hostname()
+	if host != wantHost {
+		t.Errorf("hostname = %q, want os.Hostname() %q", host, wantHost)
+	}
+	if u, err := user.Current(); err == nil && username != u.Username {
+		t.Errorf("username = %q, want user.Current() %q", username, u.Username)
+	}
+}
+
 // R2: the version probe is the last field of the first stdout line.
 func TestProbeVersion(t *testing.T) {
 	dir := t.TempDir()
@@ -259,7 +328,7 @@ func TestCompareTree(t *testing.T) {
 	same := t.TempDir()
 	writeTreeFile(t, same, ".tu/metrics_repo/docs/README.md", "seed\n")
 	writeTreeFile(t, same, ".tu/.last-sync", "2026-09-26T12:00:00Z\n")
-	diff, err := CompareTree(golden, same)
+	diff, err := CompareTree(golden, same, "", "")
 	if err != nil || diff != nil {
 		t.Errorf("green: CompareTree = %+v, %v, want nil", diff, err)
 	}
@@ -269,7 +338,7 @@ func TestCompareTree(t *testing.T) {
 	writeTreeFile(t, extra, ".tu/metrics_repo/docs/README.md", "seed\n")
 	writeTreeFile(t, extra, ".tu/metrics_repo/a/new.jsonl", "{}\n")
 	writeTreeFile(t, extra, ".tu/.last-sync", "x\n")
-	diff, err = CompareTree(golden, extra)
+	diff, err = CompareTree(golden, extra, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +351,7 @@ func TestCompareTree(t *testing.T) {
 	changed := t.TempDir()
 	writeTreeFile(t, changed, ".tu/metrics_repo/docs/README.md", "SEED!\n")
 	writeTreeFile(t, changed, ".tu/.last-sync", "x\n")
-	diff, err = CompareTree(golden, changed)
+	diff, err = CompareTree(golden, changed, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +369,7 @@ func TestCompareTree(t *testing.T) {
 	// A .last-sync presence mismatch.
 	noSync := t.TempDir()
 	writeTreeFile(t, noSync, ".tu/metrics_repo/docs/README.md", "seed\n")
-	diff, err = CompareTree(golden, noSync)
+	diff, err = CompareTree(golden, noSync, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,12 +497,12 @@ func TestTreeSnapshotLiveAndRepo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	diff, err := CompareLiveTree(golden, home)
+	diff, err := CompareLiveTree(golden, home, "", "")
 	if err != nil || diff != nil {
 		t.Errorf("CompareLiveTree = %+v, %v, want nil", diff, err)
 	}
 	writeTreeFile(t, home, ".tu/metrics_repo/docs/README.md", "edited\n")
-	diff, err = CompareLiveTree(golden, home)
+	diff, err = CompareLiveTree(golden, home, "", "")
 	if err != nil || diff == nil || diff.Path != "docs/README.md" {
 		t.Errorf("CompareLiveTree after edit = %+v, %v", diff, err)
 	}

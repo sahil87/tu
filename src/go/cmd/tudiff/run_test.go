@@ -162,6 +162,7 @@ func TestRunEndToEndSmoke(t *testing.T) {
 	}
 	for _, sub := range []string{
 		"golden: " + e.golden + " (captured 2026-09-25T06:30:00Z from bin/tu v0.0.0-smoke; now " + smokeNow + ")",
+		harness.IdentityNote,
 		"GREEN   same/single/default/pipe/fixed",
 		"RED     diff/single/default/pipe/fixed  stdout @0 (line 1): golden=\"hello\\n\" go=\"different\\n\"",
 		"tudiff: 2 cases — 1 green, 1 red (0 expected, 1 unexpected), 0 timeout",
@@ -732,4 +733,28 @@ func TestRunUpdateNowAndFilter(t *testing.T) {
 			t.Errorf("manifest cases = %d, want 1", m.Cases)
 		}
 	})
+}
+
+// R2: --update identity-normalizes the byte channels (and the compare run
+// against such a golden is green on the same machine).
+func TestRunUpdateNormalizesIdentity(t *testing.T) {
+	e := newSmokeEnv(t, `{"schema":1,"cases":[{"id":"same","args":["ok"]}]}`)
+	writeExe(t, e.goBin, `#!/bin/sh
+if [ "${1:-}" = "--version" ]; then printf 'tu version v0.0.0-smoke\n'; exit 0; fi
+printf '%s/2026/%s/cc.jsonl machine_%s_cost\n' "$(id -un)" "$(hostname)" "$(hostname)"
+`)
+	golden2 := filepath.Join(t.TempDir(), "golden")
+	if code, _, stderr := e.invoke(t, "--golden", golden2, "--update", "--now", smokeNow); code != 0 {
+		t.Fatalf("--update exit = %d, stderr = %q", code, stderr)
+	}
+	raw, err := os.ReadFile(filepath.Join(harness.GoldenCaseDir(golden2, "same/single/default/pipe/fixed"), "stdout"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(raw), "$USER/2026/$MACHINE/cc.jsonl machine_$MACHINE_cost\n"; got != want {
+		t.Errorf("golden stdout = %q, want %q", got, want)
+	}
+	if code, stdout, stderr := e.invoke(t, "--golden", golden2); code != 0 {
+		t.Errorf("compare exit = %d, stderr = %q\n%s", code, stderr, stdout)
+	}
 }

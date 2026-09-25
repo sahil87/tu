@@ -136,6 +136,7 @@ func RenderHeader(h ReportHeader) []string {
 		fmt.Sprintf("golden: %s (captured %s from %s %s; now %s)",
 			h.GoldenDir, h.GoldenCapturedAt, h.GoldenOracle, h.GoldenOracleVersion, h.GoldenNow),
 		fmt.Sprintf("go: %s (%s)", h.GoPath, h.GoVersion),
+		IdentityNote,
 		"fixtures: " + strings.Join(h.Fixtures, ", "),
 		"script: " + script,
 		"matrix: " + matrix,

@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -20,6 +21,19 @@ import (
 // --version, -v, and help-dump goldens hold across releases while every other
 // byte stays exact (NormalizeVersion).
 const VersionPlaceholder = "$VERSION"
+
+// MachinePlaceholder/UserPlaceholder are the literals that replace the
+// capturing machine's hostname/username (whole-token, hostname first) in every
+// compared byte channel and tree.json key, so the corpus holds no real host
+// identity (NormalizeIdentity).
+const (
+	MachinePlaceholder = "$MACHINE"
+	UserPlaceholder    = "$USER"
+)
+
+// IdentityNote is the report-header line asserting identity normalisation;
+// the real hostname/username never appear in the report.
+const IdentityNote = "identity: $MACHINE/$USER normalised"
 
 // DefaultGoldenDir is the repo-root-relative default of tudiff's --golden
 // flag: the committed golden corpus.
@@ -116,6 +130,108 @@ func NormalizeVersion(b []byte, version string) []byte {
 	return b
 }
 
+// ProbeIdentity reads the machine's identity exactly as cmd/tu's edge derives
+// it for the conf sentinels: os.Hostname() (empty on error, the sentinel's
+// substitute) and os/user Current().Username ("unknown" on error, config's
+// safeUsername substitute).
+func ProbeIdentity() (hostname, username string) {
+	hostname, _ = os.Hostname()
+	u, err := user.Current()
+	if err != nil {
+		return hostname, "unknown"
+	}
+	return hostname, u.Username
+}
+
+// NormalizeIdentity replaces the capturing machine's identity: whole-token
+// occurrences of hostname become MachinePlaceholder (a token boundary is any
+// byte outside [A-Za-z0-9-], or start/end — note "_" is a boundary, so the
+// column-name shape "machine_dev-ws-sahil02_cost" normalizes to
+// "machine_$MACHINE_cost", while "dev-ws-sahil02x" never matches), hostname
+// first since the hostname may embed the username ("dev-ws-sahil02" carries
+// "sahil"). The username is replaced only as a whole PATH SEGMENT (bounded by
+// "/" or start/end): the username flows into compared surfaces exclusively as
+// the metrics-repo layout's <user>/ component, and a whole-token rule would
+// false-positive on ordinary text when the username is a common word (CI's
+// "root" is a help-dump JSON key). "sahil02" never matches user "sahil".
+// Empty values are no-ops. Applied at capture and at compare, it keeps the
+// corpus free of the capturing machine's identity.
+func NormalizeIdentity(b []byte, hostname, username string) []byte {
+	b = replaceToken(b, hostname, MachinePlaceholder)
+	return replaceSegment(b, username, UserPlaceholder)
+}
+
+// NormalizeTreeIdentity returns t with every path key identity-normalized
+// (day-file contents carry no identity, so hashes and LastSync pass through).
+func NormalizeTreeIdentity(t Tree, hostname, username string) Tree {
+	files := make(map[string]TreeFile, len(t.Files))
+	for p, f := range t.Files {
+		files[string(NormalizeIdentity([]byte(p), hostname, username))] = f
+	}
+	return Tree{Files: files, LastSync: t.LastSync}
+}
+
+// replaceToken replaces whole-token occurrences of old in b with new; an
+// empty old is a no-op.
+func replaceToken(b []byte, old, new string) []byte {
+	if old == "" {
+		return b
+	}
+	needle := []byte(old)
+	var out []byte
+	for {
+		i := bytes.Index(b, needle)
+		if i < 0 {
+			return append(out, b...)
+		}
+		end := i + len(needle)
+		boundedBefore := i == 0 || !isTokenByte(b[i-1])
+		boundedAfter := end == len(b) || !isTokenByte(b[end])
+		if boundedBefore && boundedAfter {
+			out = append(out, b[:i]...)
+			out = append(out, new...)
+		} else {
+			out = append(out, b[:end]...)
+		}
+		b = b[end:]
+	}
+}
+
+// isTokenByte reports whether c continues an identity token ([A-Za-z0-9-];
+// "_" is deliberately a boundary so machine_<host>_cost column names match).
+func isTokenByte(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-'
+}
+
+// replaceSegment replaces occurrences of old in b that span a full slash-
+// separated path segment (bounded by "/" or the start/end of the input); an
+// empty old is a no-op.
+func replaceSegment(b []byte, old, new string) []byte {
+	if old == "" {
+		return b
+	}
+	needle := []byte(old)
+	var out []byte
+	for {
+		i := bytes.Index(b, needle)
+		if i < 0 {
+			return append(out, b...)
+		}
+		end := i + len(needle)
+		boundedBefore := i == 0 || b[i-1] == '/'
+		boundedAfter := end == len(b) || b[end] == '/'
+		if boundedBefore && boundedAfter {
+			out = append(out, b[:i]...)
+			out = append(out, new...)
+		} else {
+			out = append(out, b[:end]...)
+		}
+		b = b[end:]
+	}
+}
+
+// and returns the last whitespace-separated field of stdout's first line —
+// "tu version v0.12.2\n" yields "v0.12.2".
 // ProbeVersion runs `bin args...` (args are `--version` at every call site)
 // and returns the last whitespace-separated field of stdout's first line —
 // "tu version v0.12.2\n" yields "v0.12.2".
@@ -237,23 +353,25 @@ func LoadTree(dir string) (Tree, error) {
 }
 
 // CompareTree compares a golden tree against the actual tree left under home
-// by the sync writer. A nil *TreeDiff means the trees agree.
-func CompareTree(golden Tree, home string) (*TreeDiff, error) {
+// by the sync writer, with the actual tree's path keys identity-normalized
+// first (the golden's keys were normalized at capture). A nil *TreeDiff means
+// the trees agree.
+func CompareTree(golden Tree, home, hostname, username string) (*TreeDiff, error) {
 	actual, err := TreeSnapshot(home)
 	if err != nil {
 		return nil, err
 	}
-	return CompareTreeSnapshot(golden, actual), nil
+	return CompareTreeSnapshot(golden, NormalizeTreeIdentity(actual, hostname, username)), nil
 }
 
 // CompareLiveTree is CompareTree over a live-harness clone: the .git subtree
 // is excluded from the actual tree exactly as at capture time.
-func CompareLiveTree(golden Tree, home string) (*TreeDiff, error) {
+func CompareLiveTree(golden Tree, home, hostname, username string) (*TreeDiff, error) {
 	actual, err := TreeSnapshotLive(home)
 	if err != nil {
 		return nil, err
 	}
-	return CompareTreeSnapshot(golden, actual), nil
+	return CompareTreeSnapshot(golden, NormalizeTreeIdentity(actual, hostname, username)), nil
 }
 
 // CompareTreeSnapshot compares a golden tree against an actual one, returning

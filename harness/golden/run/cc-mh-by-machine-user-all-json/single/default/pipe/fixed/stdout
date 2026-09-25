@@ -8,7 +8,7 @@
     "cacheReadTokens": 60000,
     "totalTokens": 73200,
     "machines": {
-      "dev-ws-sahil02": 1.5
+      "$MACHINE": 1.5
     }
   }
 ]

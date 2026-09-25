@@ -7,7 +7,7 @@
     "cacheReadTokens": 0,
     "totalTokens": 0,
     "machines": {
-      "dev-ws-sahil02": 0
+      "$MACHINE": 0
     }
   }
 }

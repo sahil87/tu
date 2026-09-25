@@ -104,7 +104,7 @@ tar xzf "$host_archive" -C "$tmp"
 # The same expression the justfile stamps (-X main.version={{go_version}}), so
 # the archive's --version agrees by construction; at release the checkout is
 # the tag, so this is exactly "tu version vX.Y.Z".
-want="tu version $(git describe --tags --always)"
+want="tu version $(git describe --tags --always 2>/dev/null || echo dev)"
 got=$("$tmp/tu" --version)
 if [ "$got" != "$want" ]; then
   echo "error: host smoke test failed: $host_archive ./tu --version printed '$got', want '$want'" >&2

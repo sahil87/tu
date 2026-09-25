@@ -196,10 +196,13 @@ type liveConfig struct {
 	now string
 	// version is the Go binary's probed --version value, for NormalizeVersion
 	// on the byte channels.
-	version  string
-	keep     bool
-	update   bool // write goldens instead of comparing
-	expected *harness.Expected
+	version string
+	// hostname/username are the machine's probed identity (ProbeIdentity), for
+	// NormalizeIdentity on the byte channels, the extras, and tree.json keys.
+	hostname, username string
+	keep               bool
+	update             bool // write goldens instead of comparing
+	expected           *harness.Expected
 }
 
 // liveSide holds the staged side's paths.
@@ -238,6 +241,7 @@ func executeLive(opts *liveOptions, root string, manifest *harness.GoldenManifes
 	// A failed version probe degrades to no version normalization (the run.go
 	// rule): the steps themselves report the broken binary.
 	lr.cfg.version, _ = harness.ProbeVersion(lr.cfg.goPath, "--version")
+	lr.cfg.hostname, lr.cfg.username = harness.ProbeIdentity()
 
 	// The header lands in report.txt via WriteReport (the case count is known
 	// only after the sequence runs); stdout streams case lines and the
@@ -297,6 +301,7 @@ func executeLiveUpdate(opts *liveOptions, root string, old *harness.GoldenManife
 		return 2
 	}
 	lr.cfg.version = version
+	lr.cfg.hostname, lr.cfg.username = harness.ProbeIdentity()
 	if _, err := lr.runSequence(stdout); err != nil {
 		fmt.Fprintf(stderr, "tudiff: %v\n", err)
 		return 2
@@ -559,7 +564,7 @@ func (lr *liveRunner) runStep(id string, args []string, fixtures string, pins st
 	}
 	dir := harness.GoldenLiveDir(lr.cfg.goldenDir, id)
 	cap, rerun := lr.execStep(args, fixtures)
-	normalizeLive(&cap, lr.side.home, lr.cfg.tmpRoot, lr.cfg.version)
+	normalizeLive(&cap, lr.side.home, lr.cfg.tmpRoot, lr.cfg.version, lr.cfg.hostname, lr.cfg.username)
 	if lr.cfg.update {
 		res, err := lr.writeStepGolden(dir, c, cap, pins)
 		if err != nil {
@@ -586,14 +591,16 @@ func (lr *liveRunner) runStep(id string, args []string, fixtures string, pins st
 // normalizeLive normalizes one live capture's byte channels for storage and
 // comparison: the staged home first (it lives under the temp root), then the
 // temp root itself (real git's error text — the pull-failure step's — embeds
-// the missing-remote path verbatim), then the version. cap.Home stays set:
-// Compare's and WriteCaseCaptures' home normalization are no-ops on the
-// normalized bytes, and the tree-red go.tree copy still finds the home.
-func normalizeLive(cap *harness.SideCapture, home, tmpRoot, version string) {
+// the missing-remote path verbatim), then the version, then the machine's
+// identity. cap.Home stays set: Compare's and WriteCaseCaptures' home
+// normalization are no-ops on the normalized bytes, and the tree-red go.tree
+// copy still finds the home.
+func normalizeLive(cap *harness.SideCapture, home, tmpRoot, version, hostname, username string) {
 	norm := func(b []byte) []byte {
 		b = harness.NormalizeHome(b, home)
 		b = bytes.ReplaceAll(b, []byte(tmpRoot), []byte("$TMP"))
-		return harness.NormalizeVersion(b, version)
+		b = harness.NormalizeVersion(b, version)
+		return harness.NormalizeIdentity(b, hostname, username)
 	}
 	cap.Stdout = norm(cap.Stdout)
 	cap.Stderr = norm(cap.Stderr)
@@ -633,6 +640,7 @@ func (lr *liveRunner) writeStepGolden(dir string, c harness.Case, cap harness.Si
 	if err != nil {
 		return res, err
 	}
+	tree = harness.NormalizeTreeIdentity(tree, lr.cfg.hostname, lr.cfg.username)
 	if err := harness.WriteGoldenCase(dir, cap, tree); err != nil {
 		return res, err
 	}
@@ -641,7 +649,7 @@ func (lr *liveRunner) writeStepGolden(dir string, c harness.Case, cap harness.Si
 		if err != nil {
 			return res, err
 		}
-		if err := harness.WriteGoldenExtra(dir, "status.txt", []byte(out)); err != nil {
+		if err := lr.writeExtra(dir, "status.txt", out); err != nil {
 			return res, err
 		}
 	}
@@ -650,7 +658,7 @@ func (lr *liveRunner) writeStepGolden(dir string, c harness.Case, cap harness.Si
 		if err != nil {
 			return res, err
 		}
-		if err := harness.WriteGoldenExtra(dir, "log.txt", []byte(out)); err != nil {
+		if err := lr.writeExtra(dir, "log.txt", out); err != nil {
 			return res, err
 		}
 	}
@@ -661,7 +669,7 @@ func (lr *liveRunner) writeStepGolden(dir string, c harness.Case, cap harness.Si
 // checkGoldenTree reddens when the clone's written tree (or .last-sync
 // presence) diverges from tree.json.
 func (lr *liveRunner) checkGoldenTree(res *harness.Result, goldenTree harness.Tree) {
-	diff, err := harness.CompareLiveTree(goldenTree, lr.side.home)
+	diff, err := harness.CompareLiveTree(goldenTree, lr.side.home, lr.cfg.hostname, lr.cfg.username)
 	if err != nil {
 		redden(res, "tree", strconv.Quote(err.Error()), strconv.Quote(err.Error()))
 		return
@@ -685,7 +693,8 @@ func (lr *liveRunner) checkGoldenExtras(res *harness.Result, dir string, pins st
 }
 
 // checkGoldenText compares one harness-side text artefact against the step's
-// stored extra.
+// stored extra (the actual text is identity-normalized first, as the stored
+// extra was at capture).
 func (lr *liveRunner) checkGoldenText(res *harness.Result, dir, name, channel string, actual func() (string, error)) {
 	want, err := harness.LoadGoldenExtra(dir, name)
 	if err != nil {
@@ -697,7 +706,16 @@ func (lr *liveRunner) checkGoldenText(res *harness.Result, dir, name, channel st
 		redden(res, channel, string(want), fmt.Sprint(err))
 		return
 	}
+	got = string(harness.NormalizeIdentity([]byte(got), lr.cfg.hostname, lr.cfg.username))
 	checkEqual(res, channel, string(want), got)
+}
+
+// writeExtra stores one pinned text artefact, identity-normalized (log.txt
+// and status.txt are git output — no identity today, but the pipeline keeps
+// the corpus provably free of it).
+func (lr *liveRunner) writeExtra(dir, name, text string) error {
+	return harness.WriteGoldenExtra(dir, name,
+		harness.NormalizeIdentity([]byte(text), lr.cfg.hostname, lr.cfg.username))
 }
 
 // childEnv is one tu child's environment: livebin first on PATH (fake
@@ -1004,6 +1022,8 @@ func (lr *liveRunner) repairStep(id string, repo string, write bool) harness.Res
 	cap.Stderr = normalizeRepo(cap.Stderr, repo)
 	cap.Stdout = bytes.ReplaceAll(cap.Stdout, []byte(lr.cfg.tmpRoot), []byte("$TMP"))
 	cap.Stderr = bytes.ReplaceAll(cap.Stderr, []byte(lr.cfg.tmpRoot), []byte("$TMP"))
+	cap.Stdout = harness.NormalizeIdentity(cap.Stdout, lr.cfg.hostname, lr.cfg.username)
+	cap.Stderr = harness.NormalizeIdentity(cap.Stderr, lr.cfg.hostname, lr.cfg.username)
 	if lr.cfg.update {
 		res := harness.Result{Case: c, Status: harness.StatusGreen, NodeExit: cap.Exit, GoExit: cap.Exit}
 		if err := lr.writeRepairGolden(dir, cap, repo); err != nil {
@@ -1020,7 +1040,8 @@ func (lr *liveRunner) repairStep(id string, repo string, write bool) harness.Res
 	actual, err := harness.TreeSnapshotRepo(repo)
 	if err != nil {
 		redden(&res, "tree", strconv.Quote(err.Error()), strconv.Quote(err.Error()))
-	} else if diff := harness.CompareTreeSnapshot(goldenTree, actual); diff != nil {
+	} else if diff := harness.CompareTreeSnapshot(goldenTree,
+		harness.NormalizeTreeIdentity(actual, lr.cfg.hostname, lr.cfg.username)); diff != nil {
 		redden(&res, "tree", diff.NodeExcerpt, diff.GoExcerpt)
 	}
 	if err := harness.WriteCaseCaptures(lr.cfg.reportDir, res, cap); err != nil {
@@ -1043,6 +1064,7 @@ func (lr *liveRunner) writeRepairGolden(dir string, cap harness.SideCapture, rep
 	if err != nil {
 		return err
 	}
+	tree = harness.NormalizeTreeIdentity(tree, lr.cfg.hostname, lr.cfg.username)
 	if err := harness.WriteGoldenCase(dir, cap, tree); err != nil {
 		return err
 	}

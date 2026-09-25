@@ -34,6 +34,7 @@ func TestRenderHeader(t *testing.T) {
 	want := `tudiff run  2026-09-16T12:00:00Z
 golden: harness/golden (captured 2026-09-25T06:30:00Z from oracle v0.12.2; now 2026-09-26T12:00:00)
 go: bin/tu (tu version v0.11.5)
+identity: $MACHINE/$USER normalised
 fixtures: dev-ws-sahil02, _placeholder
 script: util-linux
 matrix: harness/matrix.json (3 cases, filter "snap")
@@ -173,6 +174,7 @@ func TestWriteReport(t *testing.T) {
 	for _, sub := range []string{
 		"tudiff run  2026-09-16T12:00:00Z\n",
 		"golden: harness/golden (captured 2026-09-25T06:30:00Z from oracle v0.12.2; now 2026-09-26T12:00:00)\n",
+		"identity: $MACHINE/$USER normalised\n",
 		"matrix: harness/matrix.json (3 cases)\n",
 		"expected: harness/expected-diffs.json (1 entries)\n",
 		"GREEN   a/single/default/pipe/fixed\n",

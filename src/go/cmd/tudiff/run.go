@@ -250,6 +250,7 @@ func executeRun(opts *runOptions, root string, cases []harness.Case, exp *harnes
 	// themselves report the broken binary (harness-channel red), which is
 	// more actionable than a preflight refusal.
 	cfg.version, _ = harness.ProbeVersion(cfg.goPath, "--version")
+	cfg.hostname, cfg.username = harness.ProbeIdentity()
 
 	header := reportHeader(opts, cfg, manifest, len(cases))
 	header.ExpectedPath = opts.expected
@@ -297,6 +298,7 @@ func executeUpdate(opts *runOptions, root string, cases []harness.Case, old *har
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
+	cfg.hostname, cfg.username = harness.ProbeIdentity()
 
 	n, err := captureAll(cases, cfg, opts.jobs, func(c harness.Case, s caseSide) harness.SideCapture {
 		return execGo(c, cfg, s)
@@ -383,8 +385,12 @@ type runConfig struct {
 	now string
 	// version is the Go binary's probed --version value: goldens are stored
 	// and Go captures are compared after NormalizeVersion with it.
-	version  string
-	expected *harness.Expected
+	version string
+	// hostname/username are the machine's probed identity (ProbeIdentity):
+	// goldens are stored and Go captures are compared after NormalizeIdentity
+	// with them (channels and tree.json keys).
+	hostname, username string
+	expected           *harness.Expected
 }
 
 // runAllCases executes the cases through a --jobs worker pool. Report lines
@@ -466,8 +472,9 @@ func captureAll(cases []harness.Case, cfg runConfig, jobs int, exec func(harness
 }
 
 // captureCase stages one home, runs the case's capture side, and writes
-// run/<id>/ golden files: the byte channels (version-normalized here,
-// home-normalized by WriteGoldenCase), the decimal exit code, and tree.json.
+// run/<id>/ golden files: the byte channels (home-normalized, then version-,
+// then identity-normalized here), the decimal exit code, and tree.json (keys
+// identity-normalized).
 func captureCase(c harness.Case, cfg runConfig, exec func(harness.Case, caseSide) harness.SideCapture) error {
 	side, err := stageCase(c, cfg)
 	if err != nil {
@@ -480,15 +487,23 @@ func captureCase(c harness.Case, cfg runConfig, exec func(harness.Case, caseSide
 	if cap.Err != "" {
 		return fmt.Errorf("capture failed: %s", cap.Err)
 	}
-	cap.Home = side.home
-	cap.Stdout = harness.NormalizeVersion(cap.Stdout, cfg.version)
-	cap.Stderr = harness.NormalizeVersion(cap.Stderr, cfg.version)
-	cap.TTY = harness.NormalizeVersion(cap.TTY, cfg.version)
+	cap.Stdout = normalizeChannel(cap.Stdout, side.home, cfg)
+	cap.Stderr = normalizeChannel(cap.Stderr, side.home, cfg)
+	cap.TTY = normalizeChannel(cap.TTY, side.home, cfg)
 	tree, err := harness.TreeSnapshot(side.home)
 	if err != nil {
 		return err
 	}
+	tree = harness.NormalizeTreeIdentity(tree, cfg.hostname, cfg.username)
 	return harness.WriteGoldenCase(harness.GoldenCaseDir(cfg.goldenDir, c.ID), cap, tree)
+}
+
+// normalizeChannel applies the capture/compare normalization pipeline to one
+// byte channel: home, then version, then identity (the corpus order).
+func normalizeChannel(b []byte, home string, cfg runConfig) []byte {
+	b = harness.NormalizeHome(b, home)
+	b = harness.NormalizeVersion(b, cfg.version)
+	return harness.NormalizeIdentity(b, cfg.hostname, cfg.username)
 }
 
 // resolveNow picks the manifest's pinned clock: --now wins, then the existing
@@ -572,10 +587,10 @@ func runCase(c harness.Case, cfg runConfig) (harness.Result, error) {
 		_ = os.Remove(goSide.callLog)
 		goCap = execGo(c, cfg, goSide)
 	}
-	goCap.Home = goSide.home
-	goCap.Stdout = harness.NormalizeVersion(goCap.Stdout, cfg.version)
-	goCap.Stderr = harness.NormalizeVersion(goCap.Stderr, cfg.version)
-	goCap.TTY = harness.NormalizeVersion(goCap.TTY, cfg.version)
+	goCap.Stdout = normalizeChannel(goCap.Stdout, goSide.home, cfg)
+	goCap.Stderr = normalizeChannel(goCap.Stderr, goSide.home, cfg)
+	goCap.TTY = normalizeChannel(goCap.TTY, goSide.home, cfg)
+	goCap.Home = goSide.home // for the tree-red go.tree copy; Compare's home normalization is a no-op on the normalized bytes
 
 	res = harness.Compare(c, goldenCap, goCap)
 	res.Rerun = rerun
@@ -584,7 +599,7 @@ func runCase(c harness.Case, cfg runConfig) (harness.Result, error) {
 		// (the sync writer's half of the case). A tree difference reddens the
 		// case on the "tree" channel; a case already red keeps its first
 		// channel.
-		diff, err := harness.CompareTree(goldenTree, goSide.home)
+		diff, err := harness.CompareTree(goldenTree, goSide.home, cfg.hostname, cfg.username)
 		if err != nil {
 			return res, err
 		}
