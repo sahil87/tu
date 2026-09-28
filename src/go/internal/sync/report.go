@@ -30,19 +30,18 @@ type Report struct {
 	CommitMessage string       // the same string a live commit uses
 }
 
-// Format is the retired TypeScript implementation's formatDrySyncReport,
-// returned as stdout lines (the edge Fprintln's them). home tildefies the
-// user prefix.
+// Format renders the dry-run report as stdout lines (the edge Fprintln's
+// them). home tildefies the user prefix.
 func (r Report) Format(home string) []string {
-	// fmtCost is the TS fmt: "$" + toFixed(2) — NO thousands separators in
-	// either block (the TS uses the same fmt for both, DC-22).
-	fmtCost := func(x float64) string { return "$" + render.FixedHalfUp(x, 2) }
 	userPrefix := filepath.Join(r.MetricsDir, r.User)
 	dir := config.Tildefy(userPrefix, home) + "/"
 
 	var writes, skips []string
 	for _, tool := range r.Tools {
 		for _, d := range tool.Decisions {
+			if d.Action == ActionUnchanged {
+				continue // a byte-identical rewrite is not a write
+			}
 			name := d.Path
 			if strings.HasPrefix(name, userPrefix+"/") {
 				name = name[len(userPrefix)+1:]
@@ -50,15 +49,15 @@ func (r Report) Format(home string) []string {
 			if d.Action == ActionWrite {
 				note := "(new)"
 				if d.ExistingCost != nil {
-					note = "(update: " + fmtCost(*d.ExistingCost) + " → " + fmtCost(d.IncomingCost) + ")"
+					note = "(update: " + render.FormatCost(*d.ExistingCost) + " → " + render.FormatCost(d.IncomingCost) + ")"
 				}
-				writes = append(writes, "  "+name+"  "+fmtCost(d.IncomingCost)+"  "+note)
+				writes = append(writes, "  "+name+"  "+render.FormatCost(d.IncomingCost)+"  "+note)
 			} else {
 				existing := 0.0
 				if d.ExistingCost != nil {
 					existing = *d.ExistingCost
 				}
-				skips = append(skips, "  "+name+"  incoming "+fmtCost(d.IncomingCost)+" < existing "+fmtCost(existing))
+				skips = append(skips, "  "+name+"  incoming "+render.FormatCost(d.IncomingCost)+" < existing "+render.FormatCost(existing))
 			}
 		}
 	}
@@ -75,9 +74,9 @@ func (r Report) Format(home string) []string {
 		lines = append(lines, skips...)
 	}
 	if r.WouldCommit {
-		lines = append(lines, "Would commit: \""+r.CommitMessage+"\", then pull --rebase origin main, then push")
+		lines = append(lines, "Would commit: \""+r.CommitMessage+"\", then pull --rebase, then push")
 	} else {
-		lines = append(lines, "Would commit: nothing (no changes), then pull --rebase origin main, then push")
+		lines = append(lines, "Would commit: nothing (no changes), then pull --rebase, then push")
 	}
 	lines = append(lines, "Dry run — nothing written, committed, or pushed.")
 	return lines

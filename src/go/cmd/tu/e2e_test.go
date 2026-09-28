@@ -950,7 +950,7 @@ func syncDryRunReport(now time.Time) string {
 		"  2026/harness-machine/kimi-2026-01-07.jsonl  $0.50  (new)\n" +
 		"Would skip 1 file(s) (never-shrink guard):\n" +
 		"  2026/harness-machine/cc-2026-01-06.jsonl  incoming $0.50 < existing $0.75\n" +
-		"Would commit: \"# harness-user: update " + now.UTC().Format("2006-01-02") + "\", then pull --rebase origin main, then push\n" +
+		"Would commit: \"# harness-user: update " + now.Local().Format("2006-01-02") + "\", then pull --rebase, then push\n" +
 		"Dry run — nothing written, committed, or pushed.\n"
 }
 
@@ -1003,10 +1003,12 @@ func TestE2ESyncDryRun(t *testing.T) {
 	}
 }
 
-// R10: a live `tu sync` on each multi variant: the Synced line on stdout, the
-// add/status/pull/push argv sequence (no commit — the fake git's status is
-// clean), six ccusage calls, and the written tree. `sync --json` ignores the
-// format flag (DC-02) and renders the same plain-text result.
+// R10: a live `tu sync` on each multi variant: the Synced line on stdout,
+// the add/status/probe/push argv sequence (no commit — the fake git's status
+// is clean; the fake's empty probe answers route to the empty-remote path,
+// so the push is `push -u origin HEAD`), six ccusage calls, and the written
+// tree. `sync --json` ignores the format flag (DC-02) and renders the same
+// plain-text result.
 func TestE2ESyncLive(t *testing.T) {
 	for _, variant := range []string{"multi", "org", "legacy"} {
 		t.Run(variant, func(t *testing.T) {
@@ -1022,8 +1024,9 @@ func TestE2ESyncLive(t *testing.T) {
 			want := [][]string{
 				{"-C", dir, "add", "harness-user/"},
 				{"-C", dir, "status", "--porcelain", "harness-user/"},
-				{"-C", dir, "pull", "--rebase", "origin", "main"},
-				{"-C", dir, "push"},
+				{"-C", dir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"},
+				{"-C", dir, "ls-remote", "--symref", "origin", "HEAD"},
+				{"-C", dir, "push", "-u", "origin", "HEAD"},
 			}
 			if calls := gitCalls(t, log); !reflect.DeepEqual(calls, want) {
 				t.Errorf("git calls = %v, want %v", calls, want)
@@ -1043,8 +1046,8 @@ func TestE2ESyncJSONIgnored(t *testing.T) {
 	assertRun(t, []string{"sync", "--json"}, 0, "Synced to ~/.tu/metrics_repo\n", "")
 }
 
-// R10: a dirty `status --porcelain` inserts the commit (today's UTC date)
-// between status and pull.
+// R10: a dirty `status --porcelain` inserts the commit (today's local date)
+// between status and the pull-target probe.
 func TestE2ESyncDirty(t *testing.T) {
 	home := stageVariant(t, "multi")
 	log := filepath.Join(t.TempDir(), "calls.jsonl")
@@ -1055,9 +1058,10 @@ func TestE2ESyncDirty(t *testing.T) {
 	want := [][]string{
 		{"-C", dir, "add", "harness-user/"},
 		{"-C", dir, "status", "--porcelain", "harness-user/"},
-		{"-C", dir, "commit", "-m", "# harness-user: update " + time.Now().UTC().Format("2006-01-02")},
-		{"-C", dir, "pull", "--rebase", "origin", "main"},
-		{"-C", dir, "push"},
+		{"-C", dir, "commit", "-m", "# harness-user: update " + time.Now().Format("2006-01-02")},
+		{"-C", dir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"},
+		{"-C", dir, "ls-remote", "--symref", "origin", "HEAD"},
+		{"-C", dir, "push", "-u", "origin", "HEAD"},
 	}
 	if calls := gitCalls(t, log); !reflect.DeepEqual(calls, want) {
 		t.Errorf("git calls = %v, want %v", calls, want)
@@ -1067,11 +1071,13 @@ func TestE2ESyncDirty(t *testing.T) {
 // R10: a pull failure warns (the Node-shaped error text, its embedded newline
 // producing the blank line), then the generic error, exit 1; the log shows
 // the rebase --abort recovery after the pull, and no .last-sync is touched.
+// The script's ls-remote rule answers the pull-target probe with a default
+// branch so the round trip reaches the scripted pull.
 func TestE2ESyncPullFail(t *testing.T) {
 	home := stageVariant(t, "multi")
 	log := filepath.Join(t.TempDir(), "calls.jsonl")
 	t.Setenv("TUDIFF_CALL_LOG", log)
-	t.Setenv("TUDIFF_GIT_SCRIPT", `[{"match":["pull"],"stderr":"fatal: couldn't find remote ref main\n","exit":1}]`)
+	t.Setenv("TUDIFF_GIT_SCRIPT", `[{"match":["ls-remote"],"stdout":"ref: refs/heads/main\tHEAD\n","exit":0},{"match":["pull"],"stderr":"fatal: couldn't find remote ref main\n","exit":1}]`)
 	dir := filepath.Join(home, ".tu", "metrics_repo")
 	wantStderr := "Warning: sync pull failed — git -C " + dir + "... failed: Command failed: git -C " + dir + " pull --rebase origin main\n" +
 		"fatal: couldn't find remote ref main\n" +
@@ -1081,6 +1087,8 @@ func TestE2ESyncPullFail(t *testing.T) {
 	want := [][]string{
 		{"-C", dir, "add", "harness-user/"},
 		{"-C", dir, "status", "--porcelain", "harness-user/"},
+		{"-C", dir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"},
+		{"-C", dir, "ls-remote", "--symref", "origin", "HEAD"},
 		{"-C", dir, "pull", "--rebase", "origin", "main"},
 		{"-C", dir, "rebase", "--abort"},
 	}
@@ -1093,12 +1101,13 @@ func TestE2ESyncPullFail(t *testing.T) {
 }
 
 // R10: a push failure retries once (two push calls), then warns and exits 1
-// with the generic error.
+// with the generic error. The ls-remote rule answers the pull-target probe
+// so the round trip runs the ordinary pull before the scripted pushes.
 func TestE2ESyncPushFail(t *testing.T) {
 	home := stageVariant(t, "multi")
 	log := filepath.Join(t.TempDir(), "calls.jsonl")
 	t.Setenv("TUDIFF_CALL_LOG", log)
-	t.Setenv("TUDIFF_GIT_SCRIPT", `[{"match":["push"],"stderr":"error: failed to push some refs\n","exit":1}]`)
+	t.Setenv("TUDIFF_GIT_SCRIPT", `[{"match":["ls-remote"],"stdout":"ref: refs/heads/main\tHEAD\n","exit":0},{"match":["push"],"stderr":"error: failed to push some refs\n","exit":1}]`)
 	dir := filepath.Join(home, ".tu", "metrics_repo")
 	wantStderr := "Warning: sync push failed after retry — git -C " + dir + "... failed: Command failed: git -C " + dir + " push\n" +
 		"error: failed to push some refs\n" +
@@ -1108,6 +1117,8 @@ func TestE2ESyncPushFail(t *testing.T) {
 	want := [][]string{
 		{"-C", dir, "add", "harness-user/"},
 		{"-C", dir, "status", "--porcelain", "harness-user/"},
+		{"-C", dir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"},
+		{"-C", dir, "ls-remote", "--symref", "origin", "HEAD"},
 		{"-C", dir, "pull", "--rebase", "origin", "main"},
 		{"-C", dir, "push"},
 		{"-C", dir, "push"},
@@ -1175,8 +1186,9 @@ func TestE2ESyncFlagMulti(t *testing.T) {
 	want := [][]string{
 		{"-C", dir, "add", "harness-user/"},
 		{"-C", dir, "status", "--porcelain", "harness-user/"},
-		{"-C", dir, "pull", "--rebase", "origin", "main"},
-		{"-C", dir, "push"},
+		{"-C", dir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"},
+		{"-C", dir, "ls-remote", "--symref", "origin", "HEAD"},
+		{"-C", dir, "push", "-u", "origin", "HEAD"},
 	}
 	if calls := gitCalls(t, log); !reflect.DeepEqual(calls, want) {
 		t.Errorf("git calls = %v, want %v", calls, want)
@@ -1187,11 +1199,13 @@ func TestE2ESyncFlagMulti(t *testing.T) {
 // R9: `cc --sync` with a failing pull warns between the prefix and the
 // failure line (the error's embedded newline making the blank line), then the
 // table still renders from local data, exit 0, and .last-sync is untouched.
+// The ls-remote rule answers the pull-target probe so the round trip reaches
+// the scripted pull.
 func TestE2ESyncFlagPullFail(t *testing.T) {
 	home := stageVariant(t, "multi")
 	log := filepath.Join(t.TempDir(), "calls.jsonl")
 	t.Setenv("TUDIFF_CALL_LOG", log)
-	t.Setenv("TUDIFF_GIT_SCRIPT", `[{"match":["pull"],"stderr":"fatal: couldn't find remote ref main\n","exit":1}]`)
+	t.Setenv("TUDIFF_GIT_SCRIPT", `[{"match":["ls-remote"],"stdout":"ref: refs/heads/main\tHEAD\n","exit":0},{"match":["pull"],"stderr":"fatal: couldn't find remote ref main\n","exit":1}]`)
 	dir := filepath.Join(home, ".tu", "metrics_repo")
 	wantStderr := "syncing metrics... Warning: sync pull failed — git -C " + dir + "... failed: Command failed: git -C " + dir + " pull --rebase origin main\n" +
 		"fatal: couldn't find remote ref main\n" +
@@ -1202,6 +1216,8 @@ func TestE2ESyncFlagPullFail(t *testing.T) {
 	want := [][]string{
 		{"-C", dir, "add", "harness-user/"},
 		{"-C", dir, "status", "--porcelain", "harness-user/"},
+		{"-C", dir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"},
+		{"-C", dir, "ls-remote", "--symref", "origin", "HEAD"},
 		{"-C", dir, "pull", "--rebase", "origin", "main"},
 		{"-C", dir, "rebase", "--abort"},
 	}

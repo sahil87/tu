@@ -12,26 +12,30 @@ import (
 	"github.com/sahil87/tu/internal/source"
 )
 
-// Git argv the round trip issues beyond the user-dir-dependent ones (the TS
-// syncMetrics verb strings; the branch name is fixed, DC-18).
+// Git argv the round trip issues beyond the user-dir-dependent ones.
 var (
-	rebaseAbortArgs = []string{"rebase", "--abort"}
-	pullArgs        = []string{"pull", "--rebase", "origin", "main"}
-	pushArgs        = []string{"push"}
+	rebaseAbortArgs     = []string{"rebase", "--abort"}
+	upstreamArgs        = []string{"rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"}
+	remoteHEADArgs      = []string{"ls-remote", "--symref", "origin", "HEAD"}
+	pullUpstreamArgs    = []string{"pull", "--rebase"}
+	pushArgs            = []string{"push"}
+	pushSetUpstreamArgs = []string{"push", "-u", "origin", "HEAD"}
 )
 
 // The stderr warning lines SyncMetrics returns for the edge to write (the em
-// dash is U+2014, matching the TS bytes).
+// dash is U+2014).
 const (
 	rebaseRecoveryLine = "Warning: recovering from interrupted rebase"
+	addFailedPrefix    = "Warning: sync add failed — "
+	statusFailedPrefix = "Warning: sync status failed — "
+	commitFailedPrefix = "Warning: sync commit failed — "
 	pullFailedPrefix   = "Warning: sync pull failed — "
 	pushFailedPrefix   = "Warning: sync push failed after retry — "
 )
 
-// SyncMetrics is the retired TypeScript implementation's syncMetrics: the
-// add/commit/pull/push round trip against the metrics repo. It prints
-// nothing — lines are the stderr lines the TS would have printed, in order,
-// for the edge to write.
+// SyncMetrics is the add/commit/pull/push round trip against the metrics
+// repo. It prints nothing — lines are the stderr lines for the edge to
+// write, in order.
 func SyncMetrics(dir, user string, now time.Time, git Runner) (ok bool, lines []string) {
 	// Recover from an interrupted rebase left by a previous failed sync.
 	// os.Stat is exactly the TS existsSync — a worktree-style .git file is
@@ -45,35 +49,80 @@ func SyncMetrics(dir, user string, now time.Time, git Runner) (ok bool, lines []
 	// The user dir may not exist yet (first run, or no data because every
 	// source was unavailable): `git add <user>/` would fail with "pathspec
 	// did not match any files", so staging is skipped — but the status runs
-	// unconditionally. Any error in this block returns false with no new
-	// line (DC-18: a commit failure prints only the edge's generic error).
+	// unconditionally. A failure in any of the three calls surfaces a
+	// warning line carrying git's error before returning false.
 	if exists(filepath.Join(dir, user)) {
 		if _, err := git.Run(dir, "add", userArg); err != nil {
+			lines = append(lines, addFailedPrefix+err.Error())
 			return false, lines
 		}
 	}
 	status, err := git.Run(dir, "status", "--porcelain", userArg)
 	if err != nil {
+		lines = append(lines, statusFailedPrefix+err.Error())
 		return false, lines
 	}
 	if strings.TrimSpace(status) != "" {
 		if _, err := git.Run(dir, "commit", "-m", CommitMessage(user, now)); err != nil {
+			lines = append(lines, commitFailedPrefix+err.Error())
 			return false, lines
 		}
 	}
 
-	if _, err := git.Run(dir, pullArgs...); err != nil {
+	pull, emptyRemote, err := pullTarget(dir, git)
+	if err != nil {
 		lines = append(lines, pullFailedPrefix+err.Error())
 		_, _ = git.Run(dir, rebaseAbortArgs...) // error ignored — already clean (TS catch {})
 		return false, lines
 	}
-	if _, err := git.Run(dir, pushArgs...); err != nil {
-		if _, err := git.Run(dir, pushArgs...); err != nil {
+	if !emptyRemote {
+		if _, err := git.Run(dir, pull...); err != nil {
+			lines = append(lines, pullFailedPrefix+err.Error())
+			_, _ = git.Run(dir, rebaseAbortArgs...) // error ignored — already clean (TS catch {})
+			return false, lines
+		}
+	}
+	push := pushArgs
+	if emptyRemote {
+		push = pushSetUpstreamArgs
+	}
+	if _, err := git.Run(dir, push...); err != nil {
+		if _, err := git.Run(dir, push...); err != nil {
 			lines = append(lines, pushFailedPrefix+err.Error())
 			return false, lines
 		}
 	}
 	return true, lines
+}
+
+// pullTarget resolves what the pull step pulls. When the current branch has
+// an upstream (rev-parse exits 0 with non-empty output — a local check, no
+// network), the pull runs with no remote/refspec and git follows the
+// upstream. Otherwise the remote's default branch comes from the
+// `ref: refs/heads/{branch}\tHEAD` line of `ls-remote --symref origin HEAD`.
+// A remote advertising no refs (a fresh, empty repo) reports emptyRemote:
+// the caller skips the pull and pushes `-u origin HEAD` so the first sync to
+// a new repo succeeds and later syncs take the upstream path. An ls-remote
+// failure is returned for the caller to report as a pull failure.
+func pullTarget(dir string, git Runner) (args []string, emptyRemote bool, err error) {
+	if out, err := git.Run(dir, upstreamArgs...); err == nil && strings.TrimSpace(out) != "" {
+		return pullUpstreamArgs, false, nil
+	}
+	out, err := git.Run(dir, remoteHEADArgs...)
+	if err != nil {
+		return nil, false, err
+	}
+	for _, line := range strings.Split(out, "\n") {
+		rest, ok := strings.CutPrefix(line, "ref: refs/heads/")
+		if !ok {
+			continue
+		}
+		branch, _, _ := strings.Cut(rest, "\t")
+		if branch != "" {
+			return []string{"pull", "--rebase", "origin", branch}, false, nil
+		}
+	}
+	return nil, true, nil
 }
 
 // exists is the TS existsSync.

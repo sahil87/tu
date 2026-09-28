@@ -24,15 +24,15 @@ description: "The harness replayer binaries — fakeccusage serving fixture byte
 - **THEN** the exit code is 2 and stderr starts with `fakeccusage: no fixture for argv`
 
 ### Requirement: Fake git
-`src/go/cmd/fakegit` (built as `bin/harness/git`) sits first on `PATH` so every git invocation tu makes is intercepted (the shipped binary reaches `git` through `PATH`). It SHALL log every invocation to the shared call log with `tool: "git"`, then answer from `TUDIFF_GIT_SCRIPT` when set: a JSON array of rules `{"match":[…],"stdout":"…","stderr":"…","exit":n}` where `match` is a prefix match on argv after stripping a leading `-C <dir>` pair; the first matching rule wins. With no script or no matching rule it MUST write nothing to stdout or stderr and exit 0. It MUST perform no filesystem or network operations beyond the call log, and MUST accept (not special-case or reject) every argv shape tu issues: `rebase --abort`, `add <user>/`, `status --porcelain <user>/`, `commit -m <msg>`, `pull --rebase origin main`, `push`, `rev-parse --git-dir`, `clone <url> <dir>`.
+`src/go/cmd/fakegit` (built as `bin/harness/git`) sits first on `PATH` so every git invocation tu makes is intercepted (the shipped binary reaches `git` through `PATH`). It SHALL log every invocation to the shared call log with `tool: "git"`, then answer from `TUDIFF_GIT_SCRIPT` when set: a JSON array of rules `{"match":[…],"stdout":"…","stderr":"…","exit":n}` where `match` is a prefix match on argv after stripping a leading `-C <dir>` pair; the first matching rule wins. With no script or no matching rule it MUST write nothing to stdout or stderr and exit 0. It MUST perform no filesystem or network operations beyond the call log, and MUST accept (not special-case or reject) every argv shape tu issues: `rebase --abort`, `add <user>/`, `status --porcelain <user>/`, `commit -m <msg>`, `rev-parse --abbrev-ref --symbolic-full-name @{u}`, `ls-remote --symref origin HEAD`, `pull --rebase`, `pull --rebase origin <branch>`, `push`, `push -u origin HEAD`, `rev-parse --git-dir`, `clone <url> <dir>`.
 
 #### Scenario: Scripted and unscripted responses
 - **GIVEN** `TUDIFF_GIT_SCRIPT='[{"match":["status","--porcelain"],"stdout":" M u/x\n","exit":0}]'`
 - **WHEN** `git -C /tmp/m status --porcelain u/` runs
 - **THEN** stdout is ` M u/x\n`, exit 0, and the call-log line has `argv` equal to `["-C","/tmp/m","status","--porcelain","u/"]`
 - **GIVEN** no script
-- **WHEN** `git -C /tmp/m pull --rebase origin main` runs
-- **THEN** stdout and stderr are empty and exit is 0
+- **WHEN** `git -C /tmp/m ls-remote --symref origin HEAD` runs
+- **THEN** stdout and stderr are empty and exit is 0 — the empty answer routes the sync round trip to the empty-remote path (`push -u origin HEAD`, no pull)
 
 ### Requirement: Shared call log
 Both fakes SHALL append one JSON line per invocation to the file named by `TUDIFF_CALL_LOG` when set (create if absent, append otherwise), via the shared `harness.LogCall`. Line shape: `{"tool":"ccusage"|"git","argv":[…],"cwd":"…","matched":"<alias>/<file>"}` — `matched` is present only for fake-ccusage hits. A missing or unwritable log path MUST NOT change a fake's exit code or output (best-effort, errors swallowed silently — the fake impersonates a tool whose stderr is being compared). The Go side's log feeds the unconfirmed-fixture gate (`UnconfirmedReplays`) and lands in the report as `cases/<id>/go.calls.jsonl` ([differential-harness](/harness/differential-harness.md)).
