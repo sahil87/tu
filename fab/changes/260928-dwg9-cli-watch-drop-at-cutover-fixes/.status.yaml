@@ -10,7 +10,7 @@ progress:
     review: done
     hydrate: done
     ship: done
-    review-pr: active
+    review-pr: done
 plan:
     generated: true
     task_count: 6
@@ -34,7 +34,7 @@ stage_metrics:
     review: {started_at: "2026-09-28T19:02:15Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-28T19:04:48Z"}
     hydrate: {started_at: "2026-09-28T19:04:48Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-28T19:07:26Z"}
     ship: {started_at: "2026-09-28T19:07:26Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-28T19:10:10Z"}
-    review-pr: {started_at: "2026-09-28T19:10:10Z", driver: git-pr, iterations: 1}
+    review-pr: {started_at: "2026-09-28T19:10:10Z", driver: git-pr, iterations: 1, completed_at: "2026-09-28T19:20:27Z"}
 prs:
     - https://github.com/sahil87/tu/pull/105
 change_type_source: explicit
@@ -56,4 +56,4 @@ true_impact:
 summary: help flags recognized anywhere among positionals (bare help first-only), help lists the version flag with aliases, watch frame lines clipped ANSI-aware to terminal columns
 # base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-09-28T19:10:10Z
+last_updated: 2026-09-28T19:20:27Z
