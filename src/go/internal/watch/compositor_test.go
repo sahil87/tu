@@ -195,6 +195,12 @@ func TestClipLine(t *testing.T) {
 		// Box drawing and block bars stay 1 column.
 		{"box drawing counts one", "───", 2, "──"},
 		{"block bar counts one", "████", 3, "███"},
+		// Zero-width runes count no columns: a decomposed é (e + U+0301) is one
+		// terminal column, and ZWJ/variation selectors add nothing.
+		{"combining mark counts zero", "éclair", 3, "écl"},
+		{"combining kana mark counts zero", "がき", 2, "が"},
+		{"zwj counts zero", "a‍b", 2, "a‍b"},
+		{"variation selector counts zero", "✈️x", 3, "✈️x"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -3,6 +3,7 @@ package watch
 import (
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/sahil87/tu/internal/render/ansi"
@@ -110,15 +111,23 @@ func clipLines(lines []string, cols int) []string {
 	return out
 }
 
-// runeWidth is the terminal column width of one rune: 2 for the standard
+// runeWidth is the terminal column width of one rune: 0 for zero-width runes
+// — combining marks (unicode.Mn/Me, e.g. the accent in a decomposed é) and
+// the format controls ZWSP/ZWNJ/ZWJ/word joiner/ZWNBSP — 2 for the standard
 // wide ranges — emoji (U+1F300–U+1FAFF, so the 📊 heading counts 2), the
 // emoji-presentation symbols (U+2600–U+27BF), and the East-Asian
 // Wide/Fullwidth blocks — 1 for everything else the compositor draws: ASCII,
 // box drawing, block bars, and the half-width katakana (U+FF61–U+FF9F,
-// deliberately outside the fullwidth ranges below) the rain uses. No wcwidth
-// helper exists in-tree or in x/term/x/sys, and a new dependency for one
-// function is not warranted (constitution IV).
+// deliberately outside the fullwidth ranges below) the rain uses. The
+// zero-width check runs first because the broad CJK ranges below include
+// combining marks (e.g. U+3099–U+309A). No wcwidth helper exists in-tree or
+// in x/term/x/sys, and a new dependency for one function is not warranted
+// (constitution IV).
 func runeWidth(r rune) int {
+	if unicode.Is(unicode.Mn, r) || unicode.Is(unicode.Me, r) ||
+		r == 0x200B || r == 0x200C || r == 0x200D || r == 0x2060 || r == 0xFEFF {
+		return 0
+	}
 	switch {
 	case r >= 0x1100 && r <= 0x115F, // Hangul Jamo
 		r >= 0x2E80 && r <= 0xA4CF,   // CJK radicals … Yi
@@ -150,9 +159,12 @@ func visibleWidth(line string) int {
 // columns stop at cols, and a line clipped inside an SGR run is closed with
 // \x1b[0m so the clip does not leak styling into the clear-to-EOL that
 // follows. A line that fits is returned byte-identical. Width is measured in
-// terminal columns (runeWidth — wide runes such as the 📊 heading count 2); a
-// wide rune that would straddle the last column is dropped, not half-drawn.
-// cols is always ≥ 1 through the Terminal's 80×24 fallback.
+// terminal columns (runeWidth — wide runes such as the 📊 heading count 2);
+// zero-width runes (combining marks, joiners, variation selectors) pass
+// through uncounted even at the clip boundary, so a clipped line never severs
+// a combining mark from its base glyph, and a wide rune that would straddle
+// the last column is dropped, not half-drawn. cols is always ≥ 1 through the
+// Terminal's 80×24 fallback.
 func clipLine(line string, cols int) string {
 	if visibleWidth(line) <= cols {
 		return line
@@ -161,7 +173,8 @@ func clipLine(line string, cols int) string {
 	b.Grow(len(line))
 	visible := 0
 	open := false
-	for i := 0; i < len(line) && visible < cols; {
+runes:
+	for i := 0; i < len(line); {
 		if line[i] == 0x1b && i+1 < len(line) && line[i+1] == '[' {
 			j := i + 2
 			for j < len(line) && (line[j] == ';' || (line[j] >= '0' && line[j] <= '9')) {
@@ -176,10 +189,16 @@ func clipLine(line string, cols int) string {
 			}
 		}
 		r, size := utf8.DecodeRuneInString(line[i:])
-		if w := runeWidth(r); visible+w > cols {
+		switch w := runeWidth(r); {
+		case w == 0:
+			// zero-width runes never consume the column budget
+		case visible+w > cols:
+			if visible == cols {
+				break runes
+			}
 			i += size // a wide rune straddling the last column is dropped
 			continue
-		} else {
+		default:
 			visible += w
 		}
 		b.WriteString(line[i : i+size])
