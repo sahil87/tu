@@ -112,10 +112,12 @@ type EnvSpec struct {
 // gitScripts maps the failure-injection env axis values to their
 // TUDIFF_GIT_SCRIPT rule sets (prefix-matched by the fake git); the JSON text
 // is part of the byte contract. Every other env value leaves the variable
-// unset.
+// unset. The pullfail/pushfail sets lead with an ls-remote rule answering the
+// pull-target probe with a default branch, so the round trip reaches the
+// scripted pull/push instead of taking the empty-remote path.
 var gitScripts = map[string]string{
-	EnvPullfail: `[{"match":["pull"],"stderr":"fatal: couldn't find remote ref main\n","exit":1}]`,
-	EnvPushfail: `[{"match":["push"],"stderr":"error: failed to push some refs\n","exit":1}]`,
+	EnvPullfail: `[{"match":["ls-remote"],"stdout":"ref: refs/heads/main\tHEAD\n","exit":0},{"match":["pull"],"stderr":"fatal: couldn't find remote ref main\n","exit":1}]`,
+	EnvPushfail: `[{"match":["ls-remote"],"stdout":"ref: refs/heads/main\tHEAD\n","exit":0},{"match":["push"],"stderr":"error: failed to push some refs\n","exit":1}]`,
 	EnvDirty:    `[{"match":["status","--porcelain"],"stdout":" M harness-user/x\n","exit":0}]`,
 }
 

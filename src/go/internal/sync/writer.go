@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"bytes"
 	"encoding/json"
 	"math"
 	"math/big"
@@ -17,8 +18,9 @@ import (
 type Action string
 
 const (
-	ActionWrite Action = "write"
-	ActionSkip  Action = "skip" // the never-shrink guard would skip this write
+	ActionWrite     Action = "write"
+	ActionSkip      Action = "skip"      // the never-shrink guard would skip this write
+	ActionUnchanged Action = "unchanged" // the would-be bytes equal the existing file's
 )
 
 // Decision is the TS WriteDecision: produced for every record in BOTH live
@@ -38,28 +40,35 @@ type Decision struct {
 // created or written. Only the filesystem effects are gated on dryRun. A
 // filesystem error stops the walk and is returned (the TS throws — an
 // uncaught crash the edge prints, exit 1). Nothing is printed, ever — the
-// never-shrink skip is silent, as in the TS.
+// never-shrink skip is silent, as in the TS. A record whose serialized bytes
+// equal the existing file's decides ActionUnchanged (the never-shrink guard
+// runs first and still wins); live mode skips the no-op write, and the
+// dry-run report omits it and does not count it toward WouldCommit.
 func Write(dir, user, machine string, tool fact.Tool, recs []fact.Record, dryRun bool) ([]Decision, error) {
 	decisions := make([]Decision, 0, len(recs))
 	for _, rec := range recs {
 		path := metrics.Path(dir, user, machine, tool, rec.Date)
-		shrinking, existing := shrinkState(path, rec.TotalCost)
+		data, err := json.Marshal(metrics.DayFile{Label: rec.Date, Totals: rec.Totals})
+		if err != nil {
+			return nil, err
+		}
+		data = append(data, '\n')
+		shrinking, existing, raw := shrinkState(path, rec.TotalCost)
 		d := Decision{Path: path, Action: ActionWrite, IncomingCost: rec.TotalCost, ExistingCost: existing}
-		if shrinking {
+		switch {
+		case shrinking:
 			d.Action = ActionSkip
+		case raw != nil && bytes.Equal(raw, data):
+			d.Action = ActionUnchanged
 		}
 		decisions = append(decisions, d)
-		if shrinking || dryRun {
+		if shrinking || dryRun || d.Action == ActionUnchanged {
 			continue
 		}
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return nil, err
 		}
-		data, err := json.Marshal(metrics.DayFile{Label: rec.Date, Totals: rec.Totals})
-		if err != nil {
-			return nil, err
-		}
-		if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+		if err := os.WriteFile(path, data, 0o644); err != nil {
 			return nil, err
 		}
 	}
@@ -74,33 +83,35 @@ func Write(dir, user, machine string, tool fact.Tool, recs []fact.Record, dryRun
 // is not finite is treated as absent (write, no existing cost), matching the
 // read path's skip-silently posture. A finite existing cost yields shrinking
 // = incoming < existing: strictly lower skips, equal or greater writes (so
-// today's file keeps refreshing as the day grows).
-func shrinkState(path string, incoming float64) (shrinking bool, existing *float64) {
+// today's file keeps refreshing as the day grows). raw is the file's content
+// as read (nil on a read error) so the caller can decide ActionUnchanged by
+// byte equality without a second read.
+func shrinkState(path string, incoming float64) (shrinking bool, existing *float64, raw []byte) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return false, nil // file absent or unreadable → write
+		return false, nil, nil // file absent or unreadable → write
 	}
 	trimmed := strings.TrimSpace(string(raw))
 	if trimmed == "" {
-		return false, nil // empty file → treat as absent
+		return false, nil, raw // empty file → treat as absent
 	}
 	var doc any
 	if err := json.Unmarshal([]byte(trimmed), &doc); err != nil {
-		return false, nil // unparseable → treat as absent
+		return false, nil, raw // unparseable → treat as absent
 	}
 	obj, ok := doc.(map[string]any)
 	if !ok {
-		return false, nil // top-level non-object → Number(undefined) = NaN → absent
+		return false, nil, raw // top-level non-object → Number(undefined) = NaN → absent
 	}
 	value, present := obj["totalCost"]
 	if !present {
-		return false, nil // missing key → Number(undefined) = NaN → absent
+		return false, nil, raw // missing key → Number(undefined) = NaN → absent
 	}
 	cost := jsNumber(value)
 	if math.IsNaN(cost) || math.IsInf(cost, 0) {
-		return false, nil // not a finite number → treat as absent
+		return false, nil, raw // not a finite number → treat as absent
 	}
-	return incoming < cost, &cost
+	return incoming < cost, &cost, raw
 }
 
 // jsNumber is the JS Number() coercion the TS applies to existing?.totalCost:

@@ -1,12 +1,14 @@
 package sync
 
 import (
+	"bytes"
 	"encoding/json"
 	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sahil87/tu/internal/fact"
 	"github.com/sahil87/tu/internal/source/metrics"
@@ -146,12 +148,64 @@ func TestWriteEqualCostRefreshes(t *testing.T) {
 	// Equal cost but different token counts — the newer snapshot must win.
 	updated := rec("2026-02-20", 1.5)
 	updated.TotalTokens = 999
-	if _, err := Write(dir, "sahil", "macbook", ccTool, []fact.Record{updated}, false); err != nil {
+	decisions, err := Write(dir, "sahil", "macbook", ccTool, []fact.Record{updated}, false)
+	if err != nil {
 		t.Fatal(err)
+	}
+	// Bytes differ (the token field), so this is an update, not unchanged.
+	if d := decisions[0]; d.Action != ActionWrite || d.ExistingCost == nil || *d.ExistingCost != 1.5 {
+		t.Errorf("decision = %+v, want write with existing 1.5", d)
 	}
 	d := readDay(t, filepath.Join(dir, "sahil", "2026", "macbook", "cc-2026-02-20.jsonl"))
 	if d.TotalCost != 1.5 || d.TotalTokens != 999 {
 		t.Errorf("day-file = %+v, want totalCost 1.5 and totalTokens 999", d)
+	}
+}
+
+// R7/DC-23: a byte-identical rewrite decides ActionUnchanged in both modes;
+// live mode skips the no-op write (the file's mtime is untouched), dry-run
+// touches nothing.
+func TestWriteIdenticalBytesUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := Write(dir, "sahil", "macbook", ccTool, []fact.Record{rec("2026-02-20", 1.5)}, false); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "sahil", "2026", "macbook", "cc-2026-02-20.jsonl")
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stamp := time.Date(2026, 2, 20, 12, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(path, stamp, stamp); err != nil {
+		t.Fatal(err)
+	}
+
+	decisions, err := Write(dir, "sahil", "macbook", ccTool, []fact.Record{rec("2026-02-20", 1.5)}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := decisions[0]; d.Action != ActionUnchanged || d.ExistingCost == nil || *d.ExistingCost != 1.5 {
+		t.Errorf("dry-run decision = %+v, want unchanged with existing 1.5", d)
+	}
+
+	decisions, err = Write(dir, "sahil", "macbook", ccTool, []fact.Record{rec("2026-02-20", 1.5)}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := decisions[0]; d.Action != ActionUnchanged {
+		t.Errorf("live decision = %+v, want unchanged", d)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Error("live unchanged write altered the file bytes")
+	}
+	if info, err := os.Stat(path); err != nil {
+		t.Fatal(err)
+	} else if !info.ModTime().Equal(stamp) {
+		t.Errorf("mtime = %v, want %v (the unchanged write is skipped)", info.ModTime(), stamp)
 	}
 }
 

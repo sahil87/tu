@@ -1,0 +1,10 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-28T17:32:21Z"}
+{"args":"Sync drop-at-cutover fixes (DC-18, DC-21, DC-22, DC-23)","cmd":"fab-new","event":"command","ts":"2026-09-28T17:32:21Z"}
+{"delta":"+4.9","event":"confidence","score":4.9,"trigger":"calc-score","ts":"2026-09-28T17:33:07Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-28T17:34:35Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-28T17:45:20Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-28T17:47:45Z"}
+{"event":"review","result":"passed","ts":"2026-09-28T17:47:45Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-28T17:51:05Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-09-28T17:53:11Z"}
+{"event":"review","result":"passed","ts":"2026-09-28T18:04:01Z"}

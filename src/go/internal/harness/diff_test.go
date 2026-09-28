@@ -109,8 +109,8 @@ func TestBuildEnvAxes(t *testing.T) {
 // TUDIFF_GIT_SCRIPT variable with the byte-contract rule set.
 func TestBuildEnvGitScript(t *testing.T) {
 	scripts := map[string]string{
-		EnvPullfail: `[{"match":["pull"],"stderr":"fatal: couldn't find remote ref main\n","exit":1}]`,
-		EnvPushfail: `[{"match":["push"],"stderr":"error: failed to push some refs\n","exit":1}]`,
+		EnvPullfail: `[{"match":["ls-remote"],"stdout":"ref: refs/heads/main\tHEAD\n","exit":0},{"match":["pull"],"stderr":"fatal: couldn't find remote ref main\n","exit":1}]`,
+		EnvPushfail: `[{"match":["ls-remote"],"stdout":"ref: refs/heads/main\tHEAD\n","exit":0},{"match":["push"],"stderr":"error: failed to push some refs\n","exit":1}]`,
 		EnvDirty:    `[{"match":["status","--porcelain"],"stdout":" M harness-user/x\n","exit":0}]`,
 	}
 	base := BuildEnv(baseCase(), baseSpec("/h"))

@@ -1,6 +1,6 @@
 ---
 type: memory
-description: sync.Write — the never-shrink-guarded day-file writer: one Decision per record in live and dry-run mode, the shrinkState guard and its Number() coercion table, and the shared metrics.DayFile JSON encoding written under {dir}/{user}/{year}/{machine}/{tool}-{date}.jsonl
+description: sync.Write — the never-shrink-guarded day-file writer: one Decision per record in live and dry-run mode (write / skip / unchanged by byte equality), the shrinkState guard and its Number() coercion table, and the shared metrics.DayFile JSON encoding written under {dir}/{user}/{year}/{machine}/{tool}-{date}.jsonl
 ---
 
 # Day-File Writer
@@ -14,7 +14,7 @@ description: sync.Write — the never-shrink-guarded day-file writer: one Decisi
 ## Requirements
 
 ### Requirement: One Decision per record in both modes
-`sync.Write(dir, user, machine string, tool fact.Tool, recs []fact.Record, dryRun bool) ([]Decision, error)` MUST produce one `sync.Decision{Path, Action, IncomingCost, ExistingCost *float64}` per record, in record order, in BOTH live and dry-run mode. `Action` is `ActionWrite` or `ActionSkip` (the never-shrink guard would skip); `ExistingCost` is non-nil only when an existing parseable cost was read. In live mode a write decision MUST create the file's directory with `os.MkdirAll` (`0o755`) and write the day-file (`0o644`) as `json.Marshal(metrics.DayFile) + "\n"`; in dry-run mode nothing is created or written. A filesystem error MUST stop the walk and be returned. The writer MUST NOT print anything — a skip is silent.
+`sync.Write(dir, user, machine string, tool fact.Tool, recs []fact.Record, dryRun bool) ([]Decision, error)` MUST produce one `sync.Decision{Path, Action, IncomingCost, ExistingCost *float64}` per record, in record order, in BOTH live and dry-run mode. `Action` is `ActionWrite`, `ActionSkip` (the never-shrink guard would skip), or `ActionUnchanged` (the serialized bytes `json.Marshal(metrics.DayFile) + "\n"` equal the existing file's bytes — the guard runs first and still wins); `ExistingCost` is non-nil only when an existing parseable cost was read. In live mode a write decision MUST create the file's directory with `os.MkdirAll` (`0o755`) and write the day-file (`0o644`) as `json.Marshal(metrics.DayFile) + "\n"`; skip and unchanged decisions MUST NOT touch the filesystem (an unchanged rewrite is a no-op — bytes, mtime, and I/O all spared); in dry-run mode nothing is created or written. A filesystem error MUST stop the walk and be returned. The writer MUST NOT print anything — a skip is silent.
 
 #### Scenario: Guard arms across a batch
 - **GIVEN** an existing `cc-2026-01-06.jsonl` costing 0.75 and incoming records costing 0.5 for 2026-01-05..07, with `cc-2026-01-05.jsonl` holding 0.25 and `cc-2026-01-07.jsonl` absent
@@ -25,7 +25,7 @@ description: sync.Write — the never-shrink-guarded day-file writer: one Decisi
 `internal/source/metrics/metrics.go` exports `DayFile{Label string `json:"label"`; fact.Totals}` — the one JSON object a `{tool}-{date}.jsonl` file holds, label first, then the six totals in `fact.Totals` order. `metrics.Name(tool, date)` is the basename `{tool.Key}-{date}.jsonl`; `metrics.Path(dir, user, machine, tool, date)` is `{dir}/{user}/{year}/{machine}/{Name}` where `year` is the label's first four characters (a shorter label is used whole). The writer marshals `DayFile{Label: rec.Date, Totals: rec.Totals}`; the reader decodes into the same struct.
 
 ### Requirement: The never-shrink guard compares coerced costs
-`shrinkState(path, incoming) (shrinking bool, existing *float64)` (`src/go/internal/sync/writer.go`) MUST make its verdict in one file read. Treated as absent (write, `existing` nil): a read error; empty/whitespace content; undecodable JSON; a top-level non-object; a missing `totalCost` key; or a coerced cost that is NaN or infinite. Otherwise the value at key `totalCost` MUST go through the `jsNumber` coercion table:
+`shrinkState(path, incoming) (shrinking bool, existing *float64, raw []byte)` (`src/go/internal/sync/writer.go`) MUST make its verdict in one file read and return the file's content as `raw` (nil on a read error) so the caller can decide `ActionUnchanged` by byte equality without a second read. Treated as absent (write, `existing` nil): a read error; empty/whitespace content; undecodable JSON; a top-level non-object; a missing `totalCost` key; or a coerced cost that is NaN or infinite. Otherwise the value at key `totalCost` MUST go through the `jsNumber` coercion table:
 
 | JSON value at `totalCost` | Coerced cost |
 |---------------------------|--------------|
@@ -61,8 +61,14 @@ A finite result yields `shrinking = incoming < existing`: strictly lower skips, 
 **Rejected**: a strict float-only check (a string `"0.75"` or `null` in a corrupted file would diverge from the reference verdict).
 *Introduced by*: 260916-lsml-sync-metrics-writer
 
-### One read carries verdict and cost together
-**Decision**: `shrinkState` returns `(shrinking, existing)` from a single file read, so `Decision.ExistingCost` needs no second read.
-**Why**: minimum pathways — the dry-run report's `(update: $a → $b)` lines carry the existing cost, and reading twice would risk a torn verdict.
-**Rejected**: a boolean-only guard plus a separate read for the report.
+### Byte equality decides "unchanged"
+**Decision**: a record whose serialized bytes equal the existing file's decides `ActionUnchanged`; live mode skips the no-op write, while the dry-run report omits it and does not count it toward `WouldCommit`.
+**Why**: byte equality is exactly what git sees, so the preview's commit prediction matches the live run; skipping the write spares the mtime bump and I/O of a rewrite nothing can observe.
+**Rejected**: writing unchanged bytes through the one write path anyway (a no-op write that still costs the I/O and mtime bump); treating equal *cost* as unchanged (a token-only change with equal cost would be hidden from the preview although git commits it).
+*Introduced by*: 260928-ubws-sync-drop-at-cutover-fixes
+
+### One read carries verdict, cost, and bytes together
+**Decision**: `shrinkState` returns `(shrinking, existing, raw)` from a single file read, so `Decision.ExistingCost` and the byte-equality check need no second read.
+**Why**: minimum pathways — the dry-run report's `(update: $a → $b)` lines carry the existing cost, the unchanged decision compares the would-be bytes against the existing ones, and reading twice would risk a torn verdict.
+**Rejected**: a boolean-only guard plus separate reads for the report and the byte compare.
 *Introduced by*: 260717-xuhk

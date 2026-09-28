@@ -61,6 +61,18 @@ func equalStrings(got, want []string) bool {
 	return true
 }
 
+// withUpstream wraps a script so the pull-target probe sees a configured
+// upstream: rev-parse answers origin/main, and the round trip takes the
+// upstream pull path (`pull --rebase` with no remote/refspec).
+func withUpstream(run func(args []string) (string, error)) func(args []string) (string, error) {
+	return func(args []string) (string, error) {
+		if args[0] == "rev-parse" {
+			return "origin/main\n", nil
+		}
+		return run(args)
+	}
+}
+
 // R5: an interrupted-rebase marker appends the recovery line and runs
 // `rebase --abort`, whose error is ignored.
 func TestSyncMetricsRebaseRecovery(t *testing.T) {
@@ -71,12 +83,12 @@ func TestSyncMetricsRebaseRecovery(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(dir, "u"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	git := &fakeRunner{run: func(args []string) (string, error) {
+	git := &fakeRunner{run: withUpstream(func(args []string) (string, error) {
 		if args[0] == "rebase" {
 			return "", errors.New("no rebase in progress")
 		}
 		return "", nil
-	}}
+	})}
 	ok, lines := SyncMetrics(dir, "u", syncNow, git)
 	if !ok {
 		t.Error("ok = false, want true (the abort's failure is swallowed)")
@@ -88,7 +100,8 @@ func TestSyncMetricsRebaseRecovery(t *testing.T) {
 		dir + " | rebase --abort",
 		dir + " | add u/",
 		dir + " | status --porcelain u/",
-		dir + " | pull --rebase origin main",
+		dir + " | rev-parse --abbrev-ref --symbolic-full-name @{u}",
+		dir + " | pull --rebase",
 		dir + " | push",
 	}
 	if got := callStrings(git.calls); !equalStrings(got, want) {
@@ -100,14 +113,15 @@ func TestSyncMetricsRebaseRecovery(t *testing.T) {
 // not match` cannot fail a first run) but the status still runs.
 func TestSyncMetricsMissingUserDir(t *testing.T) {
 	dir := t.TempDir()
-	git := &fakeRunner{}
+	git := &fakeRunner{run: withUpstream(func(args []string) (string, error) { return "", nil })}
 	ok, lines := SyncMetrics(dir, "u", syncNow, git)
 	if !ok || len(lines) != 0 {
 		t.Errorf("ok = %v, lines = %v, want true, no lines", ok, lines)
 	}
 	want := []string{
 		dir + " | status --porcelain u/",
-		dir + " | pull --rebase origin main",
+		dir + " | rev-parse --abbrev-ref --symbolic-full-name @{u}",
+		dir + " | pull --rebase",
 		dir + " | push",
 	}
 	if got := callStrings(git.calls); !equalStrings(got, want) {
@@ -115,18 +129,19 @@ func TestSyncMetricsMissingUserDir(t *testing.T) {
 	}
 }
 
-// R5: a dirty status commits with the exact `# u: update {date}` message.
+// R5: a dirty status commits with the exact `# u: update {local date}`
+// message.
 func TestSyncMetricsDirtyStatusCommits(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.Mkdir(filepath.Join(dir, "u"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	git := &fakeRunner{run: func(args []string) (string, error) {
+	git := &fakeRunner{run: withUpstream(func(args []string) (string, error) {
 		if args[0] == "status" {
 			return " M x\n", nil
 		}
 		return "", nil
-	}}
+	})}
 	ok, lines := SyncMetrics(dir, "u", syncNow, git)
 	if !ok || len(lines) != 0 {
 		t.Errorf("ok = %v, lines = %v, want true, no lines", ok, lines)
@@ -134,8 +149,9 @@ func TestSyncMetricsDirtyStatusCommits(t *testing.T) {
 	want := []string{
 		dir + " | add u/",
 		dir + " | status --porcelain u/",
-		dir + " | commit -m # u: update 2026-09-15",
-		dir + " | pull --rebase origin main",
+		dir + " | commit -m # u: update " + syncNow.Local().Format("2006-01-02"),
+		dir + " | rev-parse --abbrev-ref --symbolic-full-name @{u}",
+		dir + " | pull --rebase",
 		dir + " | push",
 	}
 	if got := callStrings(git.calls); !equalStrings(got, want) {
@@ -143,33 +159,134 @@ func TestSyncMetricsDirtyStatusCommits(t *testing.T) {
 	}
 }
 
-// R5/DC-18: a commit failure returns false with NO line (the edge's generic
-// error is the only output) and stops before pull/push.
-func TestSyncMetricsCommitFailureSilent(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.Mkdir(filepath.Join(dir, "u"), 0o755); err != nil {
-		t.Fatal(err)
+// R3/DC-18: an add, status, or commit failure appends its
+// `Warning: sync {step} failed — {err}` line before returning false and
+// stops before pull/push.
+func TestSyncMetricsStageCommitFailures(t *testing.T) {
+	cases := []struct {
+		name     string
+		run      func(args []string) (string, error)
+		wantLine string
+	}{
+		{"add", func(args []string) (string, error) {
+			if args[0] == "add" {
+				return "", errors.New("pathspec boom")
+			}
+			return "", nil
+		}, "Warning: sync add failed — pathspec boom"},
+		{"status", func(args []string) (string, error) {
+			if args[0] == "status" {
+				return "", errors.New("status boom")
+			}
+			return "", nil
+		}, "Warning: sync status failed — status boom"},
+		{"commit", func(args []string) (string, error) {
+			switch args[0] {
+			case "status":
+				return " M x\n", nil
+			case "commit":
+				return "", errors.New("missing identity")
+			}
+			return "", nil
+		}, "Warning: sync commit failed — missing identity"},
 	}
-	git := &fakeRunner{run: func(args []string) (string, error) {
-		if args[0] == "commit" {
-			return "", errors.New("nothing to commit")
-		}
-		if args[0] == "status" {
-			return " M x\n", nil
-		}
-		return "", nil
-	}}
-	ok, lines := SyncMetrics(dir, "u", syncNow, git)
-	if ok {
-		t.Error("ok = true, want false")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.Mkdir(filepath.Join(dir, "u"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			git := &fakeRunner{run: tc.run}
+			ok, lines := SyncMetrics(dir, "u", syncNow, git)
+			if ok {
+				t.Error("ok = true, want false")
+			}
+			if !equalStrings(lines, []string{tc.wantLine}) {
+				t.Errorf("lines = %v, want [%q]", lines, tc.wantLine)
+			}
+			for _, c := range git.calls {
+				if c.args[0] == "pull" || c.args[0] == "push" {
+					t.Errorf("unexpected call after %s failure: %v", tc.name, c)
+				}
+			}
+		})
 	}
-	if len(lines) != 0 {
-		t.Errorf("lines = %v, want none", lines)
+}
+
+// R1/R2: the pull target follows the repo — the configured upstream when one
+// is set, else the remote's default branch from ls-remote; both no-upstream
+// paths push `-u origin HEAD` (a branch with no upstream cannot plain-push);
+// an empty remote additionally skips the pull; an ls-remote failure is a pull
+// failure.
+func TestSyncMetricsPullTarget(t *testing.T) {
+	cases := []struct {
+		name      string
+		run       func(args []string) (string, error)
+		wantTail  []string // calls after `status --porcelain u/`
+		wantOK    bool
+		wantLines []string
+	}{
+		{"upstream configured", func(args []string) (string, error) {
+			if args[0] == "rev-parse" {
+				return "origin/trunk\n", nil
+			}
+			return "", nil
+		}, []string{
+			"rev-parse --abbrev-ref --symbolic-full-name @{u}",
+			"pull --rebase",
+			"push",
+		}, true, nil},
+		{"no upstream, remote default branch", func(args []string) (string, error) {
+			switch args[0] {
+			case "rev-parse":
+				return "", errors.New("fatal: no upstream configured")
+			case "ls-remote":
+				return "ref: refs/heads/trunk\tHEAD\ndeadbeef\tHEAD\n", nil
+			}
+			return "", nil
+		}, []string{
+			"rev-parse --abbrev-ref --symbolic-full-name @{u}",
+			"ls-remote --symref origin HEAD",
+			"pull --rebase origin trunk",
+			"push -u origin HEAD",
+		}, true, nil},
+		{"empty remote skips pull, pushes -u", func(args []string) (string, error) {
+			return "", nil // rev-parse and ls-remote both answer empty
+		}, []string{
+			"rev-parse --abbrev-ref --symbolic-full-name @{u}",
+			"ls-remote --symref origin HEAD",
+			"push -u origin HEAD",
+		}, true, nil},
+		{"ls-remote failure is a pull failure", func(args []string) (string, error) {
+			if args[0] == "ls-remote" {
+				return "", errors.New("network boom")
+			}
+			return "", nil
+		}, []string{
+			"rev-parse --abbrev-ref --symbolic-full-name @{u}",
+			"ls-remote --symref origin HEAD",
+			"rebase --abort",
+		}, false, []string{"Warning: sync pull failed — network boom"}},
 	}
-	for _, c := range git.calls {
-		if c.args[0] == "pull" || c.args[0] == "push" {
-			t.Errorf("unexpected call after commit failure: %v", c)
-		}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			git := &fakeRunner{run: tc.run}
+			ok, lines := SyncMetrics(dir, "u", syncNow, git)
+			if ok != tc.wantOK {
+				t.Errorf("ok = %v, want %v", ok, tc.wantOK)
+			}
+			if !equalStrings(lines, tc.wantLines) {
+				t.Errorf("lines = %v, want %v", lines, tc.wantLines)
+			}
+			want := []string{dir + " | status --porcelain u/"}
+			for _, c := range tc.wantTail {
+				want = append(want, dir+" | "+c)
+			}
+			if got := callStrings(git.calls); !equalStrings(got, want) {
+				t.Errorf("calls = %v, want %v", got, want)
+			}
+		})
 	}
 }
 
@@ -180,7 +297,7 @@ func TestSyncMetricsPullFailure(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(dir, "u"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	git := &fakeRunner{run: func(args []string) (string, error) {
+	git := &fakeRunner{run: withUpstream(func(args []string) (string, error) {
 		switch args[0] {
 		case "pull":
 			return "", errors.New("boom")
@@ -188,7 +305,7 @@ func TestSyncMetricsPullFailure(t *testing.T) {
 			return "", errors.New("already clean")
 		}
 		return "", nil
-	}}
+	})}
 	ok, lines := SyncMetrics(dir, "u", syncNow, git)
 	if ok {
 		t.Error("ok = true, want false")
@@ -215,7 +332,7 @@ func TestSyncMetricsPushRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	pushes := 0
-	git := &fakeRunner{run: func(args []string) (string, error) {
+	git := &fakeRunner{run: withUpstream(func(args []string) (string, error) {
 		if args[0] == "push" {
 			pushes++
 			if pushes == 1 {
@@ -223,7 +340,7 @@ func TestSyncMetricsPushRetry(t *testing.T) {
 			}
 		}
 		return "", nil
-	}}
+	})}
 	ok, lines := SyncMetrics(dir, "u", syncNow, git)
 	if !ok || len(lines) != 0 {
 		t.Errorf("ok = %v, lines = %v, want true, no lines", ok, lines)
@@ -240,13 +357,13 @@ func TestSyncMetricsPushFailsTwice(t *testing.T) {
 		t.Fatal(err)
 	}
 	pushes := 0
-	git := &fakeRunner{run: func(args []string) (string, error) {
+	git := &fakeRunner{run: withUpstream(func(args []string) (string, error) {
 		if args[0] == "push" {
 			pushes++
 			return "", errors.New("boom" + string(rune('0'+pushes)))
 		}
 		return "", nil
-	}}
+	})}
 	ok, lines := SyncMetrics(dir, "u", syncNow, git)
 	if ok {
 		t.Error("ok = true, want false")
@@ -294,10 +411,10 @@ func gitDo(t *testing.T, dir string, args ...string) string {
 	return string(out)
 }
 
-// realRepo seeds a bare repo on main and a clone with an initial commit —
-// SyncMetrics pulls/pushes `origin main`, so the fixture is anchored on main
-// explicitly rather than depending on the runner's init.defaultBranch (the
-// TS gitSetup note).
+// realRepo seeds a bare repo on main and a clone with an initial commit, so
+// the clone has the upstream origin/main SyncMetrics' pull follows. The
+// fixture is anchored on main explicitly rather than depending on the
+// runner's init.defaultBranch.
 func realRepo(t *testing.T, root string) (bare, clone string) {
 	t.Helper()
 	bare = filepath.Join(root, "bare.git")
@@ -353,8 +470,8 @@ func TestSyncMetricsRealCleanNoOp(t *testing.T) {
 	}
 }
 
-// TS: returns false when metricsDir is not a git repo (the add fails inside
-// the stage/commit block — silent, DC-18).
+// TS: returns false when metricsDir is not a git repo — the add failure
+// surfaces its warning line (DC-18).
 func TestSyncMetricsRealNonGitDir(t *testing.T) {
 	pinGitEnv(t)
 	plain := filepath.Join(t.TempDir(), "plain")
@@ -365,8 +482,8 @@ func TestSyncMetricsRealNonGitDir(t *testing.T) {
 	if ok {
 		t.Error("ok = true, want false")
 	}
-	if len(lines) != 0 {
-		t.Errorf("lines = %v, want none", lines)
+	if len(lines) != 1 || !strings.HasPrefix(lines[0], addFailedPrefix) {
+		t.Errorf("lines = %v, want one %q line", lines, addFailedPrefix)
 	}
 }
 
@@ -416,6 +533,82 @@ func TestSyncMetricsRealUpstreamIntegrated(t *testing.T) {
 	}
 	if !fileExists(filepath.Join(clone, "bob", "2026", "laptop", "cc-2026-02-22.jsonl")) {
 		t.Error("bob's file missing from the clone's tree after the pull")
+	}
+}
+
+// R1: a metrics clone whose default branch is not main (trunk, with the
+// upstream git clone sets) syncs through `pull --rebase` — no `origin main`.
+func TestSyncMetricsRealNonMainDefaultBranch(t *testing.T) {
+	pinGitEnv(t)
+	root := t.TempDir()
+	bare := filepath.Join(root, "bare.git")
+	clone := filepath.Join(root, "clone")
+	gitDo(t, "", "init", "--bare", "--initial-branch=trunk", bare)
+	gitDo(t, "", "clone", bare, clone)
+	if err := os.WriteFile(filepath.Join(clone, ".gitkeep"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitDo(t, clone, "add", ".gitkeep")
+	gitDo(t, clone, "commit", "-m", "init")
+	gitDo(t, clone, "push", "-u", "origin", "trunk")
+
+	writeDay(t, clone, "sahil", "macbook", "2026-02-22", 1.5)
+	ok, lines := SyncMetrics(clone, "sahil", syncNow, Exec{})
+	if !ok || len(lines) != 0 {
+		t.Fatalf("ok = %v, lines = %v, want true, no lines", ok, lines)
+	}
+	if log := gitDo(t, bare, "log", "--oneline"); !strings.Contains(log, "# sahil: update") {
+		t.Errorf("bare log = %q, want a # sahil: update commit", log)
+	}
+}
+
+// R1: a clone whose upstream was unset (non-empty remote, default branch
+// main) pulls `origin main` explicitly and pushes `-u origin HEAD` — plain
+// `push` would fail with "no upstream branch" — and the push re-sets the
+// upstream so the next sync takes the upstream path.
+func TestSyncMetricsRealNoUpstreamFallback(t *testing.T) {
+	pinGitEnv(t)
+	bare, clone := realRepo(t, t.TempDir())
+	gitDo(t, clone, "branch", "--unset-upstream")
+
+	writeDay(t, clone, "sahil", "macbook", "2026-02-22", 1.5)
+	ok, lines := SyncMetrics(clone, "sahil", syncNow, Exec{})
+	if !ok || len(lines) != 0 {
+		t.Fatalf("ok = %v, lines = %v, want true, no lines", ok, lines)
+	}
+	if log := gitDo(t, bare, "log", "--oneline"); !strings.Contains(log, "# sahil: update") {
+		t.Errorf("bare log = %q, want a # sahil: update commit", log)
+	}
+	if up := strings.TrimSpace(gitDo(t, clone, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")); up != "origin/main" {
+		t.Errorf("upstream = %q, want origin/main (push -u re-set it)", up)
+	}
+}
+
+// R2: a fresh clone of an empty bare repo has no upstream and no remote refs;
+// the first sync skips the pull and pushes `-u origin HEAD`, and the second
+// sync takes the upstream path.
+func TestSyncMetricsRealEmptyRemote(t *testing.T) {
+	pinGitEnv(t)
+	root := t.TempDir()
+	bare := filepath.Join(root, "bare.git")
+	clone := filepath.Join(root, "clone")
+	gitDo(t, "", "init", "--bare", bare)
+	gitDo(t, "", "clone", bare, clone) // git warns about the empty clone but exits 0
+
+	writeDay(t, clone, "sahil", "macbook", "2026-02-22", 1.5)
+	ok, lines := SyncMetrics(clone, "sahil", syncNow, Exec{})
+	if !ok || len(lines) != 0 {
+		t.Fatalf("first sync: ok = %v, lines = %v, want true, no lines", ok, lines)
+	}
+	if log := gitDo(t, bare, "log", "--oneline"); !strings.Contains(log, "# sahil: update") {
+		t.Errorf("bare log = %q, want a # sahil: update commit", log)
+	}
+	if branch := strings.TrimSpace(gitDo(t, clone, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")); branch == "" {
+		t.Error("push -u did not set an upstream for the next sync")
+	}
+	ok, lines = SyncMetrics(clone, "sahil", syncNow, Exec{})
+	if !ok || len(lines) != 0 {
+		t.Fatalf("second sync: ok = %v, lines = %v, want true, no lines", ok, lines)
 	}
 }
 
@@ -602,7 +795,7 @@ func TestFullSyncDryRun(t *testing.T) {
 	if !r.WouldCommit {
 		t.Error("WouldCommit = false, want true (any would-write)")
 	}
-	if r.CommitMessage != "# harness-user: update 2026-09-15" {
+	if r.CommitMessage != "# harness-user: update "+syncNow.Local().Format("2006-01-02") {
 		t.Errorf("CommitMessage = %q", r.CommitMessage)
 	}
 
@@ -626,6 +819,8 @@ func TestFullSyncDryRun(t *testing.T) {
 }
 
 // R6: live — writes, the add/status/pull/push round trip, and .last-sync.
+// The fakeRunner answers every probe with empty success, so the round trip
+// takes the empty-remote path (no pull, `push -u origin HEAD`).
 func TestFullSyncLive(t *testing.T) {
 	metricsDir := t.TempDir()
 	seedCorpus(t, metricsDir)
@@ -660,8 +855,9 @@ func TestFullSyncLive(t *testing.T) {
 	want := []string{
 		metricsDir + " | add harness-user/",
 		metricsDir + " | status --porcelain harness-user/",
-		metricsDir + " | pull --rebase origin main",
-		metricsDir + " | push",
+		metricsDir + " | rev-parse --abbrev-ref --symbolic-full-name @{u}",
+		metricsDir + " | ls-remote --symref origin HEAD",
+		metricsDir + " | push -u origin HEAD",
 	}
 	if got := callStrings(git.calls); !equalStrings(got, want) {
 		t.Errorf("calls = %v, want %v", got, want)
@@ -698,6 +894,32 @@ func TestFullSyncDryRunDirtyStatus(t *testing.T) {
 	}
 	if !out.OK || out.Report.WouldCommit {
 		t.Errorf("OK = %v, WouldCommit = %v, want true/false (git error = not dirty)", out.OK, out.Report.WouldCommit)
+	}
+}
+
+// R7: a byte-identical rewrite decides ActionUnchanged, so a steady-state
+// dry-run reports no writes and WouldCommit stays false on a clean tree.
+func TestFullSyncDryRunUnchanged(t *testing.T) {
+	metricsDir := t.TempDir()
+	seedCorpus(t, metricsDir)
+	// The fetch returns exactly the seeded records — same cost AND token
+	// counters, so the serialized bytes equal the files on disk.
+	fetcher := &fakeFetcher{recs: []fact.Record{
+		toolRec("cc", "2026-01-05", 0.25),
+		toolRec("cc", "2026-01-06", 0.75),
+	}}
+	git := &fakeRunner{} // status answers empty: not dirty
+
+	out, err := FullSync(context.Background(), fullSyncInputs(metricsDir, t.TempDir(), fetcher, git), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cc := out.Report.Tools[0].Decisions
+	if len(cc) != 2 || cc[0].Action != ActionUnchanged || cc[1].Action != ActionUnchanged {
+		t.Errorf("decisions = %+v, want two unchanged", cc)
+	}
+	if out.Report.WouldCommit {
+		t.Error("WouldCommit = true, want false (byte-identical rewrites are not writes)")
 	}
 }
 

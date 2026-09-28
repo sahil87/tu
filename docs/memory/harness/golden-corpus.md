@@ -61,6 +61,6 @@ Byte channels are stored exactly as `harness.Compare` compares them: after `Norm
 
 ### A zone-less pinned clock over per-zone timestamps
 **Decision**: `now` is one zone-less local timestamp; each case's TZ interprets it, and noon is the pinned hour.
-**Why**: The matrix's `tz` axis runs the same case under `TZ=UTC` and `TZ=Asia/Kolkata`; one pinned wall-clock value lands on the same local calendar date in both, and noon keeps `CommitMessage`'s UTC date on that same day in both zones.
+**Why**: The matrix's `tz` axis runs the same case under `TZ=UTC` and `TZ=Asia/Kolkata`; one pinned wall-clock value lands on the same local calendar date in both, and noon keeps `CommitMessage`'s local date on that same day in both zones.
 **Rejected**: Pinning a UTC instant (the two zones would see different local dates); normalising date labels out of captures (the default history window changes which rows exist as months pass, so the row set itself would drift).
 *Introduced by*: 260925-6wpm-remove-src-node

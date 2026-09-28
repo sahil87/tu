@@ -51,7 +51,7 @@ func TestReportFormatFull(t *testing.T) {
 		"  2026/harness-machine/codex-2026-01-05.jsonl  $0.50  (new)",
 		"Would skip 1 file(s) (never-shrink guard):",
 		"  2026/harness-machine/cc-2026-01-06.jsonl  incoming $0.50 < existing $0.75",
-		`Would commit: "# harness-user: update 2026-09-15", then pull --rebase origin main, then push`,
+		`Would commit: "# harness-user: update 2026-09-15", then pull --rebase, then push`,
 		"Dry run — nothing written, committed, or pushed.",
 	}
 	if got := r.Format(home); !equalStrings(got, want) {
@@ -65,7 +65,7 @@ func TestReportFormatZero(t *testing.T) {
 	r := Report{MetricsDir: "/m", User: "u", Machine: "m"}
 	want := []string{
 		"Would write 0 day-file(s) under /m/u/.",
-		"Would commit: nothing (no changes), then pull --rebase origin main, then push",
+		"Would commit: nothing (no changes), then pull --rebase, then push",
 		"Dry run — nothing written, committed, or pushed.",
 	}
 	if got := r.Format(""); !equalStrings(got, want) {
@@ -88,7 +88,7 @@ func TestReportFormatNoSkipBlock(t *testing.T) {
 	want := []string{
 		"Would write 1 day-file(s) under m/u/:",
 		"  2026/mach/cc-2026-01-05.jsonl  $1.00  (new)",
-		`Would commit: "# u: update 2026-09-15", then pull --rebase origin main, then push`,
+		`Would commit: "# u: update 2026-09-15", then pull --rebase, then push`,
 		"Dry run — nothing written, committed, or pushed.",
 	}
 	if got := r.Format(""); !equalStrings(got, want) {
@@ -118,7 +118,7 @@ func TestReportFormatRelativeMetricsDir(t *testing.T) {
 		"Would write 2 day-file(s) under rel/metrics/u/:",
 		"  2026/m/cc-2026-01-05.jsonl  $0.50  (new)",
 		"  " + filepath.Join("elsewhere", "cc-2026-01-06.jsonl") + "  $0.50  (new)",
-		`Would commit: "# u: update 2026-09-15", then pull --rebase origin main, then push`,
+		`Would commit: "# u: update 2026-09-15", then pull --rebase, then push`,
 		"Dry run — nothing written, committed, or pushed.",
 	}
 	if got := r.Format(filepath.Join("home", "tester")); !equalStrings(got, want) {
@@ -126,9 +126,9 @@ func TestReportFormatRelativeMetricsDir(t *testing.T) {
 	}
 }
 
-// R7/DC-22: no thousands separators in either block — $1234.50, never
-// $1,234.50.
-func TestReportFormatNoThousandsSeparators(t *testing.T) {
+// R5/DC-22: every cost renders with the shared FormatCost — thousands
+// separators in both the write block and the skip block.
+func TestReportFormatThousandsSeparators(t *testing.T) {
 	metricsDir := "/m"
 	path := filepath.Join(metricsDir, "u", "2026", "mach", "cc-2026-01-05.jsonl")
 	r := Report{
@@ -137,17 +137,43 @@ func TestReportFormatNoThousandsSeparators(t *testing.T) {
 		Machine:    "mach",
 		Tools: []ToolReport{{Tool: ccTool, Decisions: []Decision{
 			decision(path, ActionWrite, 1234.5, ptrFloat(1234.5)),
-			decision(path, ActionSkip, 1234.5, ptrFloat(9999.5)),
+			decision(path, ActionSkip, 1234.5, ptrFloat(99999.0)),
 		}}},
 		WouldCommit:   true,
 		CommitMessage: "# u: update 2026-09-15",
 	}
 	want := []string{
 		"Would write 1 day-file(s) under /m/u/:",
-		"  2026/mach/cc-2026-01-05.jsonl  $1234.50  (update: $1234.50 → $1234.50)",
+		"  2026/mach/cc-2026-01-05.jsonl  $1,234.50  (update: $1,234.50 → $1,234.50)",
 		"Would skip 1 file(s) (never-shrink guard):",
-		"  2026/mach/cc-2026-01-05.jsonl  incoming $1234.50 < existing $9999.50",
-		`Would commit: "# u: update 2026-09-15", then pull --rebase origin main, then push`,
+		"  2026/mach/cc-2026-01-05.jsonl  incoming $1,234.50 < existing $99,999.00",
+		`Would commit: "# u: update 2026-09-15", then pull --rebase, then push`,
+		"Dry run — nothing written, committed, or pushed.",
+	}
+	if got := r.Format(""); !equalStrings(got, want) {
+		t.Errorf("Format =\n%s\nwant\n%s", joinLines(got), joinLines(want))
+	}
+}
+
+// R7/DC-23: unchanged decisions (byte-identical rewrites) are omitted from
+// the write list — with only unchanged decisions the header is the
+// zero-write line.
+func TestReportFormatOmitsUnchanged(t *testing.T) {
+	metricsDir := "/m"
+	path := filepath.Join(metricsDir, "u", "2026", "mach", "cc-2026-01-05.jsonl")
+	r := Report{
+		MetricsDir: metricsDir,
+		User:       "u",
+		Machine:    "mach",
+		Tools: []ToolReport{{Tool: ccTool, Decisions: []Decision{
+			decision(path, ActionUnchanged, 0.5, ptrFloat(0.5)),
+		}}},
+		WouldCommit:   false,
+		CommitMessage: "# u: update 2026-09-15",
+	}
+	want := []string{
+		"Would write 0 day-file(s) under /m/u/.",
+		"Would commit: nothing (no changes), then pull --rebase, then push",
 		"Dry run — nothing written, committed, or pushed.",
 	}
 	if got := r.Format(""); !equalStrings(got, want) {

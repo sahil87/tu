@@ -12,22 +12,28 @@ import (
 // syncNow is a fixed instant so every assertion is deterministic.
 var syncNow = time.Date(2026, 9, 15, 19, 9, 44, 502*int(time.Millisecond), time.UTC)
 
-// R3: the commit message carries the UTC date.
+// R4: the commit message carries the local date — the same basis the
+// day-file labels use.
 func TestCommitMessage(t *testing.T) {
 	now := time.Date(2026, 9, 15, 18, 54, 44, 0, time.UTC)
-	if got := CommitMessage("harness-user", now); got != "# harness-user: update 2026-09-15" {
-		t.Errorf("CommitMessage = %q", got)
+	want := "# harness-user: update " + now.Local().Format("2006-01-02")
+	if got := CommitMessage("harness-user", now); got != want {
+		t.Errorf("CommitMessage = %q, want %q", got, want)
 	}
 }
 
-// R3/DC-21: a non-UTC now still yields the UTC date, which can trail the
-// day-files' local date.
-func TestCommitMessageUTCDate(t *testing.T) {
-	// 2026-09-16 01:30 at +05:00 is 2026-09-15 20:30 UTC.
-	zone := time.FixedZone("plus5", 5*60*60)
-	now := time.Date(2026, 9, 16, 1, 30, 0, 0, zone)
-	if got := CommitMessage("harness-user", now); got != "# harness-user: update 2026-09-15" {
-		t.Errorf("CommitMessage = %q, want the UTC date 2026-09-15", got)
+// R4/DC-21: when local and UTC dates straddle midnight, the message uses the
+// LOCAL date — an evening sync no longer titles the commit with the next UTC
+// day.
+func TestCommitMessageLocalDate(t *testing.T) {
+	// Process zone UTC−7: 2026-09-17 03:00 UTC is 2026-09-16 20:00 local.
+	zone := time.FixedZone("minus7", -7*60*60)
+	old := time.Local
+	time.Local = zone
+	t.Cleanup(func() { time.Local = old })
+	now := time.Date(2026, 9, 17, 3, 0, 0, 0, time.UTC)
+	if got := CommitMessage("harness-user", now); got != "# harness-user: update 2026-09-16" {
+		t.Errorf("CommitMessage = %q, want the local date 2026-09-16", got)
 	}
 }
 

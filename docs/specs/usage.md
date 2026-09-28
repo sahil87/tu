@@ -97,7 +97,7 @@ Non-data commands are recognized by their first argument and dispatched before g
 |---------|-------------|
 | `tu init-conf` | Scaffold `~/.config/tu/tu.conf` from the shipped defaults: `Created ~/.config/tu/tu.conf — edit it to configure multi-machine sync.`; when a legacy `~/.tu.conf` exists the new file is seeded from it instead: `Copied ~/.tu.conf → ~/.config/tu/tu.conf`; if the file already exists, reports commented-out fields: `~/.config/tu/tu.conf has commented-out fields that need uncommenting: metrics_repo.` Exit 0 in every case |
 | `tu init-metrics [repo-url]` | Clone the metrics git repo into `metrics_dir`. With `<repo-url>`: first write `metrics_repo = <url>` into `~/.config/tu/tu.conf` (creating/seeding the file as `init-conf` does, replacing an active or commented `metrics_repo` line, else appending a commented block plus the value) and print `Set metrics_repo = <url> in ~/.config/tu/tu.conf`; the typed URL beats an exported `TU_METRICS_REPO` for the clone; then `Cloned <url> → <absolute metrics dir>`. Idempotent: an existing git repo prints `Already initialized: <absolute dir>` (exit 0) after the config write. Without `<repo-url>` it requires `metrics_repo` from org.conf, tu.conf, or `TU_METRICS_REPO`, else exit 1. A `metrics_dir` that exists but is not a git repo is exit 1. More than one positional is exit 2. Clears the clone-failure marker on success. Git's own clone chatter passes through on stderr; paths in these messages are absolute while `status` abbreviates them (DC-19) |
-| `tu sync` | Manually push/pull metrics (requires multi mode): fetch fresh local data, write day-files, `git add {user}/`, commit if changed, `pull --rebase origin main`, `push` (one retry). Success prints `Synced to ~/.tu/metrics_repo` (exit 0) and touches `~/.tu/.last-sync`. Single mode: two stderr lines starting `tu sync requires metrics_repo to be set.`, exit 1 |
+| `tu sync` | Manually push/pull metrics (requires multi mode): fetch fresh local data, write day-files, `git add {user}/`, commit if changed, pull and push per the Sync Flow below (the pull follows the branch's upstream, else the remote's default branch; the push retries once). Success prints `Synced to ~/.tu/metrics_repo` (exit 0) and touches `~/.tu/.last-sync`. Single mode: two stderr lines starting `tu sync requires metrics_repo to be set.`, exit 1 |
 | `tu sync --dry-run` | Preview a sync without touching the working tree, repo, or network (see Dry Run below) |
 | `tu status` | Show mode, user, machine, config path(s), metrics dir, last sync time, auto-sync state (layouts §13). Never clones or syncs |
 | `tu update` | Update tu in place via Homebrew (see Toolkit Contracts › update) |
@@ -395,18 +395,18 @@ tu.default.conf  <  ~/.config/tu/org.conf  <  ~/.config/tu/tu.conf  <  TU_METRIC
 
 Each file contains one JSON line with a `UsageEntry` (`{"label":"2026-09-10","totalCost":0.449,"inputTokens":…,"totalTokens":…}`) for one local day; `{tool}` is the source token (`cc`, `codex`, `oc`, `gemini`, `copilot`, `kimi`), `{date}` the entry's local ISO date, `{year}` its year. Top-level directories are user profiles, except `docs/` and dot-directories (`.git`), which are never read as users. Local entries for every tool with data are written to the clone before every multi-mode fetch of the own user (a plain `tu` in multi mode is a write).
 
-**Never-shrink guard.** A day-file is overwritten only when the incoming entry's `totalCost` is greater than or equal to the existing file's; a strictly lower incoming cost is skipped silently (no stderr). A missing, empty, or unparseable existing file is written. Day-files are therefore high-water marks that survive the assistant's own transcript purge.
+**Never-shrink guard.** A day-file is overwritten only when the incoming entry's `totalCost` is greater than or equal to the existing file's; a strictly lower incoming cost is skipped silently (no stderr). A missing, empty, or unparseable existing file is written. A rewrite whose serialized bytes equal the existing file's is not written at all. Day-files are therefore high-water marks that survive the assistant's own transcript purge.
 
 **Own-machine max-merge.** In multi mode the own user's view reads every machine's day-files from the clone, then for the own machine takes, per date, whichever whole entry — the live fetch or the stored day-file — has the greater `totalCost` (ties → live), and sums that with the other machines' entries. A stored day-file larger than today's live fetch therefore shows up in the snapshot, the `--by-machine` column, and the leaderboard. `-u <other user>` and `-u all` read repo entries only (plain per-label sums, no live data, no writes). Single mode reads no repo.
 
 ### Sync Flow (`tu sync` / `--sync`)
 
 1. Fetch fresh local data for all tools
-2. Write local entries to the metrics repo (never-shrink guarded)
-3. `git add {user}/`, commit if anything changed with the message `# {user}: update {UTC date}` (the UTC date, which can trail the day-files' local date) (DC-21), `git pull --rebase origin main` (the branch name `main` is fixed) (DC-18), `git push` (retry once on failure); an interrupted rebase is aborted before the retry
+2. Write local entries to the metrics repo (never-shrink guarded; a rewrite whose serialized bytes equal the existing file's is skipped)
+3. `git add {user}/`, commit if anything changed with the message `# {user}: update {local date}` (the same local-date basis the day-file labels use), then pull and push. The pull follows the repo: when the current branch has an upstream (a local `git rev-parse --abbrev-ref --symbolic-full-name @{u}` check), `git pull --rebase` with no remote/refspec; otherwise the remote's default branch from `git ls-remote --symref origin HEAD`, `git pull --rebase origin {branch}`; a remote advertising no refs (a fresh, empty repo) skips the pull. The push follows the same probe: plain `git push` when an upstream is configured, `git push -u origin HEAD` otherwise (a branch with no upstream cannot plain-push), so the first sync to a new or upstream-less repo succeeds and later syncs take the upstream path. `git push` retries once on failure; an interrupted rebase is aborted before the retry
 4. Touch `~/.tu/.last-sync` (an ISO timestamp) on success
 
-Output: `Synced to ~/.tu/metrics_repo` on stdout, exit 0. On failure, stderr gets `Error: sync failed — check network and remote config.` (exit 1), preceded by `Warning: sync pull failed — {git command}... failed: {git stderr}` only when the pull step failed; a failed commit (e.g. no git identity) or push prints the generic line alone (DC-18). `--sync` on a data command prints `syncing metrics... ` to stderr, then the table; a failure prints `sync failed — using local data.` and continues with exit 0. The repo write happens on every multi-mode data command; `sync`/`--sync` add the git round trip.
+Output: `Synced to ~/.tu/metrics_repo` on stdout, exit 0. On failure, stderr gets `Error: sync failed — check network and remote config.` (exit 1), preceded by a `Warning: sync {step} failed — {git command}... failed: {git stderr}` line for whichever of the add/status/commit/pull steps failed (`Warning: sync push failed after retry — …` when both pushes fail). `--sync` on a data command prints `syncing metrics... ` to stderr, then the table; a failure prints `sync failed — using local data.` and continues with exit 0. The repo write happens on every multi-mode data command; `sync`/`--sync` add the git round trip.
 
 #### Dry Run (`tu sync --dry-run`)
 
@@ -418,11 +418,11 @@ Would write {N} day-file(s) under ~/.tu/metrics_repo/{user}/:
   {year}/{machine}/{tool}-{date}.jsonl  ${cost}  (update: ${existing} → ${cost})
 Would skip {K} file(s) (never-shrink guard):
   {year}/{machine}/{tool}-{date}.jsonl  incoming ${cost} < existing ${existing}
-Would commit: "# {user}: update {UTC date}", then pull --rebase origin main, then push
+Would commit: "# {user}: update {local date}", then pull --rebase, then push
 Dry run — nothing written, committed, or pushed.
 ```
 
-The `Would skip` block appears only when something would be skipped; costs in the skip lines omit thousands separators (DC-22); an equal-cost rewrite is reported as an update and counts toward `Would commit`, so the preview may predict a commit that a live sync then finds unnecessary (DC-23). The git half is computed locally — only a read-only `git status --porcelain {user}/` is invoked; `pull`/`push` are reported, never executed. The same mode and `metrics_repo` guards as a live sync apply first (single mode is exit 1). The flag is honored **only** by `tu sync`; any other invocation carrying `--dry-run` fails fast with exit 2 (Global Flags).
+The `Would skip` block appears only when something would be skipped; all costs render with the shared thousands-separated formatter every table uses (`$99,999.00`), in both the write and the skip lines. A rewrite whose serialized bytes equal the existing file's is unchanged — omitted from the `Would write` list and not counted toward `Would commit`, so the steady-state preview agrees with the live run (`Would commit: nothing (no changes), then pull --rebase, then push`); an equal-cost write whose bytes differ (e.g. token fields changed) is still an `(update: $X → $X)`. The git half is computed locally — only a read-only `git status --porcelain {user}/` is invoked; `pull`/`push` are reported, never executed or probed. The same mode and `metrics_repo` guards as a live sync apply first (single mode is exit 1). The flag is honored **only** by `tu sync`; any other invocation carrying `--dry-run` fails fast with exit 2 (Global Flags).
 
 ### Auto-Clone Guard
 
@@ -566,10 +566,11 @@ Every entry below is a **proposal**: a behavior the shipped binary exhibits that
   Why it looks accidental: memory's width contract covers the pivot only; the other tables were never fitted to watch mode (criteria 2).
   Spec: Watch Mode › Layout; layouts §7.
 
-- **DC-18** `[DECIDE: keep|drop]` Sync failure reporting: the pull step is hard-coded to `origin main` (an empty repo or a `master`-default repo never syncs — `fatal: couldn't find remote ref main`), and a commit or push failure prints only `Error: sync failed — check network and remote config.` with the underlying git error swallowed (only pull failures include it).
+- **DC-18** `[DECIDED: drop]` Sync failure reporting: the pull step is hard-coded to `origin main` (an empty repo or a `master`-default repo never syncs — `fatal: couldn't find remote ref main`), and a commit or push failure prints only `Error: sync failed — check network and remote config.` with the underlying git error swallowed (only pull failures include it).
   Where: `tu sync` against a freshly created empty remote; `tu sync` with no git identity configured.
   Why it looks accidental: the branch name is undocumented in memory; the generic message misdirects the user to network/remote config for a local commit failure (criteria 2, 4).
   Spec: Multi-Machine Mode › Sync Flow; layouts §20.
+  Now: the pull follows the branch's upstream (`git pull --rebase`) or the remote's default branch (`git pull --rebase origin {branch}` via `ls-remote --symref origin HEAD`), an empty remote skips the pull and pushes `git push -u origin HEAD`, and add/status/commit failures surface `Warning: sync {step} failed — {git error}` (dropped in 260928-ubws-sync-drop-at-cutover-fixes).
 
 - **DC-19** `[DECIDE: keep|drop]` Messages mix `~`-abbreviated and absolute paths and channels: `tu status` prints `~/.tu/metrics_repo` while `Cloned … → /home/user/.tu/metrics_repo`, `Already initialized: /home/user/…`, `Error: /home/user/.tu/metrics_repo exists but is not a git repo`, and the config-version warning print absolute paths; auto-clone reports `Cloned metrics repo → …` on stderr while `init-metrics` reports `Cloned {url} → …` on stdout and lets git's own `Cloning into '…'` chatter through.
   Where: `tu init-metrics <url>` vs a first multi-mode `tu`.
@@ -581,20 +582,23 @@ Every entry below is a **proposal**: a behavior the shipped binary exhibits that
   Why it looks accidental: a config surface and a documented staleness rule with no observable effect; the shipped defaults file comments it as "use 'tu <cmd> --sync' to sync before fetch", which describes a flag, not the key (criteria 2, 4).
   Spec: Multi-Machine Mode › Configuration, Staleness.
 
-- **DC-21** `[DECIDE: keep|drop]` The sync commit message uses the UTC date (`# sbuser: update 2026-09-15`) while day-files and every displayed label use local dates (the same sync wrote `cc-2026-09-16.jsonl`).
+- **DC-21** `[DECIDED: drop]` The sync commit message uses the UTC date (`# sbuser: update 2026-09-15`) while day-files and every displayed label use local dates (the same sync wrote `cc-2026-09-16.jsonl`).
   Where: `tu sync` after local midnight in a UTC-ahead zone; `tu sync --dry-run` (`Would commit: "# {user}: update {UTC date}"`).
   Why it looks accidental: the only UTC-dated surface in a tool that is otherwise local-day based (criteria 1, 4).
   Spec: Multi-Machine Mode › Sync Flow.
+  Now: the commit message uses the local date (`# {user}: update {local date}`), the same basis as the day-file labels; `.last-sync` stays a UTC ISO timestamp (dropped in 260928-ubws-sync-drop-at-cutover-fixes).
 
-- **DC-22** `[DECIDE: keep|drop]` The dry-run `Would skip` lines print costs without thousands separators (`incoming $54.93 < existing $99999.00`) while the `Would write` lines and every table use them.
+- **DC-22** `[DECIDED: drop]` The dry-run `Would skip` lines print costs without thousands separators (`incoming $54.93 < existing $99999.00`) while the `Would write` lines and every table use them.
   Where: `tu sync --dry-run` with a day-file above the live value.
   Why it looks accidental: two formatting paths in one report (criteria 1, 4).
   Spec: Multi-Machine Mode › Dry Run; layouts §20.
+  Now: both blocks render costs with the shared thousands-separated formatter (`incoming $54.93 < existing $99,999.00`) (dropped in 260928-ubws-sync-drop-at-cutover-fixes).
 
-- **DC-23** `[DECIDE: keep|drop]` The dry-run reports an equal-cost rewrite as `(update: $X → $X)` and counts it toward `Would commit`, so in steady state it predicts a commit a live sync does not make.
+- **DC-23** `[DECIDED: drop]` The dry-run reports an equal-cost rewrite as `(update: $X → $X)` and counts it toward `Would commit`, so in steady state it predicts a commit a live sync does not make.
   Where: `tu sync --dry-run` immediately after `tu sync`.
   Why it looks accidental: memory itself labels the over-prediction a "sanctioned heuristic" (criteria 3).
   Spec: Multi-Machine Mode › Dry Run; layouts §20.
+  Now: a byte-identical rewrite is unchanged — omitted from `Would write` and not counted toward `Would commit`; an equal-cost write whose bytes differ is still an update (dropped in 260928-ubws-sync-drop-at-cutover-fixes).
 
 - **DC-24** `[DECIDE: keep|drop]` The snapshot's numeric columns are fixed at 12 characters and a wider value (`16,809,796,832`) overflows its cell, shifting that row while the header and dividers keep their width.
   Where: `tu m -u all` on a repo with 10-figure monthly token counts.

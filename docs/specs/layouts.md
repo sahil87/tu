@@ -866,14 +866,14 @@ fatal: repository '/bad/url' does not exist
 Warning: metrics repo not available — falling back to single mode.
 ```
 
-**`tu sync`** success (stdout): `Synced to ~/.tu/metrics_repo`. Failure (stderr, exit 1): an optional `Warning: sync pull failed — git -C … failed: Command failed: git -C /home/user/.tu/metrics_repo pull --rebase origin main\nfatal: couldn't find remote ref main\n` line, then `Error: sync failed — check network and remote config.` (the generic line is all that is printed when the commit or push step fails) (DC-18). In single mode (stderr, exit 1):
+**`tu sync`** success (stdout): `Synced to ~/.tu/metrics_repo`. Failure (stderr, exit 1): a step warning — `Warning: sync {add|status|commit|pull} failed — git -C … failed: Command failed: git -C /home/user/.tu/metrics_repo pull --rebase\nfatal: Could not read from remote repository.\n` (its shape follows the failing step; `Warning: sync push failed after retry — …` when both pushes fail) — then `Error: sync failed — check network and remote config.` In single mode (stderr, exit 1):
 
 ```
 tu sync requires metrics_repo to be set.
 Add metrics_repo to ~/.config/tu/tu.conf, run 'tu init-metrics <repo-url>', or set TU_METRICS_REPO.
 ```
 
-**`--sync` on a data command** (stderr, exit 0 either way): `syncing metrics... ` then either nothing more (the table follows on stdout) or `Warning: sync pull failed — …` and `sync failed — using local data.`
+**`--sync` on a data command** (stderr, exit 0 either way): `syncing metrics... ` then either nothing more (the table follows on stdout) or a `Warning: sync {step} failed — …` line and `sync failed — using local data.`
 
 **`tu sync --dry-run`** (stdout, exit 0):
 
@@ -882,13 +882,13 @@ Would write 25 day-file(s) under ~/.tu/metrics_repo/sbuser/:
   2026/sandbox-mach/cc-2026-09-08.jsonl  $211.80  (update: $211.80 → $211.80)
   2026/sandbox-mach/cc-2026-09-14.jsonl  $26.76  (new)
 Would skip 2 file(s) (never-shrink guard):
-  2026/sandbox-mach/cc-2026-09-15.jsonl  incoming $54.93 < existing $99999.00
-  2026/sandbox-mach/cc-2026-09-16.jsonl  incoming $5.95 < existing $10724.38
-Would commit: "# sbuser: update 2026-09-15", then pull --rebase origin main, then push
+  2026/sandbox-mach/cc-2026-09-15.jsonl  incoming $54.93 < existing $99,999.00
+  2026/sandbox-mach/cc-2026-09-16.jsonl  incoming $5.95 < existing $10,724.38
+Would commit: "# sbuser: update 2026-09-15", then pull --rebase, then push
 Dry run — nothing written, committed, or pushed.
 ```
 
-The `Would skip` block appears only when at least one file would be skipped; the skip line's costs carry no thousands separators (DC-22); an equal-cost rewrite is still listed as `(update: $X → $X)` and still counts toward `Would commit` (DC-23). The commit message date is the UTC date, which can trail the day-file's local date (DC-21).
+The `Would skip` block appears only when at least one file would be skipped; all costs carry the thousands-separated formatter every table uses, in both blocks. A byte-identical rewrite is omitted from the `Would write` list and does not count toward `Would commit`; an equal-cost write whose bytes differ (the mockup's first line) is still listed as `(update: $X → $X)` and still counts. The commit message date is the local date — the same basis as the day-files.
 
 **Config diagnostics** (stderr): `tu: ~/.tu.conf is deprecated; move it to ~/.config/tu/tu.conf` (once per process); `Warning: /home/user/.config/tu/tu.conf version 9 is newer than tu supports (2). Please update tu.`; `tu: $HOME is not set; cannot locate config` (exit 1); `Error: config user "all" is reserved (used by -u all)` (exit 2).
 

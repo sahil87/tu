@@ -7,11 +7,12 @@ import (
 	"time"
 )
 
-// CommitMessage is the TS commitMessage: "# {user}: update {UTC date}" — the
-// ONE place the live commit and the dry-run preview derive it from (DC-21:
-// UTC, which can trail the day-files' local date).
+// CommitMessage is "# {user}: update {local date}" — the same local-date
+// basis the day-file labels use, so an evening sync no longer titles the
+// commit with the next (or previous) UTC day. It is the ONE place the live
+// commit and the dry-run preview derive the message from.
 func CommitMessage(user string, now time.Time) string {
-	return "# " + user + ": update " + now.UTC().Format("2006-01-02")
+	return "# " + user + ": update " + now.Local().Format("2006-01-02")
 }
 
 // LastSyncFile is the runtime-state marker touchLastSync writes and isStale
