@@ -194,7 +194,7 @@ avg $886.13/month · peak $933.45 (2026-08) · █ sahil █ alice █ bob
 - **Column order:** descending by window total in the display metric (a leaderboard is ranked), not registry order — ties keep first-seen order. The CSV and Markdown emitters order the same columns **alphabetically** instead (DC-16)
 - **Per-row leader:** each row's winning user cell renders `boldWhite` (color-only, width unchanged, stripped by `--no-color`/`NO_COLOR`)
 - **No negligible-column omission:** every user column renders — a low-spend user is never silently hidden from a ranking (unlike the tool pivot's omission rule); `--top <n>` is the explicit control, keeping the N highest-total user columns and folding the rest into a single `others` column so row totals are preserved (no `others` column when nothing was folded). The `others` column is sorted by its own total like any user column, so it can land first or in the middle (DC-08); see Layout 19
-- **Width:** with 15 users the row is ~215 chars and wraps on any ordinary terminal (in watch mode this corrupts the frame) (DC-17)
+- **Width:** with 15 users the row is ~215 chars — wider than any ordinary terminal; in watch mode the frame clips it to the terminal width (§7)
 - **Cap:** daily/weekly `lbh` carries the same implicit 3-month cap / `--full` semantics as `h` (heading hint `last 3 months`); monthly is never capped
 - **`--by-machine` warns and is ignored** (`Warning: --by-machine is not supported with leaderboard history — ignoring.`), exactly as on the all-tools pivot; multi mode only (same exit-1 guard as `lb`)
 
@@ -232,7 +232,7 @@ Next refresh: 4s · ↵ refresh · q quit
 - **Stats grid:** 2x3 grid above the table — session stats left (Elapsed, Session), cost stats right (Tok/min, Rate, Proj. day); rate values carry a `~` prefix, the session delta a sign
 - **Separator:** dim horizontal rule between stats grid and table title, as wide as the widest grid line (35 chars while the values are `--`, 43 above)
 - **Table:** any of Layouts 1–6, depending on command args — same render functions as non-watch mode. History tables are **truncated to the rows that fit the terminal height** (a 30-row terminal shows the last ~15 daily rows; separators, p95 scale and footer are computed on that visible window)
-- **Width:** a table wider than the terminal wraps inside the frame — the single-tool history (110 chars) at 100 cols, or `lbh` with many users — and the compositor's line accounting breaks (DC-17)
+- **Width:** every stats/table/skeleton line is clipped to the terminal width before the frame is emitted — ANSI-aware: escape sequences pass through uncounted, width is measured in terminal columns (wide runes such as `📊` and East-Asian Wide/Fullwidth count 2, half-width katakana/box-drawing/block bars count 1, a wide rune straddling the last column is dropped), and a line clipped inside a color run is closed with `\x1b[0m` — so no line ever wraps and the compositor's one-row-per-line accounting holds (the single-tool history at 110 chars in a 100-column terminal, or `lbh` with many users, renders truncated at the right edge)
 - **Rain:** matrix rain fills vertical space below content (or the right margin if no vertical space)
 - **Footer:** status line at the terminal's bottom row, all `dim`
 - Unavailable stats show `--` placeholder; grid stays fixed at 3 rows
@@ -507,9 +507,9 @@ Auto-sync:   on
 
 ## 14. Help
 
-**Command:** `tu help`, `tu -h`, `tu --help`, `tu update --help`, `tu update -h`
+**Command:** `tu help`, `tu -h`, `tu --help` (also after a command: `tu cc --help`, `tu sync -h`, `tu update --help`)
 
-The `--help` text is a fixed external surface. This block is a verbatim copy of the v0.11.5 output (also embedded byte-for-byte as `root.text` in `tu help-dump`, with one trailing newline):
+The `--help` text is a fixed external surface. This block is a verbatim copy of the current output (also embedded byte-for-byte as `root.text` in `tu help-dump`, with one trailing newline):
 
 ```
 Usage: tu [source] [period] [display]
@@ -538,7 +538,7 @@ Setup:
   tu shell-init <sh>   Emit shell init script (bash/zsh/fish)
   tu skill             Print agent usage bundle (markdown)
 
-Help: tu help | tu -h | tu --help
+Help: tu help | tu -h | tu --help (also after a command: tu cc -h)
 
 Flags:
   --json / -j          Output data as JSON (data commands only)
@@ -561,10 +561,10 @@ Flags:
   --skip-brew-update   Skip 'brew update' tap refresh during 'tu update'
   --no-color           Disable ANSI color output
   --no-rain            Disable matrix rain animation in watch mode
+  --version / -V / -v  Print the version and exit
 ```
 
-- `--version` / `-V` / `-v` are not listed in the help text (DC-09)
-- `--help` in any position other than first (`tu cc --help`, `tu h -h`) is an unknown argument (exit 2) except for `tu update --help` / `tu update -h` (DC-04). The short usage printed on an unknown argument is:
+- The flag spellings `-h`/`--help` are recognized anywhere among the arguments — after a source/period/display token or a non-data command alike — and print the full help without running the named command; the bare word `help` works only as the first argument (`tu cc help` is an unknown argument, exit 2). The short usage printed on an unknown argument is:
 
 ```
 Unknown argument: bogus

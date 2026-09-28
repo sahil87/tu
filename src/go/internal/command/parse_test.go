@@ -75,6 +75,16 @@ func TestParseValid(t *testing.T) {
 		{"-h", []string{"-h"}, Request{Command: "-h"}},
 		{"--help", []string{"--help"}, Request{Command: "--help"}},
 		{"help --dry-run", []string{"help", "--dry-run"}, Request{Command: "help", Flags: Flags{DryRun: true, Interval: 10}}},
+		// The flag spellings -h/--help are recognized anywhere among the
+		// positionals (DC-04); the bare word `help` stays first-only.
+		{"cc --help", []string{"cc", "--help"}, Request{Command: "--help"}},
+		{"h -h", []string{"h", "-h"}, Request{Command: "-h"}},
+		{"cc m --help", []string{"cc", "m", "--help"}, Request{Command: "--help"}},
+		{"sync --help", []string{"sync", "--help"}, Request{Command: "--help"}},
+		{"sync -h --dry-run", []string{"sync", "-h", "--dry-run"}, Request{Command: "-h", Flags: Flags{DryRun: true, Interval: 10}}},
+		{"update --help", []string{"update", "--help"}, Request{Command: "--help"}},
+		{"init-metrics --help", []string{"init-metrics", "--help"}, Request{Command: "--help"}},
+		{"init-metrics a b --help", []string{"init-metrics", "a", "b", "--help"}, Request{Command: "--help"}},
 		{"help-dump", []string{"help-dump"}, Request{Command: "help-dump"}},
 		{"skill", []string{"skill"}, Request{Command: "skill"}},
 		{"shell-init bash", []string{"shell-init", "bash"}, Request{Command: "shell-init", Args: []string{"bash"}}},
@@ -122,7 +132,7 @@ func TestParseUsageErrors(t *testing.T) {
 		{"bogus", []string{"bogus"}, "Unknown argument: bogus", true},
 		{"cc codex", []string{"cc", "codex"}, "Unknown argument: codex", true},
 		{"m cc", []string{"m", "cc"}, "Unknown argument: cc", true},
-		{"cc --help", []string{"cc", "--help"}, "Unknown argument: --help", true},
+		{"cc help", []string{"cc", "help"}, "Unknown argument: help", true},
 		{"unknown flag", []string{"--bogus"}, "Unknown argument: --bogus", true},
 		{"json csv", []string{"--json", "--csv"}, "Error: --json and --csv are incompatible", false},
 		{"-j counts as --json", []string{"-j", "--csv"}, "Error: --json and --csv are incompatible", false},
@@ -133,6 +143,9 @@ func TestParseUsageErrors(t *testing.T) {
 		{"watch md", []string{"--watch", "--md"}, "Error: --watch and --md are incompatible", false},
 		{"user missing", []string{"-u"}, "Error: -u requires a username", false},
 		{"user dash value", []string{"-u", "--json"}, "Error: -u requires a username", false},
+		// A dash-prefixed -h is not consumed as -u's value, so the missing-value
+		// validation fires before the help check (A-008).
+		{"user help flag", []string{"-u", "-h"}, "Error: -u requires a username", false},
 		{"since missing", []string{"--since"}, "Error: --since requires a date (YYYY-MM-DD or YYYYMMDD)", false},
 		{"since malformed", []string{"--since", "yesterday"}, "Error: --since requires a date (YYYY-MM-DD or YYYYMMDD)", false},
 		{"until missing", []string{"--until"}, "Error: --until requires a date (YYYY-MM-DD or YYYYMMDD)", false},
@@ -194,16 +207,19 @@ func TestShortUsageBytes(t *testing.T) {
 	}
 }
 
-// TestFullHelpShape pins the structural facts of the byte-exact TS FULL_HELP
-// (the harness help/help-cmd cases pin the bytes): the Usage-line head, the
+// TestFullHelpShape pins the structural facts of FullHelp (the harness
+// help/help-cmd cases pin the bytes): the Usage-line head, the
 // --skip-brew-update flag the `update` standard's discovery probe greps for,
-// and the hidden help-dump command's absence.
+// the --version line (DC-09), and the hidden help-dump command's absence.
 func TestFullHelpShape(t *testing.T) {
 	if !strings.HasPrefix(FullHelp, "Usage: tu [source] [period] [display]") {
 		t.Errorf("FullHelp does not start with the Usage line: %.40q", FullHelp)
 	}
 	if !strings.Contains(FullHelp, "--skip-brew-update") {
 		t.Error("FullHelp does not contain --skip-brew-update")
+	}
+	if !strings.Contains(FullHelp, "--version / -V / -v  Print the version and exit") {
+		t.Error("FullHelp does not list --version / -V / -v")
 	}
 	if strings.Contains(FullHelp, "help-dump") {
 		t.Error("FullHelp must not mention the hidden help-dump command")

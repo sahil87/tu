@@ -169,12 +169,18 @@ func TestRunNoHome(t *testing.T) {
 	}
 }
 
-// TestRunHelp covers the four help argv shapes (the help check precedes the
-// --dry-run guard, so "help --dry-run" parses as help). None of them touches
-// $HOME — R9 runs them with HOME unset.
+// TestRunHelp covers the help argv shapes: the flag spellings -h/--help are
+// recognized anywhere among the positionals (DC-04), the bare word `help`
+// first-only, and the help check precedes the --dry-run guard, so
+// "help --dry-run" parses as help. None of them touches $HOME — R9 runs them
+// with HOME unset.
 func TestRunHelp(t *testing.T) {
 	t.Setenv("HOME", "")
-	for _, args := range [][]string{{"help"}, {"-h"}, {"--help"}, {"help", "--dry-run"}} {
+	for _, args := range [][]string{
+		{"help"}, {"-h"}, {"--help"}, {"help", "--dry-run"},
+		{"cc", "--help"}, {"h", "-h"}, {"cc", "m", "--help"},
+		{"sync", "--help"}, {"init-metrics", "--help"},
+	} {
 		var stdout, stderr bytes.Buffer
 		code := run(args, &stdout, &stderr)
 		if code != 0 {
@@ -296,9 +302,9 @@ func TestRunShellInit(t *testing.T) {
 	}
 }
 
-// TestRunUpdateHelp pins the flag-discovery probe: --help/-h anywhere in the
-// update args prints FullHelp and exits 0 without touching brew — with HOME
-// unset.
+// TestRunUpdateHelp pins the update standard's flag-discovery probe, now
+// handled by Parse (DC-04): --help/-h anywhere in the update args prints
+// FullHelp and exits 0 without touching brew — with HOME unset.
 func TestRunUpdateHelp(t *testing.T) {
 	t.Setenv("HOME", "")
 	for _, args := range [][]string{{"update", "--help"}, {"update", "-h"}, {"update", "--skip-brew-update", "-h"}} {

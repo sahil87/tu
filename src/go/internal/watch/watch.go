@@ -108,11 +108,13 @@ func Run(ctx context.Context, o Options) (last []string) {
 	o.Term.Write([]byte("\x1b[?25l"))
 
 	// The loading skeleton, then the rain zone against its geometry so rain
-	// animates from the first tick (the TS layoutForSkeleton).
+	// animates from the first tick (the TS layoutForSkeleton). LaySkeleton
+	// clips the lines to the terminal width (DC-17) — the write uses the
+	// clipped layout lines.
 	cols, rows := o.Term.Size()
-	skeleton := Skeleton(cols, o.Now(), o.Colors)
-	o.Term.Write(SkeletonFrame(skeleton))
-	zone := LaySkeleton(skeleton, cols, rows, o.NoRain).Rain
+	layout := LaySkeleton(Skeleton(cols, o.Now(), o.Colors), cols, rows, o.NoRain)
+	o.Term.Write(SkeletonFrame(layout.Table))
+	zone := layout.Rain
 	rain := setupRain(zone, o.Rand, o.Colors, nil)
 
 	var rainTicker Ticker

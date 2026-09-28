@@ -84,8 +84,8 @@ Positional tokens may appear in any order relative to flags; flags are stripped 
 | `--no-color` | — | Disable ANSI color output (also respects a non-empty `NO_COLOR` env var; the two are byte-identical) |
 | `--no-rain` | — | Disable the matrix rain animation in watch mode; silently accepted without `--watch` (DC-03) |
 | `--skip-brew-update` | — | `tu update` only: skip the internal `brew update` tap refresh (detected anywhere on the command line; ignored elsewhere) |
-| `--version` | `-V`, `-v` | Print `tu version vX.Y.Z` and exit 0 (not listed in `--help`) (DC-09) |
-| `--help` | `-h` | Print the full help and exit 0 — only as the first argument (`tu -h`, `tu --help`, `tu help`) or after `update`; after any other positional it is an unknown argument, exit 2 (DC-04) |
+| `--version` | `-V`, `-v` | Print `tu version vX.Y.Z` and exit 0 |
+| `--help` | `-h` | Print the full help and exit 0 — recognized anywhere among the arguments (`tu -h`, `tu cc --help`, `tu sync -h`); help never runs the named command. The bare word `help` works only as the first argument (`tu cc help` is an unknown argument, exit 2) |
 
 Flag parsing strips all flags before positional argument parsing. Unknown positional args produce `Unknown argument: {arg}` plus the short usage hint on stderr, exit 2. Format-flag conflicts print `Error: {a} and {b} are incompatible` with `--watch` named first when involved (`Error: --watch and --json are incompatible`), exit 2. Value-taking flags take their value as the next argument (`--since 2026-08-01`, `-i 30`); a missing value is exit 2 with the flag's own message. Off-target flags follow three policies — warn-and-continue, silent acceptance, or fail-fast — as listed per flag above (DC-03).
 
@@ -455,7 +455,7 @@ Full-screen TUI using the alternate screen buffer (`\x1b[?1049h`, cursor hidden 
 - Compact mode (< 60 cols): heading + compact table (name/date 14 wide, value 12 wide) only, no stats grid, no rain, no bars
 - Rain fills available space below content, or the right margin (after a 2-column gutter, needs ≥10 columns) if no vertical space remains; drop count ≈ 30% of columns at ≤20 rows, scaling up to 3× at 60+ rows; `--no-rain` disables it
 - Loading skeleton renders on alt-screen entry before the first fetch (stats grid with zeros/dashes, separator, table header, centered dim `Loading...`), with rain already animating
-- Tables wider than the terminal wrap inside the frame (DC-17)
+- Every stats, table, and skeleton line is clipped to the terminal width before the frame is emitted (ANSI-aware: escape sequences pass through uncounted; width is measured in terminal columns — wide runes such as `📊` and East-Asian Wide/Fullwidth count 2, half-width katakana/box-drawing/block bars count 1; a wide rune straddling the last column is dropped; a line clipped inside a color run is closed with `\x1b[0m`), so no line ever wraps inside the frame and the compositor's one-row-per-line accounting holds
 
 ### Interaction
 
@@ -496,9 +496,10 @@ Every entry below is a **proposal**: a behavior the shipped binary exhibits that
   Why it looks accidental: the same class of mistake is handled three ways; memory documents each site individually but names no policy (criteria 1).
   Spec: Global Flags.
 
-- **DC-04** `[DECIDE: keep|drop]` `--help`/`-h` is recognized only as the first argument or after `update`; `tu cc --help` and `tu h -h` are `Unknown argument`, exit 2.
+- **DC-04** `[DECIDED: drop]` `--help`/`-h` is recognized only as the first argument or after `update`; `tu cc --help` and `tu h -h` are `Unknown argument`, exit 2.
   Where: `tu cc --help`.
   Why it looks accidental: toolkit principle №3 (self-describing) and the `update --help` special case both suggest help should work anywhere; memory records the behavior as "unchanged", not as a decision (criteria 5, 1).
+  Now: `-h`/`--help` are recognized anywhere among the arguments and print the full help without running the named command; only the bare word `help` stays first-position-only (dropped in 260928-dwg9-cli-watch-drop-at-cutover-fixes).
   Spec: Global Flags; layouts §14.
 
 - **DC-05** `[DECIDE: keep|drop]` CSV snapshot output omits zero-usage tool rows, while CSV all-tools history keeps every registry column as a positional contract.
@@ -521,9 +522,10 @@ Every entry below is a **proposal**: a behavior the shipped binary exhibits that
   Why it looks accidental: memory says `--top` "folds the rest into one `others` column" with no placement rule; a fold column that outranks real users reads as a bug (criteria 2).
   Spec: Output Formats › Leaderboard History Table; layouts §6, §19.
 
-- **DC-09** `[DECIDE: keep|drop]` `--version`/`-V`/`-v` are absent from the `--help` text, and the lowercase `-v` alias exists only in memory and the completion scripts.
+- **DC-09** `[DECIDED: drop]` `--version`/`-V`/`-v` are absent from the `--help` text, and the lowercase `-v` alias exists only in memory and the completion scripts.
   Where: `tu --help` (no version line); `tu -v` → `tu version v0.11.5`.
   Why it looks accidental: help is the discoverability surface every other flag uses; the `version` standard requires only `--version`, so `-v` is an undocumented extra (criteria 2, 5).
+  Now: the help's Flags block lists `--version / -V / -v  Print the version and exit` (dropped in 260928-dwg9-cli-watch-drop-at-cutover-fixes).
   Spec: Global Flags; layouts §14.
 
 - **DC-10** `[DECIDE: keep|drop]` JSON numbers are the raw double-precision sums (`4.936068800000001`, `5.7243808000000005`), so the exact digits depend on summation order.
@@ -561,9 +563,10 @@ Every entry below is a **proposal**: a behavior the shipped binary exhibits that
   Why it looks accidental: the ranking is the point of a leaderboard display; the machine formats fall back to key order and lose it (criteria 6).
   Spec: Output Formats › CSV Output, Markdown Output; layouts §6, §15, §16.
 
-- **DC-17** `[DECIDE: keep|drop]` Watch mode does not guard tables wider than the terminal: the single-tool history (110 chars) at 100 columns and `lbh` with many users wrap inside the frame and break the compositor's line accounting; only the all-tools pivot has a width contract (96/97).
+- **DC-17** `[DECIDED: drop]` Watch mode does not guard tables wider than the terminal: the single-tool history (110 chars) at 100 columns and `lbh` with many users wrap inside the frame and break the compositor's line accounting; only the all-tools pivot has a width contract (96/97).
   Where: `tu cc h -w` in a 100×30 terminal; `tu m lbh -w`.
   Why it looks accidental: memory's width contract covers the pivot only; the other tables were never fitted to watch mode (criteria 2).
+  Now: every frame line is clipped ANSI-aware to the terminal width, so no line wraps and the row accounting holds (dropped in 260928-dwg9-cli-watch-drop-at-cutover-fixes).
   Spec: Watch Mode › Layout; layouts §7.
 
 - **DC-18** `[DECIDE: keep|drop]` Sync failure reporting: the pull step is hard-coded to `origin main` (an empty repo or a `master`-default repo never syncs — `fatal: couldn't find remote ref main`), and a commit or push failure prints only `Error: sync failed — check network and remote config.` with the underlying git error swallowed (only pull failures include it).

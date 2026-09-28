@@ -24,7 +24,7 @@ Setup:
   tu shell-init <sh>   Emit shell init script (bash/zsh/fish)
   tu skill             Print agent usage bundle (markdown)
 
-Help: tu help | tu -h | tu --help
+Help: tu help | tu -h | tu --help (also after a command: tu cc -h)
 
 Flags:
   --json / -j          Output data as JSON (data commands only)
@@ -47,3 +47,4 @@ Flags:
   --skip-brew-update   Skip 'brew update' tap refresh during 'tu update'
   --no-color           Disable ANSI color output
   --no-rain            Disable matrix rain animation in watch mode
+  --version / -V / -v  Print the version and exit

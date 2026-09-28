@@ -1,0 +1,10 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-28T18:48:25Z"}
+{"args":"CLI and watch drop-at-cutover fixes (DC-04, DC-09, DC-17)","cmd":"fab-new","event":"command","ts":"2026-09-28T18:48:25Z"}
+{"delta":"+4.8","event":"confidence","score":4.8,"trigger":"calc-score","ts":"2026-09-28T18:48:59Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-28T18:49:40Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-28T19:02:15Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-28T19:04:48Z"}
+{"event":"review","result":"passed","ts":"2026-09-28T19:04:48Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-28T19:07:26Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-09-28T19:10:10Z"}
+{"event":"review","result":"passed","ts":"2026-09-28T19:20:27Z"}

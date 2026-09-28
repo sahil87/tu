@@ -158,3 +158,85 @@ func TestFrameBytes(t *testing.T) {
 		t.Errorf("FooterLine = %q", got)
 	}
 }
+
+// clipLine (DC-17): fitting lines are byte-identical; wide lines clip at the
+// column count with SGR sequences passing through uncounted; a clip inside an
+// SGR run closes with \x1b[0m.
+func TestClipLine(t *testing.T) {
+	cases := []struct {
+		name string
+		line string
+		cols int
+		want string
+	}{
+		{"plain fits", "abc", 10, "abc"},
+		{"plain exact fit", "abcde", 5, "abcde"},
+		{"colored fits", "\x1b[1;36mabc\x1b[0m", 3, "\x1b[1;36mabc\x1b[0m"},
+		{"empty", "", 10, ""},
+		{"plain clipped", "abcdef", 3, "abc"},
+		// The clip lands mid-color: the emitted prefix is closed with a reset.
+		{"clip inside SGR", "\x1b[1;36mabcdef\x1b[0m", 3, "\x1b[1;36mabc\x1b[0m"},
+		// An SGR closed before the clip point needs no trailing reset.
+		{"clip after SGR closed", "\x1b[1;36mab\x1b[0mcdef", 4, "\x1b[1;36mab\x1b[0mcd"},
+		// Stacked codes: the last open SGR before the clip governs.
+		{"clip inside stacked SGR", "\x1b[1m\x1b[32mabcdef\x1b[0m", 4, "\x1b[1m\x1b[32mabcd\x1b[0m"},
+		// Multi-byte narrow runes count one column each.
+		{"multi-byte runes", "αβγδε", 2, "αβ"},
+		// Wide runes count two columns: the 46-column heading (45 runes, the
+		// emoji is 2 wide) clips to exactly 45 columns.
+		{"46-column heading at 45", "📊 Combined Cost History (daily, last 3 months)", 45, "📊 Combined Cost History (daily, last 3 month"},
+		{"emoji counts two", "📊 Combined Usage (daily)", 4, "📊 C"},
+		// A wide rune straddling the last column is dropped, not half-drawn;
+		// the next narrow rune fills the column.
+		{"wide rune straddles last column", "ab📊cd", 3, "abc"},
+		{"wide rune fits exactly", "ab📊cd", 4, "ab📊"},
+		// The half-width katakana the rain draws stay 1 column.
+		{"half-width katakana count one", "ｶﾀｶﾅ", 2, "ｶﾀ"},
+		// Box drawing and block bars stay 1 column.
+		{"box drawing counts one", "───", 2, "──"},
+		{"block bar counts one", "████", 3, "███"},
+		// Zero-width runes count no columns: a decomposed é (e + U+0301) is one
+		// terminal column, and ZWJ/variation selectors add nothing.
+		{"combining mark counts zero", "éclair", 3, "écl"},
+		{"combining kana mark counts zero", "がき", 2, "が"},
+		{"zwj counts zero", "a‍b", 2, "a‍b"},
+		{"variation selector counts zero", "✈️x", 3, "✈️x"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := clipLine(tc.line, tc.cols)
+			if got != tc.want {
+				t.Errorf("clipLine(%q, %d) = %q, want %q", tc.line, tc.cols, got, tc.want)
+			}
+			if w := visibleWidth(got); w > tc.cols {
+				t.Errorf("clipLine(%q, %d) width = %d, want ≤ %d", tc.line, tc.cols, w, tc.cols)
+			}
+		})
+	}
+}
+
+// Lay clips wide lines (DC-17): the stored lines never exceed the terminal
+// width, and a full-width line leaves no right-margin rain room.
+func TestLayClipsWideLines(t *testing.T) {
+	wide := strings.Repeat("x", 110)
+	colored := "\x1b[1;36m" + strings.Repeat("y", 105) + "\x1b[0m"
+	table := append([]string{wide, colored, "fits"}, pad16(1)[3:]...)
+	l := Lay([]string{"stats"}, table, 100, 12, false)
+	if got := l.Table[0]; got != strings.Repeat("x", 100) {
+		t.Errorf("wide line = %d runes, want 100", utf8.RuneCountInString(got))
+	}
+	if got := l.Table[1]; got != "\x1b[1;36m"+strings.Repeat("y", 100)+"\x1b[0m" {
+		t.Errorf("colored wide line = %q…", got[:min(40, len(got))])
+	}
+	if l.Table[2] != "fits" {
+		t.Errorf("fitting line changed: %q", l.Table[2])
+	}
+	// 17 content lines at 12 rows leave no below-content room; the clipped
+	// full-width lines leave no right margin either, so rain is disabled.
+	if l.Rain.Enabled {
+		t.Errorf("rain enabled with a full-width line: %+v", l.Rain)
+	}
+	if l.Stats[0] != "stats" {
+		t.Errorf("stats line changed: %q", l.Stats[0])
+	}
+}

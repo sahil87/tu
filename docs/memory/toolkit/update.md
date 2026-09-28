@@ -44,9 +44,9 @@ description: The `tu update` Homebrew self-update — the Brew driver interface 
 - The three failure messages are frozen bytes: `Error: could not check for updates (brew update failed). Check your network connection.` / `Error: could not determine latest version.` / `Error: brew upgrade failed.`
 
 #### Scenario: update dispatch and exit codes
-- **GIVEN** any of: `--help`/`-h` anywhere in the args; off-Homebrew; up-to-date; a successful upgrade; a brew failure
-- **WHEN** `runUpdate` in `cmd/tu/main.go` executes
-- **THEN** `--help` prints `command.FullHelp` and runs nothing (exit 0); off-Homebrew prints the two gate lines (exit 0); up-to-date prints `Already up to date (v…).` (exit 0); success ends with `Updated to v….` (exit 0); each brew failure prints its exact line to stderr (exit 1)
+- **GIVEN** any of: `--help`/`-h` among the args; off-Homebrew; up-to-date; a successful upgrade; a brew failure
+- **WHEN** `tu update` runs
+- **THEN** a help token is caught by `command.Parse` before dispatch — the full help (which carries the literal `--skip-brew-update`) prints, nothing runs, exit 0, and `runUpdate` is never reached (the update standard's probe is served by Parse's help path — [request-and-parse](/command/request-and-parse.md)); off-Homebrew prints the two gate lines (exit 0); up-to-date prints `Already up to date (v…).` (exit 0); success ends with `Updated to v….` (exit 0); each brew failure prints its exact line to stderr (exit 1)
 
 ### Requirement: Wrapper lines
 - The wrapper lines — `CurrentVersionLine` (`Current version: v…`), `AlreadyUpToDateLine` (`Already up to date (v…).`), `UpdatingLine` (`Updating v… → v…...` — arrow `→`, three dots), `UpdatedLine` (`Updated to v….`) — MUST use `DisplayVersion` for every version string (internal/toolkit/update.go).

@@ -86,6 +86,7 @@ Displays: bare (snapshot), `h`/`history`, combined `dh`/`wh`/`mh`, and the multi
   --by-machine         Show per-machine cost breakdown (data commands only)
   --no-color           Disable ANSI color output
   --no-rain            Disable matrix rain animation in watch mode
+  --version / -V / -v  Print the version and exit
 ```
 
 ### Setup (multi-machine sync)
