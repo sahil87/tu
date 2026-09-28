@@ -214,8 +214,9 @@ func TestSyncMetricsStageCommitFailures(t *testing.T) {
 }
 
 // R1/R2: the pull target follows the repo — the configured upstream when one
-// is set, else the remote's default branch from ls-remote; an empty remote
-// skips the pull and pushes `-u origin HEAD`; an ls-remote failure is a pull
+// is set, else the remote's default branch from ls-remote; both no-upstream
+// paths push `-u origin HEAD` (a branch with no upstream cannot plain-push);
+// an empty remote additionally skips the pull; an ls-remote failure is a pull
 // failure.
 func TestSyncMetricsPullTarget(t *testing.T) {
 	cases := []struct {
@@ -247,7 +248,7 @@ func TestSyncMetricsPullTarget(t *testing.T) {
 			"rev-parse --abbrev-ref --symbolic-full-name @{u}",
 			"ls-remote --symref origin HEAD",
 			"pull --rebase origin trunk",
-			"push",
+			"push -u origin HEAD",
 		}, true, nil},
 		{"empty remote skips pull, pushes -u", func(args []string) (string, error) {
 			return "", nil // rev-parse and ls-remote both answer empty
@@ -558,6 +559,28 @@ func TestSyncMetricsRealNonMainDefaultBranch(t *testing.T) {
 	}
 	if log := gitDo(t, bare, "log", "--oneline"); !strings.Contains(log, "# sahil: update") {
 		t.Errorf("bare log = %q, want a # sahil: update commit", log)
+	}
+}
+
+// R1: a clone whose upstream was unset (non-empty remote, default branch
+// main) pulls `origin main` explicitly and pushes `-u origin HEAD` — plain
+// `push` would fail with "no upstream branch" — and the push re-sets the
+// upstream so the next sync takes the upstream path.
+func TestSyncMetricsRealNoUpstreamFallback(t *testing.T) {
+	pinGitEnv(t)
+	bare, clone := realRepo(t, t.TempDir())
+	gitDo(t, clone, "branch", "--unset-upstream")
+
+	writeDay(t, clone, "sahil", "macbook", "2026-02-22", 1.5)
+	ok, lines := SyncMetrics(clone, "sahil", syncNow, Exec{})
+	if !ok || len(lines) != 0 {
+		t.Fatalf("ok = %v, lines = %v, want true, no lines", ok, lines)
+	}
+	if log := gitDo(t, bare, "log", "--oneline"); !strings.Contains(log, "# sahil: update") {
+		t.Errorf("bare log = %q, want a # sahil: update commit", log)
+	}
+	if up := strings.TrimSpace(gitDo(t, clone, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")); up != "origin/main" {
+		t.Errorf("upstream = %q, want origin/main (push -u re-set it)", up)
 	}
 }
 

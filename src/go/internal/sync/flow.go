@@ -69,22 +69,18 @@ func SyncMetrics(dir, user string, now time.Time, git Runner) (ok bool, lines []
 		}
 	}
 
-	pull, emptyRemote, err := pullTarget(dir, git)
+	pull, push, err := pullTarget(dir, git)
 	if err != nil {
 		lines = append(lines, pullFailedPrefix+err.Error())
 		_, _ = git.Run(dir, rebaseAbortArgs...) // error ignored — already clean (TS catch {})
 		return false, lines
 	}
-	if !emptyRemote {
+	if pull != nil {
 		if _, err := git.Run(dir, pull...); err != nil {
 			lines = append(lines, pullFailedPrefix+err.Error())
 			_, _ = git.Run(dir, rebaseAbortArgs...) // error ignored — already clean (TS catch {})
 			return false, lines
 		}
-	}
-	push := pushArgs
-	if emptyRemote {
-		push = pushSetUpstreamArgs
 	}
 	if _, err := git.Run(dir, push...); err != nil {
 		if _, err := git.Run(dir, push...); err != nil {
@@ -95,22 +91,24 @@ func SyncMetrics(dir, user string, now time.Time, git Runner) (ok bool, lines []
 	return true, lines
 }
 
-// pullTarget resolves what the pull step pulls. When the current branch has
-// an upstream (rev-parse exits 0 with non-empty output — a local check, no
-// network), the pull runs with no remote/refspec and git follows the
-// upstream. Otherwise the remote's default branch comes from the
-// `ref: refs/heads/{branch}\tHEAD` line of `ls-remote --symref origin HEAD`.
-// A remote advertising no refs (a fresh, empty repo) reports emptyRemote:
-// the caller skips the pull and pushes `-u origin HEAD` so the first sync to
-// a new repo succeeds and later syncs take the upstream path. An ls-remote
-// failure is returned for the caller to report as a pull failure.
-func pullTarget(dir string, git Runner) (args []string, emptyRemote bool, err error) {
+// pullTarget resolves what the round trip pulls and pushes. When the current
+// branch has an upstream (rev-parse exits 0 with non-empty output — a local
+// check, no network), the pull runs with no remote/refspec (git follows the
+// upstream) and the push is plain `push`. Otherwise the remote's default
+// branch comes from the `ref: refs/heads/{branch}\tHEAD` line of
+// `ls-remote --symref origin HEAD`; a remote advertising no refs (a fresh,
+// empty repo) skips the pull (nil pull args). Both no-upstream paths push
+// `-u origin HEAD`: a branch without an upstream cannot plain-push, and the
+// -u sets one so the first sync to a new repo succeeds and later syncs take
+// the upstream path. An ls-remote failure is returned for the caller to
+// report as a pull failure.
+func pullTarget(dir string, git Runner) (pull, push []string, err error) {
 	if out, err := git.Run(dir, upstreamArgs...); err == nil && strings.TrimSpace(out) != "" {
-		return pullUpstreamArgs, false, nil
+		return pullUpstreamArgs, pushArgs, nil
 	}
 	out, err := git.Run(dir, remoteHEADArgs...)
 	if err != nil {
-		return nil, false, err
+		return nil, nil, err
 	}
 	for _, line := range strings.Split(out, "\n") {
 		rest, ok := strings.CutPrefix(line, "ref: refs/heads/")
@@ -119,10 +117,10 @@ func pullTarget(dir string, git Runner) (args []string, emptyRemote bool, err er
 		}
 		branch, _, _ := strings.Cut(rest, "\t")
 		if branch != "" {
-			return []string{"pull", "--rebase", "origin", branch}, false, nil
+			return []string{"pull", "--rebase", "origin", branch}, pushSetUpstreamArgs, nil
 		}
 	}
-	return nil, true, nil
+	return nil, pushSetUpstreamArgs, nil
 }
 
 // exists is the TS existsSync.

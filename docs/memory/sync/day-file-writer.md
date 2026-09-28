@@ -14,7 +14,7 @@ description: sync.Write — the never-shrink-guarded day-file writer: one Decisi
 ## Requirements
 
 ### Requirement: One Decision per record in both modes
-`sync.Write(dir, user, machine string, tool fact.Tool, recs []fact.Record, dryRun bool) ([]Decision, error)` MUST produce one `sync.Decision{Path, Action, IncomingCost, ExistingCost *float64}` per record, in record order, in BOTH live and dry-run mode. `Action` is `ActionWrite`, `ActionSkip` (the never-shrink guard would skip), or `ActionUnchanged` (the serialized bytes `json.Marshal(metrics.DayFile) + "\n"` equal the existing file's bytes — the guard runs first and still wins); `ExistingCost` is non-nil only when an existing parseable cost was read. In live mode a write or unchanged decision MUST create the file's directory with `os.MkdirAll` (`0o755`) and write the day-file (`0o644`) as `json.Marshal(metrics.DayFile) + "\n"` — one write path for both, since unchanged bytes leave git with nothing to commit; in dry-run mode nothing is created or written. A filesystem error MUST stop the walk and be returned. The writer MUST NOT print anything — a skip is silent.
+`sync.Write(dir, user, machine string, tool fact.Tool, recs []fact.Record, dryRun bool) ([]Decision, error)` MUST produce one `sync.Decision{Path, Action, IncomingCost, ExistingCost *float64}` per record, in record order, in BOTH live and dry-run mode. `Action` is `ActionWrite`, `ActionSkip` (the never-shrink guard would skip), or `ActionUnchanged` (the serialized bytes `json.Marshal(metrics.DayFile) + "\n"` equal the existing file's bytes — the guard runs first and still wins); `ExistingCost` is non-nil only when an existing parseable cost was read. In live mode a write decision MUST create the file's directory with `os.MkdirAll` (`0o755`) and write the day-file (`0o644`) as `json.Marshal(metrics.DayFile) + "\n"`; skip and unchanged decisions MUST NOT touch the filesystem (an unchanged rewrite is a no-op — bytes, mtime, and I/O all spared); in dry-run mode nothing is created or written. A filesystem error MUST stop the walk and be returned. The writer MUST NOT print anything — a skip is silent.
 
 #### Scenario: Guard arms across a batch
 - **GIVEN** an existing `cc-2026-01-06.jsonl` costing 0.75 and incoming records costing 0.5 for 2026-01-05..07, with `cc-2026-01-05.jsonl` holding 0.25 and `cc-2026-01-07.jsonl` absent
@@ -62,9 +62,9 @@ A finite result yields `shrinking = incoming < existing`: strictly lower skips, 
 *Introduced by*: 260916-lsml-sync-metrics-writer
 
 ### Byte equality decides "unchanged"
-**Decision**: a record whose serialized bytes equal the existing file's decides `ActionUnchanged`; live mode still writes it through the one write path (the bytes are identical, so git sees no change), while the dry-run report omits it and does not count it toward `WouldCommit`.
-**Why**: byte equality is exactly what git sees, so the preview's commit prediction matches the live run; keeping the live write avoids a second code path (code-quality "minimum pathways").
-**Rejected**: skipping the live write (a second code path); treating equal *cost* as unchanged (a token-only change with equal cost would be hidden from the preview although git commits it).
+**Decision**: a record whose serialized bytes equal the existing file's decides `ActionUnchanged`; live mode skips the no-op write, while the dry-run report omits it and does not count it toward `WouldCommit`.
+**Why**: byte equality is exactly what git sees, so the preview's commit prediction matches the live run; skipping the write spares the mtime bump and I/O of a rewrite nothing can observe.
+**Rejected**: writing unchanged bytes through the one write path anyway (a no-op write that still costs the I/O and mtime bump); treating equal *cost* as unchanged (a token-only change with equal cost would be hidden from the preview although git commits it).
 *Introduced by*: 260928-ubws-sync-drop-at-cutover-fixes
 
 ### One read carries verdict, cost, and bytes together

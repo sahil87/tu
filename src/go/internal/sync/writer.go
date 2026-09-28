@@ -42,8 +42,7 @@ type Decision struct {
 // uncaught crash the edge prints, exit 1). Nothing is printed, ever — the
 // never-shrink skip is silent, as in the TS. A record whose serialized bytes
 // equal the existing file's decides ActionUnchanged (the never-shrink guard
-// runs first and still wins); live mode still writes it through the one
-// write path — the bytes are identical, so git sees no change — while the
+// runs first and still wins); live mode skips the no-op write, and the
 // dry-run report omits it and does not count it toward WouldCommit.
 func Write(dir, user, machine string, tool fact.Tool, recs []fact.Record, dryRun bool) ([]Decision, error) {
 	decisions := make([]Decision, 0, len(recs))
@@ -63,7 +62,7 @@ func Write(dir, user, machine string, tool fact.Tool, recs []fact.Record, dryRun
 			d.Action = ActionUnchanged
 		}
 		decisions = append(decisions, d)
-		if shrinking || dryRun {
+		if shrinking || dryRun || d.Action == ActionUnchanged {
 			continue
 		}
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

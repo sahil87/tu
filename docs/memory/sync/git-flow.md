@@ -1,6 +1,6 @@
 ---
 type: memory
-description: The git driver and round trip behind tu sync — sync.Exec (PATH-resolved git, maxBuffer-capped captures, Node-style error text), SyncMetrics' add/commit/pull/push order with upstream-following pull target, empty-remote first push, rebase-abort recovery, per-step failure warnings, CommitMessage, and TouchLastSync/Stale with the 3-hour auto-sync TTL
+description: The git driver and round trip behind tu sync — sync.Exec (PATH-resolved git, maxBuffer-capped captures, Node-style error text), SyncMetrics' add/commit/pull/push order with upstream-following pull and push targets, rebase-abort recovery, per-step failure warnings, CommitMessage, and TouchLastSync/Stale with the 3-hour auto-sync TTL
 ---
 
 # Git Flow
@@ -31,7 +31,7 @@ On failure, `Exec.Run`'s error MUST read `git -C <dir>... failed: {message}` whe
 2. **Stage and commit**: when `{dir}/{user}` exists → `add {user}/`; `status --porcelain {user}/` runs unconditionally; when its trimmed output is non-empty → `commit -m {CommitMessage(user, now)}`. A failing `add`, `status`, or `commit` MUST append `Warning: sync {add|status|commit} failed — {git error}` before returning `false`.
 3. **Pull target** (`pullTarget`): when the current branch has an upstream — `rev-parse --abbrev-ref --symbolic-full-name @{u}` exits 0 with non-empty output (a local, no-network check) — the pull is `pull --rebase` with no remote/refspec. Otherwise the remote's default branch comes from the `ref: refs/heads/{branch}\tHEAD` line of `ls-remote --symref origin HEAD`, and the pull is `pull --rebase origin {branch}`. A remote advertising no refs (a fresh, empty repo) skips the pull entirely. An `ls-remote` failure is treated as a pull failure.
 4. **Pull**: on error → append `Warning: sync pull failed — {err}`, run `rebase --abort` (error ignored), return `false`.
-5. **Push**: `push` — or `push -u origin HEAD` on the empty-remote path, so the first sync to a new repo succeeds and later syncs take the upstream path; on error retry once; on a second error append `Warning: sync push failed after retry — {err}` and return `false`.
+5. **Push**: `push` when the branch has an upstream; `push -u origin HEAD` on BOTH no-upstream paths (default-branch fallback and empty remote) — a branch without an upstream cannot plain-push, and the `-u` sets one, so the first sync to a new or upstream-less repo succeeds and later syncs take the upstream path; on error retry once; on a second error append `Warning: sync push failed after retry — {err}` and return `false`.
 
 Every warning line uses the em dash U+2014. `SyncMetrics` MUST NOT print; the returned lines are the stderr lines for the edge to write.
 
@@ -54,10 +54,10 @@ Every warning line uses the em dash U+2014. `SyncMetrics` MUST NOT print; the re
 **Rejected**: a bespoke sync server (build and operate a service for what git gives free).
 *Introduced by*: 260610-srmi
 
-### Upstream-first pull target
-**Decision**: the pull step pulls the current branch's upstream when one is configured (`pull --rebase`, no remote/refspec); else the remote's default branch from `ls-remote --symref origin HEAD` (`pull --rebase origin {branch}`); a remote advertising no refs skips the pull and pushes `-u origin HEAD`.
-**Why**: `git clone` sets an upstream for the default branch, so the common path costs one local `rev-parse` and no extra network call; the fallbacks cover non-`main` or manually set-up repos and the empty-repo first sync.
-**Rejected**: pulling a hard-coded `origin main` (an empty remote or a non-`main` default branch fails every sync); `git pull --rebase origin HEAD` alone (still fails on an empty remote); parsing git's `couldn't find remote ref` stderr to pick a fallback (brittle across git versions and locales).
+### Upstream-first pull and push targets
+**Decision**: the pull step pulls the current branch's upstream when one is configured (`pull --rebase`, no remote/refspec); else the remote's default branch from `ls-remote --symref origin HEAD` (`pull --rebase origin {branch}`); a remote advertising no refs skips the pull. The push is plain `push` on the upstream path only; both no-upstream paths push `-u origin HEAD` (a branch with no upstream cannot plain-push, and the `-u` re-sets it).
+**Why**: `git clone` sets an upstream for the default branch, so the common path costs one local `rev-parse` and no extra network call; the fallbacks cover non-`main` or manually set-up repos and the empty-repo first sync. `git pull --rebase origin {branch}` does not configure an upstream, so the fallback must carry its no-upstream state into push selection or the push fails with "current branch has no upstream branch".
+**Rejected**: pulling a hard-coded `origin main` (an empty remote or a non-`main` default branch fails every sync); `git pull --rebase origin HEAD` alone (still fails on an empty remote); parsing git's `couldn't find remote ref` stderr to pick a fallback (brittle across git versions and locales); plain `push` on the fallback path (no upstream — the push cannot resolve a destination).
 *Introduced by*: 260928-ubws-sync-drop-at-cutover-fixes
 
 ### Rebase-abort recovery

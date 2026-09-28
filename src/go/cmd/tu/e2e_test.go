@@ -1102,14 +1102,15 @@ func TestE2ESyncPullFail(t *testing.T) {
 
 // R10: a push failure retries once (two push calls), then warns and exits 1
 // with the generic error. The ls-remote rule answers the pull-target probe
-// so the round trip runs the ordinary pull before the scripted pushes.
+// (no upstream), so the round trip runs the fallback pull and the pushes are
+// the no-upstream `push -u origin HEAD`.
 func TestE2ESyncPushFail(t *testing.T) {
 	home := stageVariant(t, "multi")
 	log := filepath.Join(t.TempDir(), "calls.jsonl")
 	t.Setenv("TUDIFF_CALL_LOG", log)
 	t.Setenv("TUDIFF_GIT_SCRIPT", `[{"match":["ls-remote"],"stdout":"ref: refs/heads/main\tHEAD\n","exit":0},{"match":["push"],"stderr":"error: failed to push some refs\n","exit":1}]`)
 	dir := filepath.Join(home, ".tu", "metrics_repo")
-	wantStderr := "Warning: sync push failed after retry — git -C " + dir + "... failed: Command failed: git -C " + dir + " push\n" +
+	wantStderr := "Warning: sync push failed after retry — git -C " + dir + "... failed: Command failed: git -C " + dir + " push -u origin HEAD\n" +
 		"error: failed to push some refs\n" +
 		"\n" +
 		"Error: sync failed — check network and remote config.\n"
@@ -1120,8 +1121,8 @@ func TestE2ESyncPushFail(t *testing.T) {
 		{"-C", dir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"},
 		{"-C", dir, "ls-remote", "--symref", "origin", "HEAD"},
 		{"-C", dir, "pull", "--rebase", "origin", "main"},
-		{"-C", dir, "push"},
-		{"-C", dir, "push"},
+		{"-C", dir, "push", "-u", "origin", "HEAD"},
+		{"-C", dir, "push", "-u", "origin", "HEAD"},
 	}
 	if calls := gitCalls(t, log); !reflect.DeepEqual(calls, want) {
 		t.Errorf("git calls = %v, want %v", calls, want)
