@@ -1,6 +1,7 @@
 package view
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/sahil87/tu/internal/fact"
@@ -59,6 +60,54 @@ func TestSnapshotPopulated(t *testing.T) {
 		if total[i].Text != w {
 			t.Errorf("total cell %d = %q, want %q", i, total[i].Text, w)
 		}
+	}
+}
+
+// The single-source title names the tool (o.Single is the caller's
+// req.Source marker); a one-row all-tools snapshot stays "Combined".
+func TestSnapshotSingleSourceTitle(t *testing.T) {
+	rows := []ToolTotals{{Name: "Claude Code", Totals: dayTotals}}
+	tab := Snapshot(rows, query.Daily, nil, SnapshotOptions{Metric: Cost, Single: true})
+	if tab.Title != "📊 Claude Code Usage (daily)" {
+		t.Errorf("Title = %q", tab.Title)
+	}
+	tab = Snapshot(rows, query.Daily, nil, SnapshotOptions{Metric: Cost})
+	if tab.Title != "📊 Combined Usage (daily)" {
+		t.Errorf("Title = %q", tab.Title)
+	}
+}
+
+// The numeric columns are data-sized (max(12, widest cell across data and
+// Total rows), Tool fixed at 12): a 14-char Tokens value widens only its own
+// column; ordinary values keep the fixed 87-char layout.
+func TestSnapshotDataSizedColumns(t *testing.T) {
+	widths := func(tab Table) []int {
+		out := make([]int, len(tab.Columns))
+		for i, c := range tab.Columns {
+			out[i] = c.Width
+		}
+		return out
+	}
+	big := fact.Totals{TotalCost: 0.5, TotalTokens: 16809796832}
+	tab := Snapshot([]ToolTotals{
+		{Name: "Claude Code", Totals: big},
+		{Name: "Codex", Totals: dayTotals},
+	}, query.Daily, nil, SnapshotOptions{Metric: Cost})
+	got := widths(tab)
+	want := []int{12, 14, 12, 12, 12, 12} // "16,809,796,832" and the Total's "16,809,821,232"
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("widths = %v, want %v (Tokens column data-sized)", got, want)
+	}
+	if tab.Rows[2].Cells[1].Text != "16,809,796,832" || tab.Rows[5].Cells[1].Text != "16,809,821,232" {
+		t.Errorf("cells = %q / %q", tab.Rows[2].Cells[1].Text, tab.Rows[5].Cells[1].Text)
+	}
+
+	tab = Snapshot([]ToolTotals{
+		{Name: "Claude Code", Totals: dayTotals},
+		{Name: "Codex", Totals: dayTotals},
+	}, query.Daily, nil, SnapshotOptions{Metric: Cost})
+	if got := widths(tab); !reflect.DeepEqual(got, []int{12, 12, 12, 12, 12, 12}) {
+		t.Errorf("widths = %v, want all 12 (byte-identical ordinary layout)", got)
 	}
 }
 

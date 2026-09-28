@@ -75,9 +75,8 @@ func shareCell(share float64) string {
 
 // Leaderboard builds the lb table (the TS renderLeaderboard, intake §4):
 //
-//   - Title "Leaderboard ({period}) · {WindowLabel} · by {cost|tokens}" — NO
-//     📊 (DC-07); the period word only, never the cap hint (lb is never
-//     capped).
+//   - Title "📊 Leaderboard ({period}) · {WindowLabel} · by {cost|tokens}";
+//     the period word only, never the cap hint (lb is never capped).
 //   - Footer (the staleness line, dim): "synced {LastSync} · tu sync to
 //     refresh" when LastSync != "never", else "never synced · tu sync to
 //     refresh". Always present, including the empty state.
@@ -108,7 +107,7 @@ func Leaderboard(rows []LeaderboardRow, o LeaderboardOptions) Table {
 		byMetric = "tokens"
 	}
 	t := Table{
-		Title:       "Leaderboard (" + o.Period.String() + ") · " + o.WindowLabel + " · by " + byMetric,
+		Title:       "📊 Leaderboard (" + o.Period.String() + ") · " + o.WindowLabel + " · by " + byMetric,
 		Footer:      leaderboardFooter(o.LastSync),
 		DeltaInCell: DeltaAfterPad,
 	}

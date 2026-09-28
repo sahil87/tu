@@ -8,7 +8,7 @@ description: internal/command guards — Normalize's warn-and-clear flag guards 
 
 ## Overview
 
-`command.Normalize` (`guards.go`) is the pure warn-and-clear guard step between [parse](/command/request-and-parse.md) and [Run](/command/run-and-result.md): it takes the post-guard `config.Mode` and returns the request the pipeline runs plus the stderr notice lines the edge prints before any fetch warning. Two fail-fast guards flank it — the reserved-user check in `cmd/tu` ([entry-point](/command/entry-point.md)) and `command.ErrLeaderboardMode` in `Run`.
+`command.Normalize` (`guards.go`) is the pure warn-and-clear guard step between [parse](/command/request-and-parse.md) and [Run](/command/run-and-result.md): it takes the post-guard `config.Mode` and returns the request the pipeline runs plus the stderr notice lines the edge prints before any fetch warning. Two fail-fast guards flank it — the reserved-user check in `cmd/tu` ([entry-point](/command/entry-point.md)) and `command.LeaderboardModeError` in `Run`.
 
 ## Requirements
 
@@ -16,7 +16,7 @@ description: internal/command guards — Normalize's warn-and-clear flag guards 
 `Normalize(req, mode config.Mode, now time.Time) (Request, []string, bool)` (`guards.go`) applies the guards in a fixed order and returns the adjusted request, the notice lines, and the `capActive` marker. It writes nothing: the notices ride the `Result` and the edge prints them BEFORE any fetch warning ([errors-and-warnings](/source/errors-and-warnings.md)). `leaderboard(d)` reports whether the display is `lb`/`lbh`; the guard steps that exempt them test it. (9ax5)
 
 ### Requirement: -u in single mode warns and clears
-`Flags.User` set in single mode on a display outside {lb, lbh} → notice `Warning: -u flag requires multi mode — ignoring.`; `Flags.User` cleared. The leaderboards are exempt so the exit-1 `ErrLeaderboardMode` gate — which runs in `Run` BEFORE `Normalize` — fires without a notice line; in multi mode this step never runs. On lb/lbh, `User == "all"` is cleared SILENTLY (the leaderboard is inherently all-users), while `-u <name>` is kept: it pins that user's row (the `◂` marker), never filters ([leaderboard](/view/leaderboard.md)). (4xwg) (2gbb)
+`Flags.User` set in single mode on a display outside {lb, lbh} → notice `Warning: -u flag requires multi mode — ignoring.`; `Flags.User` cleared. The leaderboards are exempt so the exit-1 `LeaderboardModeError` gate — which runs in `Run` BEFORE `Normalize` — fires without a notice line; in multi mode this step never runs. On lb/lbh, `User == "all"` is cleared SILENTLY (the leaderboard is inherently all-users), while `-u <name>` is kept: it pins that user's row (the `◂` marker), never filters ([leaderboard](/view/leaderboard.md)). (4xwg) (2gbb)
 
 #### Scenario: -u on lb in single mode fails without a notice
 - **GIVEN** `tu lb -u bob` in single mode
@@ -54,7 +54,7 @@ When display ∈ {h, lbh} ∧ period ≠ monthly ∧ `Since == "" && Until == ""
 `all` is rejected as a configured profile name: after `config.Load` and the metrics-dir guard, `cmd/tu` (and the `tu sync` path) checks `cfg.User == "all"` and prints `Error: config user "all" is reserved (used by -u all)` to stderr, exiting with the usage code 2 — a bad config value is invocation-fixable ([entry-point](/command/entry-point.md), [metrics-dir-guard](/config/metrics-dir-guard.md)). (svlv)
 
 ### Requirement: The leaderboards require multi mode
-`command.ErrLeaderboardMode` fires in `Run` when the display is lb/lbh and the post-guard `cfg.Mode == config.Single`, evaluated BEFORE `Normalize` — no notices, no fetch, no lines, exit 1, message `Error: lb requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo` (it names `lb` even for `lbh`). A multi config demoted by the clone guard lands on the same message after the guard's own stderr lines ([metrics-dir-guard](/config/metrics-dir-guard.md)). (4xwg) (2gbb)
+`command.LeaderboardModeError{Display}` fires in `Run` when the display is lb/lbh and the post-guard `cfg.Mode == config.Single`, evaluated BEFORE `Normalize` — no notices, no fetch, no lines, exit 1. The message names the invoked command: `Error: lbh requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo` for lbh, `Error: lb requires multi mode — …` for lb. `ErrLeaderboardMode` is the `errors.Is` sentinel every `LeaderboardModeError` matches. A multi config demoted by the clone guard lands on the same message after the guard's own stderr lines ([metrics-dir-guard](/config/metrics-dir-guard.md)). (4xwg) (2gbb)
 
 #### Scenario: A demoted multi config still fails fast
 - **GIVEN** a multi config whose metrics dir is missing and whose clone failed (demoted to single)
@@ -82,7 +82,7 @@ When display ∈ {h, lbh} ∧ period ≠ monthly ∧ `Since == "" && Until == ""
 *Introduced by*: svlv
 
 ### Leaderboards fail fast in single mode
-**Decision**: lb/lbh in single mode exit 1 with the `ErrLeaderboardMode` line before any fetch; the `-u`-in-single-mode guard exempts the leaderboards so this failure fires first, with no notice line.
+**Decision**: lb/lbh in single mode exit 1 with the `LeaderboardModeError` line — naming the invoked command — before any fetch; the `-u`-in-single-mode guard exempts the leaderboards so this failure fires first, with no notice line.
 **Why**: the leaderboard is an all-users view of the metrics repo; single mode has no repo to rank. Exit 1 (operational) rather than 2 because the environment or config must be fixed, not the command line; a demoted multi config lands on the same actionable message.
 **Rejected**: warn-and-empty (hides a misconfigured setup behind a plausible-looking empty table).
 *Introduced by*: 260828-4xwg-leaderboard-lb-lbh-display

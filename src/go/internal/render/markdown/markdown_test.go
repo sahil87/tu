@@ -62,8 +62,8 @@ func TestGoldens(t *testing.T) {
 		golden string
 		lines  []string
 	}{
-		{"snapshot populated", "snapshot_populated.golden", Snapshot(snapshotRows(), query.Daily, nil)},
-		{"snapshot empty", "snapshot_empty.golden", Snapshot(nil, query.Daily, nil)},
+		{"snapshot populated", "snapshot_populated.golden", Snapshot(snapshotRows(), query.Daily, nil, false)},
+		{"snapshot empty", "snapshot_empty.golden", Snapshot(nil, query.Daily, nil, false)},
 		{"history populated", "history_populated.golden", History(monthlySeries, query.Monthly, false, nil)},
 		{"history with total", "history_with_total.golden", History(view.Series{Name: "Claude Code", Entries: []view.Entry{
 			{Label: "2026-01-05", Totals: dayTotals},
@@ -77,7 +77,7 @@ func TestGoldens(t *testing.T) {
 				{Name: "dev-ws-sahil02", Totals: fact.Totals{TotalCost: 0.2}},
 				{Name: "Sahils-Mac-mini.local", Totals: fact.Totals{TotalCost: 0.3}},
 			},
-		}})},
+		}}, false)},
 		{"history machines", "history_machines.golden", History(view.Series{Name: "Claude Code", Entries: []view.Entry{
 			{Label: "2026-01-05", Totals: dayTotals},
 			{Label: "2026-01-06", Totals: dayTotals},
@@ -143,7 +143,7 @@ func TestIntakeByteReferences(t *testing.T) {
 		t.Errorf("h-md bytes =\n%q\nwant:\n%q", got, want)
 	}
 
-	got = strings.Join(Snapshot(nil, query.Daily, nil), "\n") + "\n"
+	got = strings.Join(Snapshot(nil, query.Daily, nil, false), "\n") + "\n"
 	want = "## Combined Usage (daily)\n" +
 		"\n" +
 		"| Tool | Tokens | Input | Output | Cache | Cost |\n" +
@@ -151,6 +151,13 @@ func TestIntakeByteReferences(t *testing.T) {
 		"\n"
 	if got != want {
 		t.Errorf("empty snapshot md =\n%q\nwant:\n%q", got, want)
+	}
+
+	// A single-source snapshot is titled after the tool (Markdown headings
+	// carry no emoji).
+	got = strings.Join(Snapshot(snapshotRows()[:1], query.Daily, nil, true), "\n") + "\n"
+	if !strings.HasPrefix(got, "## Claude Code Usage (daily)\n") {
+		t.Errorf("single-source snapshot md =\n%q", got)
 	}
 }
 

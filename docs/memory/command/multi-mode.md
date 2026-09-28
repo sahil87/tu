@@ -1,6 +1,6 @@
 ---
 type: memory
-description: Multi-mode record composition — command.gather's four record paths by mode and -u, the own-user write-then-MaxMerge path, the repo-only -u paths, the mode-keyed snapshot label rule, and the auto-clone guard's placement in the data path
+description: Multi-mode record composition — command.gather's four record paths by mode and -u, the own-user write-then-MaxMerge path, the repo-only -u paths, the always-stamped snapshot label, and the auto-clone guard's placement in the data path
 ---
 # Multi Mode
 
@@ -41,13 +41,13 @@ Per key `(Date, Tool, User, Machine)`, `query.MaxMerge(live, own)` keeps whichev
 ### Requirement: Un-collapsed records with a caller-side collapse
 `gather` returns the stamped, un-collapsed per-machine/per-user records in a fixed order — the own machine first (the `MaxMerge` output), then other machines in walk order; for `-u all`, users ascending then walk order. The callers apply `query.Collapse(recs, Tool, Date)` followed by a stable date sort before the `Window`/`RollUp`/`GroupBy` tail — the daily cross-machine/cross-user sum reproduces the reference summation association for `--json`'s raw float bytes, and in single mode the collapse is the identity (one pathway, not two) — while the `--by-machine` breakdown groups the same raw records on the machine/user dimension the collapse would drop ([aggregation](/query/aggregation.md), [breakdown](/view/breakdown.md), [snapshot](/view/snapshot.md)). (xivf) (pmsd)
 
-### Requirement: The snapshot label rule is keyed on mode
-`runSnapshot` clears every `ToolTotals.Label` only when `Mode == Single && Source == "" && Period == Daily && !Flags.ByMachine` — the bare-label behavior is a single-mode artifact of the all-tools daily fetch. In multi mode every snapshot builds from merged entries, so a tool with a record on the current label carries `label` in `--json`; `tu cc --json` (any period) and `tu m --json` carry it in single mode too. Under `--by-machine` the clear does not apply even in single mode. (3am6) (pmsd)
+### Requirement: Every snapshot row carries the current period label
+`runSnapshot` stamps every `ToolTotals.Label` with the current period's label, data or not, in every mode — the snapshot JSON's key set is stable ([render/json](/render/json.md)). Only `render/json` reads the label, so the other encoders are unaffected by the stamp. (3am6) (pmsd)
 
-#### Scenario: The mode-keyed label
-- **GIVEN** multi mode with a record on today's label, and single mode, both with the same data
-- **WHEN** `tu --json` runs in each
-- **THEN** the multi-mode output carries `"label"` for the tool with a current record; the single-mode output carries no `"label"` key at all
+#### Scenario: A zero-usage tool carries the label
+- **GIVEN** single mode, daily, one tool with usage today and one without
+- **WHEN** `tu --json` runs
+- **THEN** both tool objects start with `"label"` valued with today's date, and under `--by-machine` the zero-usage object ends with `"machines": {}`
 
 ### Requirement: The 3-month cap windows stored records identically
 The cap ([guards](/command/guards.md)) defaults the floor before `gather` runs, and `query.Window` applies to the collapsed daily records after the merge — repo-sourced records are windowed by the same floor as live ones: a stored day-file older than the floor does not appear in `tu h` and does appear in `tu h --full`. (yuuj) (xivf)
@@ -78,8 +78,8 @@ The cap ([guards](/command/guards.md)) defaults the floor before `gather` runs, 
 **Rejected**: dropping the collapse on that one path to reproduce the quirk byte-for-byte — duplicate rows are a bug, not a surface.
 *Introduced by*: 260916-xivf-metrics-source-and-multi-mode
 
-### Reproduce the JSON label quirk
-**Decision**: `runSnapshot` clears `ToolTotals.Label` only on the single-mode daily-all path; every other path (any explicit source, any non-daily period, multi mode, `--by-machine`) keeps the label.
-**Why**: the label omission on the bare single-mode daily JSON is a harness-compared byte surface; parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes).
-**Rejected**: reproducing nothing (a harness red on populated data); clearing labels everywhere (breaks `tu cc --json` and every multi-mode snapshot).
-*Introduced by*: 260916-3am6-query-view-render-snapshot
+### Snapshot labels are stamped unconditionally
+**Decision**: `runSnapshot` sets `ToolTotals.Label` to the current period's label on every row — data or not, any mode, period or source.
+**Why**: the snapshot JSON's stable key set is the contract ([render/json](/render/json.md)); the label is known without data, and presence-dependent keys force every consumer to special-case absence. Only `render/json` reads the label, so stamping it everywhere costs nothing on the other encoders.
+**Rejected**: keying the label on mode or data presence (an unstable key set per invocation shape).
+*Introduced by*: 260928-lfj9-output-drop-at-cutover-fixes

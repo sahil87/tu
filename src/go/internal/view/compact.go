@@ -38,10 +38,13 @@ type CompactTable struct {
 // renderCompactSnapshot): one row per tool with TotalTokens > 0 carrying the
 // metric value and the Prev delta keyed by name; the Total sums the metric
 // over ALL input rows (visible or not) and appears only when more than one
-// row is visible. Machine columns and the legend are dropped (the TS returns
-// before them).
-func CompactSnapshot(rows []ToolTotals, p query.Period, m Metric, prev map[string]float64) CompactTable {
-	t := CompactTable{Title: "📊 Combined Usage (" + p.String() + ")"}
+// row is visible. The title follows the full table (single-source names the
+// tool). Machine columns and the legend are dropped (the TS returns before
+// them).
+func CompactSnapshot(rows []ToolTotals, p query.Period, o SnapshotOptions) CompactTable {
+	m := o.Metric
+	prev := o.Prev
+	t := CompactTable{Title: snapshotTitle(rows, p, o.Single)}
 
 	visible := 0
 	for _, r := range rows {

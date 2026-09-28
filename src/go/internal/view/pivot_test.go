@@ -375,6 +375,33 @@ func TestTotalHistoryLbhHooks(t *testing.T) {
 	}
 }
 
+// The lbh "others" fold (FoldedLast) is excluded from the descending-total
+// rank sort and stays the last user column — even with the largest total.
+func TestTotalHistoryFoldedLast(t *testing.T) {
+	cost := func(c float64) fact.Totals { return fact.Totals{TotalCost: c, TotalTokens: 1} }
+	series := []Series{
+		{Name: "sahil", Entries: []Entry{{Label: "2026-01-05", Totals: cost(6)}, {Label: "2026-01-06", Totals: cost(4)}}},
+		{Name: "alice", Entries: []Entry{{Label: "2026-01-05", Totals: cost(10)}, {Label: "2026-01-06", Totals: cost(20)}}},
+		{Name: "others", Entries: []Entry{{Label: "2026-01-05", Totals: cost(60)}, {Label: "2026-01-06", Totals: cost(40)}}},
+	}
+	o := lbhOpts(80)
+	o.FoldedLast = true
+	tab := TotalHistory(series, o)
+	want := []string{"Date", "alice", "sahil", "others", "Cost"}
+	for i, w := range want {
+		if tab.Columns[i].Title != w {
+			t.Errorf("column %d = %q, want %q (others pinned last)", i, tab.Columns[i].Title, w)
+		}
+	}
+	// The Total row follows the same order; the row total still sums all.
+	total := tab.Rows[len(tab.Rows)-1]
+	for i, w := range []string{"Total", "$30.00", "$10.00", "$100.00", "$140.00"} {
+		if total.Cells[i].Text != w {
+			t.Errorf("total cell %d = %q, want %q", i, total.Cells[i].Text, w)
+		}
+	}
+}
+
 // R8: ties on the window total keep first-seen order.
 func TestTotalHistoryRankColumnsTies(t *testing.T) {
 	cost := func(c float64) fact.Totals { return fact.Totals{TotalCost: c, TotalTokens: 1} }

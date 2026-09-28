@@ -3,9 +3,8 @@
 // newline) does, and the two history shapes (history.go: a bare entry array
 // for one tool, an object keyed by display name with [] inline for empty
 // series). The writer is hand-ordered — Go maps are unordered and struct
-// marshalling cannot emit the conditional "label" key first — using
-// encoding/json only for scalar encoding. Returned as lines; nothing here
-// writes to a stream.
+// marshalling cannot emit the "label" key first — using encoding/json only
+// for scalar encoding. Returned as lines; nothing here writes to a stream.
 package json
 
 import (
@@ -17,21 +16,28 @@ import (
 )
 
 // Snapshot renders the snapshot JSON (layouts §12): an object keyed by
-// display name in the given order; per tool, "label" FIRST when Label != "",
-// then the six pinned totals keys, then — when the breakdown carries ≥1 slice
-// for the row — a "machines" object (one "name": cost line per slice in
-// FIRST-SEEN slice order, never sorted — the TS attachMachinesJson copies the
-// Map in insertion order; values are raw doubles and always cost, even under
-// -t). Rows with no slices are byte-identical to the no-breakdown output; a
-// zero-usage single-source tool MAY carry machines with 0 values (the TS
-// zero-fill) and no label. Two-space indent. The trailing newline of
-// console.log is the caller's Fprintln per line.
+// display name in the given order; per tool, "label" FIRST (always — the key
+// set is stable: command hands every row the current period's label, data or
+// not), then the six pinned totals keys, then — under --by-machine (bd !=
+// nil) — a "machines" object (one "name": cost line per slice in FIRST-SEEN
+// slice order, never sorted — the TS attachMachinesJson copies the Map in
+// insertion order; values are raw doubles and always cost, even under -t),
+// "{}" inline when the row has no slices. A zero-usage single-source tool MAY
+// carry machines with 0 values (the TS zero-fill). Two-space indent. The
+// trailing newline of console.log is the caller's Fprintln per line.
 func Snapshot(rows []view.ToolTotals, bd *view.Breakdown) []string {
 	lines := []string{"{"}
 	for i, r := range rows {
 		lines = append(lines, "  "+encodeString(r.Name)+": {")
-		if r.Label != "" {
-			lines = append(lines, `    "label": `+encodeString(r.Label)+",")
+		lines = append(lines, `    "label": `+encodeString(r.Label)+",")
+		comma := machineComma(bd, r.Name)
+		machines := machineLines(bd, r.Name, "    ")
+		if bd != nil && len(machines) == 0 {
+			// The snapshot's key set is stable: under --by-machine every tool
+			// object carries "machines", "{}" when it has no slices (the
+			// history attaches "machines" only with slices).
+			comma = ","
+			machines = []string{`    "machines": {}`}
 		}
 		lines = append(lines,
 			`    "totalCost": `+encodeFloat(r.TotalCost)+",",
@@ -39,9 +45,9 @@ func Snapshot(rows []view.ToolTotals, bd *view.Breakdown) []string {
 			`    "outputTokens": `+strconv.FormatInt(r.OutputTokens, 10)+",",
 			`    "cacheCreationTokens": `+strconv.FormatInt(r.CacheCreationTokens, 10)+",",
 			`    "cacheReadTokens": `+strconv.FormatInt(r.CacheReadTokens, 10)+",",
-			`    "totalTokens": `+strconv.FormatInt(r.TotalTokens, 10)+machineComma(bd, r.Name),
+			`    "totalTokens": `+strconv.FormatInt(r.TotalTokens, 10)+comma,
 		)
-		lines = append(lines, machineLines(bd, r.Name, "    ")...)
+		lines = append(lines, machines...)
 		close := "  }"
 		if i < len(rows)-1 {
 			close += ","

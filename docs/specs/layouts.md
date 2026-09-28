@@ -32,7 +32,7 @@ Total        |  490,485,514 |    1,225,955 |    2,701,575 |  486,557,984 |      
 - Cost cells carry `en-US` thousands separators (`$1,012.34`), matching the token columns
 - Tools with zero tokens are omitted; Total row (and its divider) shown only when >1 tool has data
 - The output starts and ends with one blank line (the blank line before the heading is part of every one-shot table render)
-- A cell wider than its 12-char column pushes that row wider (e.g. `16,809,796,832` in a monthly all-users view); columns are fixed, not data-sized, so the header and divider do not grow with it (DC-24)
+- Each numeric column is data-sized: `max(12, widest rendered cell in that column across the header, data and Total rows)` — the Tool column stays 12. With every value ≤ 12 chars the row is the fixed 87 chars; a wider value (e.g. `16,809,796,832` in a monthly all-users view) widens only its own column, keeping the header, dividers and rows aligned
 - **Empty state:** when no tool has data the table is replaced by two-space-indented `  No usage` under the heading:
 
   ```
@@ -47,17 +47,17 @@ Total        |  490,485,514 |    1,225,955 |    2,701,575 |  486,557,984 |      
 
 **Command:** `tu cc`, `tu codex m`, `tu oc`
 
-Same table as Layout 1 with one data row. The heading does **not** change to the tool name — it stays `Combined Usage` for a single-source snapshot (DC-15):
+Same table as Layout 1 with one data row, titled after the tool:
 
 ```
-📊 Combined Usage (daily)
+📊 Claude Code Usage (daily)
 
 Tool         |       Tokens |        Input |       Output |        Cache |         Cost
 ─────────────|──────────────|──────────────|──────────────|──────────────|─────────────
 Claude Code  |   24,049,084 |          138 |       25,188 |   24,023,758 |        $5.38
 ```
 
-No divider/Total row when only one row is present. A single source with no usage renders the `  No usage` empty state exactly as Layout 1.
+No divider/Total row when only one row is present. A single source with no usage renders the `  No usage` empty state (under the tool's heading) exactly as Layout 1.
 
 ## 3. History — Single Tool
 
@@ -147,7 +147,7 @@ Each bar is stacked per tool (colors not shown in ASCII): the Claude Code share 
 Captured at 80 columns:
 
 ```
-Leaderboard (monthly) · 2026-09 · by cost
+📊 Leaderboard (monthly) · 2026-09 · by cost
 
 # | User    |       Cost                     |         Tokens | Share | Δ vs Aug
 ──|─────────|────────────────────────────────|────────────────|───────|─────────
@@ -162,7 +162,7 @@ Leaderboard (monthly) · 2026-09 · by cost
 synced 15m ago (2026-09-15T18:54:44.502Z) · tu sync to refresh
 ```
 
-- **Heading:** `Leaderboard ({period}) · {window} · by {cost|tokens}` — **no `📊` prefix**, unlike every other table heading (DC-07). `{window}` is the period's current label (`2026-09-16`, the week's Sunday `2026-09-13`, or `2026-09`), or `{since} → {until}` under an explicit window (`2026-09-01 → 2026-09-10`; an `--until`-only window renders `→ 2026-09-10` with an empty left side) (DC-13)
+- **Heading:** `📊 Leaderboard ({period}) · {window} · by {cost|tokens}` — the `📊 ` prefix matches every other table heading. `{window}` is the period's current label (`2026-09-16`, the week's Sunday `2026-09-13`, or `2026-09`), `{since} → {until}` under a two-sided explicit window (`2026-09-01 → 2026-09-10`), or `since {since}` / `until {until}` for a one-sided window (`until 2026-09-10`)
 - **Columns:** `#` rank (right-aligned, 1 char wide up to 9 rows, 2 from 10 rows), User (left, data-sized; the pinned user — `-u <name>`, else the config user — carries a ` ◂` marker that counts toward the column width), Cost (right, data-sized with the 9-char floor, thousands separators), inline bar (solid green, scaled to the max row in the display metric, 19 chars at 80 cols, 30-char cap from ~91 cols), Tokens (right, data-sized), Share (percent of the grand total in the display metric, one decimal; `100.0%` widens the column), `Δ vs {prev label}` (whole-percent change vs the previous same-length window — `Δ vs 2026-09-15` for daily, `Δ vs 2026-09-06` for weekly, short-month `Δ vs Aug` for monthly, `Δ vs prev` under an explicit window; `new` when the user had no prior-window data; large changes render as-is, e.g. `+4757%`). Both Cost and Tokens render under every metric — `--metric tokens`/`-t` changes only the sort key, bar scale, share denominator, and the heading's `by …` suffix
 - **Ranking:** descending by raw total in the display metric (cost default); ties break by user name ascending; users with zero cost and zero tokens in the window are omitted
 - **Total row:** bolded (`boldWhite`), only when ≥2 rows; sums every row including any collapsed by `--top`; the `#` and Share/Δ cells are blank
@@ -171,7 +171,7 @@ synced 15m ago (2026-09-15T18:54:44.502Z) · tu sync to refresh
 - **`--by-machine`:** rows become `user/machine` pairs (`sahil/dev-ws-sahil02 ◂`); every row of the pinned user carries the marker; the bar is usually suppressed because the wider User column consumes the budget. See Layout 17
 - **Source filter:** `tu cc m lb` ranks the same users on Claude Code spend only; a user with no spend in that source is omitted
 - **Dim zero cells** and `--no-color` byte-equality follow the same rules as Layout 4. An empty window renders the heading, `No data`, and the footer — never a crash
-- **Multi mode only:** single mode exits 1 with `Error: lb requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo` (the message names `lb` even for `lbh`) (DC-14)
+- **Multi mode only:** single mode exits 1 with `Error: {lb|lbh} requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo` (the message names the invoked command)
 
 ## 6. Leaderboard — History Pivot (`lbh`)
 
@@ -193,7 +193,7 @@ avg $886.13/month · peak $933.45 (2026-08) · █ sahil █ alice █ bob
 - **Title:** `📊 Leaderboard History ({period}[, last 3 months])` (`Leaderboard Token History` under `--metric tokens`/`-t`) in place of `Combined Cost History`
 - **Column order:** descending by window total in the display metric (a leaderboard is ranked), not registry order — ties keep first-seen order. The CSV and Markdown emitters order the same columns **alphabetically** instead (DC-16)
 - **Per-row leader:** each row's winning user cell renders `boldWhite` (color-only, width unchanged, stripped by `--no-color`/`NO_COLOR`)
-- **No negligible-column omission:** every user column renders — a low-spend user is never silently hidden from a ranking (unlike the tool pivot's omission rule); `--top <n>` is the explicit control, keeping the N highest-total user columns and folding the rest into a single `others` column so row totals are preserved (no `others` column when nothing was folded). The `others` column is sorted by its own total like any user column, so it can land first or in the middle (DC-08); see Layout 19
+- **No negligible-column omission:** every user column renders — a low-spend user is never silently hidden from a ranking (unlike the tool pivot's omission rule); `--top <n>` is the explicit control, keeping the N highest-total user columns and folding the rest into a single `others` column so row totals are preserved (no `others` column when nothing was folded). The `others` column is excluded from the descending-total sort and always renders last, before the row-total column (an aggregate bucket is not a ranked user); see Layout 19
 - **Width:** with 15 users the row is ~215 chars and wraps on any ordinary terminal (in watch mode this corrupts the frame) (DC-17)
 - **Cap:** daily/weekly `lbh` carries the same implicit 3-month cap / `--full` semantics as `h` (heading hint `last 3 months`); monthly is never capped
 - **`--by-machine` warns and is ignored** (`Warning: --by-machine is not supported with leaderboard history — ignoring.`), exactly as on the all-tools pivot; multi mode only (same exit-1 guard as `lb`)
@@ -350,7 +350,7 @@ Truncates progressively in narrow terminals: controls dropped first, then status
 
 Pretty-printed with two-space indentation, trailing newline. The exact key rules per display are in [usage.md › Output Formats › JSON Output](usage.md#json-output--json). One example per shape:
 
-**Snapshot** (`tu --json`, `tu cc --json`) — an object keyed by tool display name in registry order; a tool with data carries `label` first, a zero-usage tool carries no `label` (DC-01); every registry tool is present for an all-tools command, and only the selected tool for a single-source command (`tu cc --json`):
+**Snapshot** (`tu --json`, `tu cc --json`) — an object keyed by tool display name in registry order; every tool object carries `label` first, valued with the current period's label whether the tool has data or not; every registry tool is present for an all-tools command, and only the selected tool for a single-source command (`tu cc --json`):
 
 ```json
 {
@@ -364,6 +364,7 @@ Pretty-printed with two-space indentation, trailing newline. The exact key rules
     "totalTokens": 21871261
   },
   "Codex": {
+    "label": "2026-09-16",
     "totalCost": 0,
     "inputTokens": 0,
     "outputTokens": 0,
@@ -374,7 +375,7 @@ Pretty-printed with two-space indentation, trailing newline. The exact key rules
 }
 ```
 
-**Snapshot with `--by-machine`** — tools with data gain a trailing `machines` object (machine name → cost; user name → cost under `-u all`); zero-usage tools gain nothing:
+**Snapshot with `--by-machine`** — every tool object gains a trailing `machines` object (machine name → cost; user name → cost under `-u all`), `{}` when the tool has no slices:
 
 ```json
 {
@@ -782,7 +783,7 @@ Date         |          Input |         Output |    Cache Write |     Cache Read
 **Leaderboard** — heading `by tokens`, rows re-ranked by tokens, Share in tokens, Δ in tokens; Cost and Tokens columns both remain:
 
 ```
-Leaderboard (monthly) · 2026-09 · by tokens
+📊 Leaderboard (monthly) · 2026-09 · by tokens
 
 # | User    |       Cost                     |         Tokens | Share | Δ vs Aug
 ──|─────────|────────────────────────────────|────────────────|───────|─────────
@@ -797,7 +798,7 @@ Leaderboard (monthly) · 2026-09 · by tokens
 **`lb --top 2`** — a dim collapsed line replaces the tail; the User column widens to fit it:
 
 ```
-Leaderboard (monthly) · 2026-09 · by cost
+📊 Leaderboard (monthly) · 2026-09 · by cost
 
 # | User        |       Cost                 |         Tokens | Share | Δ vs Aug
 ──|─────────────|────────────────────────────|────────────────|───────|─────────
@@ -809,15 +810,15 @@ Leaderboard (monthly) · 2026-09 · by cost
 synced 15m ago (2026-09-15T18:54:44.502Z) · tu sync to refresh
 ```
 
-**`lbh --top 2`** — the folded `others` column is sorted with the user columns by total, so it can render first (DC-08):
+**`lbh --top 2`** — the kept user columns rank by total; the folded `others` column is excluded from that sort and always renders last:
 
 ```
 📊 Leaderboard History (monthly)
 
-Date       |      others |       sahil |     eunice |        Cost
-───────────|─────────────|─────────────|────────────|───────────────────────────
-2026-06    |  $12,283.77 |  $12,558.30 | $11,715.02 |  $36,557.09 ████▊
-2026-07    |  $50,269.58 |  $25,311.77 |  $9,659.17 |  $85,240.52 ███████████
+Date       |       sahil |     eunice |      others |        Cost
+───────────|─────────────|────────────|─────────────|───────────────────────────
+2026-06    |  $12,558.30 | $11,715.02 |  $12,283.77 |  $36,557.09 ████▊
+2026-07    |  $25,311.77 |  $9,659.17 |  $50,269.58 |  $85,240.52 ███████████
 ```
 
 `--top` applies to JSON (array/keys truncated), CSV and Markdown too — the Total row still sums every user and is still emitted when the full set has more than one user, even with `--top 1`. On any non-leaderboard display it warns and is ignored.

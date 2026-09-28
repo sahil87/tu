@@ -13,5 +13,5 @@ description: "Output encoders for view models: number formatting and rounding, A
 |------|-------------|
 | [ansi](ansi.md) | The terminal-table encoder — Colors as a value honoring --no-color/NO_COLOR, the SGR palette, the Table and CompactTable encoders (cells, bars, deltas, separators, footer), and the golden-file test contract |
 | [csv-and-markdown](csv-and-markdown.md) | The CSV and Markdown encoders — RFC 4180 rows with pinned headers and toFixed(2) costs for machine consumers, and GitHub-flavoured Markdown tables with grouped numbers and a |
-| [json](json.md) | The JSON encoder's pinned wire shapes — the snapshot object keyed by display name, the history array and all-tools object, the ranked leaderboard array — key order, raw double costs, the conditional label and machines keys, and the hand-ordered writer |
+| [json](json.md) | The JSON encoder's pinned wire shapes — the snapshot object keyed by display name, the history array and all-tools object, the ranked leaderboard array — key order, raw double costs, the stable label and machines key set, and the hand-ordered writer |
 | [number-formatting](number-formatting.md) | The render package's shared number formatting — FormatInt en-US grouping, FormatCost's ICU two-decimal rule, the FixedHalfUp (toFixed) and JSRound (Math.round) twins, and where each rounding rule is used |

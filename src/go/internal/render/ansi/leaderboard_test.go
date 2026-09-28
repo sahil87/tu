@@ -107,8 +107,8 @@ func lbhRanked() []view.Series {
 	}
 }
 
-// lbhOthers is a --top-2-folded pivot whose others column (290) lands
-// mid-table between alice (300) and dave (110) — DC-08.
+// lbhOthers is a --top-2-folded pivot; with FoldedLast its others column
+// (290) stays last instead of ranking between alice (300) and dave (110).
 func lbhOthers() []view.Series {
 	cost := func(label string, c float64) view.Entry {
 		return view.Entry{Label: label, Totals: fact.Totals{TotalCost: c, TotalTokens: 1}}
@@ -134,13 +134,14 @@ func lbTable(rows []view.LeaderboardRow, m view.Metric, top, width int, lastSync
 	})
 }
 
-func lbhTable(series []view.Series, width int) view.Table {
+func lbhTable(series []view.Series, width int, foldedLast bool) view.Table {
 	return view.TotalHistory(series, view.HistoryOptions{
 		Period:          query.Monthly,
 		Now:             historyNow,
 		Width:           width,
 		Title:           "📊 Leaderboard History (monthly)",
 		RankColumns:     true,
+		FoldedLast:      foldedLast,
 		HighlightLeader: true,
 		KeepAllColumns:  true,
 	})
@@ -167,8 +168,8 @@ func TestLeaderboardGoldens(t *testing.T) {
 		{"leaderboard empty", "leaderboard_empty.golden", Table(lbTable(nil, view.Cost, 0, 80, synced15m), color)},
 		{"leaderboard never synced", "leaderboard_never_synced.golden", Table(lbTable(lbSix(), view.Cost, 0, 80, "never"), color)},
 		{"leaderboard single row", "leaderboard_single_row.golden", Table(lbTable(lbSix()[:1], view.Cost, 0, 80, synced15m), color)},
-		{"pivot lbh ranked", "pivot_lbh_ranked.golden", Table(lbhTable(lbhRanked(), 80), color)},
-		{"pivot lbh top others", "pivot_lbh_top_others.golden", Table(lbhTable(lbhOthers(), 80), color)},
+		{"pivot lbh ranked", "pivot_lbh_ranked.golden", Table(lbhTable(lbhRanked(), 80, false), color)},
+		{"pivot lbh top others", "pivot_lbh_top_others.golden", Table(lbhTable(lbhOthers(), 80, true), color)},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -201,7 +202,7 @@ func TestLeaderboardStripANSIInvariant(t *testing.T) {
 		lbTable(lbSix(), view.Cost, 2, 80, synced15m),
 		lbTable(lbOutlier(), view.Cost, 0, 120, synced15m),
 		lbTable(nil, view.Cost, 0, 80, synced15m),
-		lbhTable(lbhRanked(), 80),
+		lbhTable(lbhRanked(), 80, false),
 	} {
 		color := Table(tab, Colors{Enabled: true})
 		plain := Table(tab, Colors{})

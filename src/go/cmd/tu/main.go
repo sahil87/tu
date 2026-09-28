@@ -271,7 +271,7 @@ func runWatchBranch(req command.Request, cfg config.Config, deps command.Deps, s
 	// The leaderboard gate before the alt screen, exactly as the one-shot
 	// path (Run returns it with no notices, no fetch, no lines).
 	if (req.Display == command.Leaderboard || req.Display == command.LeaderboardHistory) && cfg.Mode == config.Single {
-		fmt.Fprintln(stderr, command.ErrLeaderboardMode.Error())
+		fmt.Fprintln(stderr, command.LeaderboardModeError{Display: req.Display}.Error())
 		return command.ExitOperational
 	}
 

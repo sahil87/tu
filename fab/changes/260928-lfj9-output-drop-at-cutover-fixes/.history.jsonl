@@ -1,0 +1,11 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-28T18:05:52Z"}
+{"args":"Output shape and heading drop-at-cutover fixes (DC-01, 07, 08, 13, 14, 15, 24) + record keeps DC-05, 06, 11, 16","cmd":"fab-new","event":"command","ts":"2026-09-28T18:05:52Z"}
+{"delta":"+4.9","event":"confidence","score":4.9,"trigger":"calc-score","ts":"2026-09-28T18:06:35Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-28T18:07:23Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-28T18:25:03Z"}
+{"event":"review","result":"failed","ts":"2026-09-28T18:28:44Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-28T18:28:44Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-28T18:31:32Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-28T18:34:09Z"}
+{"event":"review","result":"passed","ts":"2026-09-28T18:34:09Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-28T18:39:58Z"}

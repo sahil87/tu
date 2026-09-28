@@ -112,9 +112,11 @@ func TestE2EEmptySnapshot(t *testing.T) {
 				args = []string{"m"}
 			}
 			assertRun(t, args, 0, want, "")
-			// A single source renders the same empty state (combined heading).
+			// A single source renders the same empty state, titled after the
+			// tool.
+			ccWant := strings.Replace(want, "📊 Combined Usage", "📊 Claude Code Usage", 1)
 			ccArgs := append([]string{"cc"}, args...)
-			assertRun(t, ccArgs, 0, want, "")
+			assertRun(t, ccArgs, 0, ccWant, "")
 		})
 	}
 }
@@ -124,57 +126,24 @@ func TestE2EEmptySnapshotNoColor(t *testing.T) {
 }
 
 func TestE2EEmptySnapshotJSON(t *testing.T) {
-	want := `{
-  "Claude Code": {
-    "totalCost": 0,
-    "inputTokens": 0,
-    "outputTokens": 0,
-    "cacheCreationTokens": 0,
-    "cacheReadTokens": 0,
-    "totalTokens": 0
-  },
-  "Codex": {
-    "totalCost": 0,
-    "inputTokens": 0,
-    "outputTokens": 0,
-    "cacheCreationTokens": 0,
-    "cacheReadTokens": 0,
-    "totalTokens": 0
-  },
-  "OpenCode": {
-    "totalCost": 0,
-    "inputTokens": 0,
-    "outputTokens": 0,
-    "cacheCreationTokens": 0,
-    "cacheReadTokens": 0,
-    "totalTokens": 0
-  },
-  "Gemini": {
-    "totalCost": 0,
-    "inputTokens": 0,
-    "outputTokens": 0,
-    "cacheCreationTokens": 0,
-    "cacheReadTokens": 0,
-    "totalTokens": 0
-  },
-  "Copilot": {
-    "totalCost": 0,
-    "inputTokens": 0,
-    "outputTokens": 0,
-    "cacheCreationTokens": 0,
-    "cacheReadTokens": 0,
-    "totalTokens": 0
-  },
-  "Kimi": {
-    "totalCost": 0,
-    "inputTokens": 0,
-    "outputTokens": 0,
-    "cacheCreationTokens": 0,
-    "cacheReadTokens": 0,
-    "totalTokens": 0
-  }
-}
-`
+	label := time.Now().Format("2006-01-02")
+	tool := func(name string) string {
+		return "  \"" + name + "\": {\n" +
+			"    \"label\": \"" + label + "\",\n" +
+			"    \"totalCost\": 0,\n" +
+			"    \"inputTokens\": 0,\n" +
+			"    \"outputTokens\": 0,\n" +
+			"    \"cacheCreationTokens\": 0,\n" +
+			"    \"cacheReadTokens\": 0,\n" +
+			"    \"totalTokens\": 0\n" +
+			"  }"
+	}
+	tools := []string{"Claude Code", "Codex", "OpenCode", "Gemini", "Copilot", "Kimi"}
+	objs := make([]string, len(tools))
+	for i, name := range tools {
+		objs[i] = tool(name)
+	}
+	want := "{\n" + strings.Join(objs, ",\n") + "\n}\n"
 	assertRun(t, []string{"--json"}, 0, want, "")
 }
 
@@ -709,12 +678,20 @@ func TestE2EStatusNeverClones(t *testing.T) {
 
 const e2eLbGate = "Error: lb requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo\n"
 
-// R1/A-017: in single mode lb/lbh exit 1 with the one gate line (naming lb
-// even for lbh — DC-14), empty stdout, and NO -u notice preceding it.
+// R1/A-017: in single mode lb/lbh exit 1 with the one gate line naming the
+// invoked command, empty stdout, and NO -u notice preceding it.
 func TestE2ELeaderboardSingleModeGate(t *testing.T) {
-	for _, args := range [][]string{{"lb"}, {"lbh"}, {"lb", "-u", "other-user"}} {
+	lbhGate := "Error: lbh requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo\n"
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"lb"}, e2eLbGate},
+		{[]string{"lbh"}, lbhGate},
+		{[]string{"lb", "-u", "other-user"}, e2eLbGate},
+	} {
 		stageVariant(t, "single")
-		assertRun(t, args, 1, "", e2eLbGate)
+		assertRun(t, c.args, 1, "", c.want)
 	}
 }
 
@@ -723,7 +700,7 @@ func TestE2ELeaderboardSingleModeGate(t *testing.T) {
 // -u all is a silent no-op (no notice); --full warns like a snapshot.
 func TestE2ELeaderboardTodayEmpty(t *testing.T) {
 	today := time.Now().Format("2006-01-02")
-	empty := "\n\x1b[1;37mLeaderboard (daily) · " + today + " · by cost\x1b[0m\n\n  No data\n\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
+	empty := "\n\x1b[1;37m📊 Leaderboard (daily) · " + today + " · by cost\x1b[0m\n\n  No data\n\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
 	stageVariant(t, "multi")
 	assertRun(t, []string{"lb"}, 0, empty, "")
 	assertRun(t, []string{"lb", "-u", "all"}, 0, empty, "")
@@ -740,7 +717,7 @@ func TestE2ETopSnapshotGuard(t *testing.T) {
 		"Warning: --top applies to leaderboard display — ignoring.\n")
 }
 
-const e2eLbWindow = "\n\x1b[1;37mLeaderboard (daily) · 2026-01-01 → 2026-01-31 · by cost\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser          \x1b[0m | \x1b[1;36m     Cost\x1b[0m                   | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n1 | harness-user ◂ |     $1.70 \x1b[32m█████████████████\x1b[0m |    97,600 | 56.7% |       new\n2 | other-user     |     $1.30 \x1b[32m█████████████\x1b[0m     |    48,800 | 43.3% |       new\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal         \x1b[0m | \x1b[1;37m    $3.00\x1b[0m                   | \x1b[1;37m  146,400\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
+const e2eLbWindow = "\n\x1b[1;37m📊 Leaderboard (daily) · 2026-01-01 → 2026-01-31 · by cost\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser          \x1b[0m | \x1b[1;36m     Cost\x1b[0m                   | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n1 | harness-user ◂ |     $1.70 \x1b[32m█████████████████\x1b[0m |    97,600 | 56.7% |       new\n2 | other-user     |     $1.30 \x1b[32m█████████████\x1b[0m     |    48,800 | 43.3% |       new\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal         \x1b[0m | \x1b[1;37m    $3.00\x1b[0m                   | \x1b[1;37m  146,400\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
 
 const e2eLbWindowJSON = "[\n  {\n    \"rank\": 1,\n    \"user\": \"harness-user\",\n    \"cost\": 1.7,\n    \"totalTokens\": 97600,\n    \"share\": 0.5666666666666667,\n    \"delta\": null\n  },\n  {\n    \"rank\": 2,\n    \"user\": \"other-user\",\n    \"cost\": 1.3,\n    \"totalTokens\": 48800,\n    \"share\": 0.43333333333333335,\n    \"delta\": null\n  }\n]\n"
 
@@ -748,17 +725,17 @@ const e2eLbWindowCSV = "rank,user,cost,total_tokens,share,delta\n1,harness-user,
 
 const e2eLbWindowMD = "## Leaderboard (daily)\n\n| # | User | Cost | Tokens | Share | Δ vs prev |\n| ---: | :--- | ---: | ---: | ---: | ---: |\n| 1 | harness-user | $1.70 | 97,600 | 56.7% | new |\n| 2 | other-user | $1.30 | 48,800 | 43.3% | new |\n| **Total** |  | **$3.00** | **146,400** |  |  |\n\n"
 
-const e2eLbWindowByMachine = "\n\x1b[1;37mLeaderboard (daily) · 2026-01-01 → 2026-01-31 · by cost\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser                          \x1b[0m | \x1b[1;36m     Cost\x1b[0m | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────────────────────|───────────|───────────|───────|──────────\x1b[0m\n1 | other-user/laptop              |     $1.30 |    48,800 | 43.3% |       new\n2 | harness-user/harness-machine ◂ |     $1.00 |    48,800 | 33.3% |       new\n3 | harness-user/other-box ◂       |     $0.70 |    48,800 | 23.3% |       new\n\x1b[2m──|────────────────────────────────|───────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal                         \x1b[0m | \x1b[1;37m    $3.00\x1b[0m | \x1b[1;37m  146,400\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
+const e2eLbWindowByMachine = "\n\x1b[1;37m📊 Leaderboard (daily) · 2026-01-01 → 2026-01-31 · by cost\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser                          \x1b[0m | \x1b[1;36m     Cost\x1b[0m | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────────────────────|───────────|───────────|───────|──────────\x1b[0m\n1 | other-user/laptop              |     $1.30 |    48,800 | 43.3% |       new\n2 | harness-user/harness-machine ◂ |     $1.00 |    48,800 | 33.3% |       new\n3 | harness-user/other-box ◂       |     $0.70 |    48,800 | 23.3% |       new\n\x1b[2m──|────────────────────────────────|───────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal                         \x1b[0m | \x1b[1;37m    $3.00\x1b[0m | \x1b[1;37m  146,400\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
 
-const e2eLbWindowByMachineTokens = "\n\x1b[1;37mLeaderboard (daily) · 2026-01-01 → 2026-01-31 · by tokens\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser                          \x1b[0m | \x1b[1;36m     Cost\x1b[0m | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────────────────────|───────────|───────────|───────|──────────\x1b[0m\n1 | harness-user/harness-machine ◂ |     $1.00 |    48,800 | 33.3% |       new\n2 | harness-user/other-box ◂       |     $0.70 |    48,800 | 33.3% |       new\n3 | other-user/laptop              |     $1.30 |    48,800 | 33.3% |       new\n\x1b[2m──|────────────────────────────────|───────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal                         \x1b[0m | \x1b[1;37m    $3.00\x1b[0m | \x1b[1;37m  146,400\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
+const e2eLbWindowByMachineTokens = "\n\x1b[1;37m📊 Leaderboard (daily) · 2026-01-01 → 2026-01-31 · by tokens\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser                          \x1b[0m | \x1b[1;36m     Cost\x1b[0m | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────────────────────|───────────|───────────|───────|──────────\x1b[0m\n1 | harness-user/harness-machine ◂ |     $1.00 |    48,800 | 33.3% |       new\n2 | harness-user/other-box ◂       |     $0.70 |    48,800 | 33.3% |       new\n3 | other-user/laptop              |     $1.30 |    48,800 | 33.3% |       new\n\x1b[2m──|────────────────────────────────|───────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal                         \x1b[0m | \x1b[1;37m    $3.00\x1b[0m | \x1b[1;37m  146,400\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
 
-const e2eLbWindowTop1 = "\n\x1b[1;37mLeaderboard (daily) · 2026-01-01 → 2026-01-31 · by cost\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser          \x1b[0m | \x1b[1;36m     Cost\x1b[0m                   | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n1 | harness-user ◂ |     $1.70 \x1b[32m█████████████████\x1b[0m |    97,600 | 56.7% |       new\n  | \x1b[2m… +1 others   \x1b[0m |                             |           |       |          \n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal         \x1b[0m | \x1b[1;37m    $3.00\x1b[0m                   | \x1b[1;37m  146,400\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
+const e2eLbWindowTop1 = "\n\x1b[1;37m📊 Leaderboard (daily) · 2026-01-01 → 2026-01-31 · by cost\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser          \x1b[0m | \x1b[1;36m     Cost\x1b[0m                   | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n1 | harness-user ◂ |     $1.70 \x1b[32m█████████████████\x1b[0m |    97,600 | 56.7% |       new\n  | \x1b[2m… +1 others   \x1b[0m |                             |           |       |          \n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal         \x1b[0m | \x1b[1;37m    $3.00\x1b[0m                   | \x1b[1;37m  146,400\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
 
-const e2eLbWindowTokens = "\n\x1b[1;37mLeaderboard (daily) · 2026-01-01 → 2026-01-31 · by tokens\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser          \x1b[0m | \x1b[1;36m     Cost\x1b[0m                   | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n1 | harness-user ◂ |     $1.70 \x1b[32m█████████████████\x1b[0m |    97,600 | 66.7% |       new\n2 | other-user     |     $1.30 \x1b[32m████████▌\x1b[0m         |    48,800 | 33.3% |       new\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal         \x1b[0m | \x1b[1;37m    $3.00\x1b[0m                   | \x1b[1;37m  146,400\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
+const e2eLbWindowTokens = "\n\x1b[1;37m📊 Leaderboard (daily) · 2026-01-01 → 2026-01-31 · by tokens\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser          \x1b[0m | \x1b[1;36m     Cost\x1b[0m                   | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n1 | harness-user ◂ |     $1.70 \x1b[32m█████████████████\x1b[0m |    97,600 | 66.7% |       new\n2 | other-user     |     $1.30 \x1b[32m████████▌\x1b[0m         |    48,800 | 33.3% |       new\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal         \x1b[0m | \x1b[1;37m    $3.00\x1b[0m                   | \x1b[1;37m  146,400\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
 
-const e2eCCLbWindow = "\n\x1b[1;37mLeaderboard (daily) · 2026-01-01 → 2026-01-31 · by cost\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser          \x1b[0m | \x1b[1;36m     Cost\x1b[0m                   | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n1 | harness-user ◂ |     $1.40 \x1b[32m█████████████████\x1b[0m |    73,200 | 56.0% |       new\n2 | other-user     |     $1.10 \x1b[32m█████████████▍\x1b[0m    |    24,400 | 44.0% |       new\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal         \x1b[0m | \x1b[1;37m    $2.50\x1b[0m                   | \x1b[1;37m   97,600\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
+const e2eCCLbWindow = "\n\x1b[1;37m📊 Leaderboard (daily) · 2026-01-01 → 2026-01-31 · by cost\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser          \x1b[0m | \x1b[1;36m     Cost\x1b[0m                   | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n1 | harness-user ◂ |     $1.40 \x1b[32m█████████████████\x1b[0m |    73,200 | 56.0% |       new\n2 | other-user     |     $1.10 \x1b[32m█████████████▍\x1b[0m    |    24,400 | 44.0% |       new\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal         \x1b[0m | \x1b[1;37m    $2.50\x1b[0m                   | \x1b[1;37m   97,600\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
 
-const e2eLbUntilOnly = "\n\x1b[1;37mLeaderboard (daily) · → 2026-01-31 · by cost\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser          \x1b[0m | \x1b[1;36m     Cost\x1b[0m                   | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n1 | harness-user ◂ |     $1.70 \x1b[32m█████████████████\x1b[0m |    97,600 | 56.7% |       new\n2 | other-user     |     $1.30 \x1b[32m█████████████\x1b[0m     |    48,800 | 43.3% |       new\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal         \x1b[0m | \x1b[1;37m    $3.00\x1b[0m                   | \x1b[1;37m  146,400\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
+const e2eLbUntilOnly = "\n\x1b[1;37m📊 Leaderboard (daily) · until 2026-01-31 · by cost\x1b[0m\n\n\x1b[1;36m#\x1b[0m | \x1b[1;36mUser          \x1b[0m | \x1b[1;36m     Cost\x1b[0m                   | \x1b[1;36m   Tokens\x1b[0m | \x1b[1;36mShare\x1b[0m | \x1b[1;36mΔ vs prev\x1b[0m\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n1 | harness-user ◂ |     $1.70 \x1b[32m█████████████████\x1b[0m |    97,600 | 56.7% |       new\n2 | other-user     |     $1.30 \x1b[32m█████████████\x1b[0m     |    48,800 | 43.3% |       new\n\x1b[2m──|────────────────|─────────────────────────────|───────────|───────|──────────\x1b[0m\n\x1b[1;37m \x1b[0m | \x1b[1;37mTotal         \x1b[0m | \x1b[1;37m    $3.00\x1b[0m                   | \x1b[1;37m  146,400\x1b[0m | \x1b[1;37m     \x1b[0m | \x1b[1;37m         \x1b[0m\n\x1b[2mnever synced · tu sync to refresh\x1b[0m\n\n"
 
 const e2eMLbh = "\n\x1b[1;37m📊 Leaderboard History (monthly)\x1b[0m\n\n\x1b[1;36mDate      \x1b[0m | \x1b[1;36mharness-user\x1b[0m | \x1b[1;36mother-user\x1b[0m | \x1b[1;36m     Cost\x1b[0m\n\x1b[2m───────────|──────────────|────────────|────────────────────────────────────────\x1b[0m\n2026-01    | \x1b[1;37m       $1.70\x1b[0m |      $1.30 |     $3.00 \x1b[32m████████████████\x1b[0m\x1b[35m█████████████\x1b[0m\n\n"
 
@@ -811,8 +788,8 @@ func TestE2ELeaderboardTop(t *testing.T) {
 	assertRun(t, []string{"lb", "--since", "2026-01-01", "--until", "2026-01-31", "--top", "1"}, 0, e2eLbWindowTop1, "")
 }
 
-// An --until-only window heads "→ {until}" with a nil previous window (every
-// row new, DC-13); -u <name> pins (◂) instead of filtering.
+// An --until-only window heads "until {until}" with a nil previous window
+// (every row new); -u <name> pins (◂) instead of filtering.
 func TestE2ELeaderboardUntilOnlyAndPin(t *testing.T) {
 	stageVariant(t, "multi")
 	assertRun(t, []string{"lb", "--until", "2026-01-31"}, 0, e2eLbUntilOnly, "")
@@ -1166,7 +1143,7 @@ func TestE2ESyncFlagMulti(t *testing.T) {
 	log := filepath.Join(t.TempDir(), "calls.jsonl")
 	t.Setenv("TUDIFF_CALL_LOG", log)
 	assertRun(t, []string{"cc", "--sync"}, 0,
-		"\n\x1b[1;37m📊 Combined Usage (daily)\x1b[0m\n\n  No usage\n\n",
+		"\n\x1b[1;37m📊 Claude Code Usage (daily)\x1b[0m\n\n  No usage\n\n",
 		"syncing metrics... synced.\n")
 	if calls := loggedCalls(t, log, "ccusage"); len(calls) != 6 {
 		t.Errorf("ccusage calls = %v, want six (the second fetch hits the cache)", calls)
@@ -1198,7 +1175,7 @@ func TestE2ESyncFlagPullFail(t *testing.T) {
 		"\n" +
 		"sync failed — using local data.\n"
 	assertRun(t, []string{"cc", "--sync"}, 0,
-		"\n\x1b[1;37m📊 Combined Usage (daily)\x1b[0m\n\n  No usage\n\n", wantStderr)
+		"\n\x1b[1;37m📊 Claude Code Usage (daily)\x1b[0m\n\n  No usage\n\n", wantStderr)
 	want := [][]string{
 		{"-C", dir, "add", "harness-user/"},
 		{"-C", dir, "status", "--porcelain", "harness-user/"},
@@ -1220,7 +1197,7 @@ func TestE2ESyncFlagSingle(t *testing.T) {
 	log := filepath.Join(t.TempDir(), "calls.jsonl")
 	t.Setenv("TUDIFF_CALL_LOG", log)
 	assertRun(t, []string{"cc", "--sync"}, 0,
-		"\n\x1b[1;37m📊 Combined Usage (daily)\x1b[0m\n\n  No usage\n\n", "")
+		"\n\x1b[1;37m📊 Claude Code Usage (daily)\x1b[0m\n\n  No usage\n\n", "")
 	if calls := loggedCalls(t, log, "ccusage"); len(calls) != 1 {
 		t.Errorf("ccusage calls = %v, want one (single source, no sync fetch)", calls)
 	}

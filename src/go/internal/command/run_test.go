@@ -61,7 +61,10 @@ func fakeDeps(f *fakeFetcher) Deps {
 	return Deps{Source: f, Now: fixedNow, Colors: ansi.Colors{Enabled: true}, Width: 80}
 }
 
-func TestRunDailyAllDropsLabels(t *testing.T) {
+// The snapshot JSON key set is stable: every tool object carries "label" —
+// the current period's, data or not — and under --by-machine a trailing
+// "machines" object ("{}" when the tool has no slices).
+func TestRunDailyAllStableLabels(t *testing.T) {
 	f := &fakeFetcher{byTool: map[string][]fact.Record{
 		"cc":    {{Date: "2026-01-06", Tool: "cc", Totals: fakeTotals}},
 		"codex": {{Date: "2026-01-06", Tool: "codex", Totals: fakeTotals}},
@@ -71,14 +74,27 @@ func TestRunDailyAllDropsLabels(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(res.Lines, "\n")
-	if strings.Contains(joined, `"label"`) {
-		t.Errorf("daily-all JSON must not carry label keys:\n%s", joined)
+	if strings.Count(joined, `"label": "2026-01-06",`) != 6 {
+		t.Errorf("want the label on all six tools, data or not:\n%s", joined)
 	}
-	if !strings.Contains(joined, "\"Claude Code\": {\n    \"totalCost\": 0.5,") {
+	if !strings.Contains(joined, "\"Claude Code\": {\n    \"label\": \"2026-01-06\",\n    \"totalCost\": 0.5,") {
 		t.Errorf("populated Claude Code object missing:\n%s", joined)
 	}
 	if len(f.calls) != 1 || f.calls[0].tool != "" {
 		t.Errorf("calls = %+v, want one FetchAll", f.calls)
+	}
+
+	res, err = Run(context.Background(), Request{Format: JSON, Flags: Flags{ByMachine: true}}, singleCfg, fakeDeps(f))
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined = strings.Join(res.Lines, "\n")
+	if strings.Count(joined, `"machines"`) != 6 {
+		t.Errorf("want machines on all six tools under --by-machine:\n%s", joined)
+	}
+	oi := strings.Index(joined, `"OpenCode": {`)
+	if oi < 0 || !strings.Contains(joined[oi:], "\"totalTokens\": 0,\n    \"machines\": {}") {
+		t.Errorf("a zero-usage tool must carry an empty machines object:\n%s", joined)
 	}
 }
 
@@ -92,8 +108,8 @@ func TestRunMonthlyAllKeepsLabels(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(res.Lines, "\n")
-	if strings.Count(joined, `"label": "2026-01",`) != 2 {
-		t.Errorf("want label 2026-01 on the two populated tools:\n%s", joined)
+	if strings.Count(joined, `"label": "2026-01",`) != 6 {
+		t.Errorf("want label 2026-01 on all six tools, data or not:\n%s", joined)
 	}
 }
 
@@ -244,18 +260,23 @@ func TestRunUnported(t *testing.T) {
 	}
 }
 
-// R1: the multi-mode gate — lb/lbh in single mode return ErrLeaderboardMode
-// before Normalize (no notices, no lines, no fetch); the message names lb for
-// lbh (DC-14).
+// R1: the multi-mode gate — lb/lbh in single mode return a
+// LeaderboardModeError before Normalize (no notices, no lines, no fetch); the
+// message names the invoked command (lb or lbh).
 func TestRunLeaderboardSingleModeGate(t *testing.T) {
 	cases := []struct {
 		name string
 		req  Request
+		want string
 	}{
-		{"lb", Request{Display: Leaderboard, Flags: Flags{Interval: 10}}},
-		{"lbh", Request{Display: LeaderboardHistory, Flags: Flags{Interval: 10}}},
-		{"lb -u name (no notice precedes the gate)", Request{Display: Leaderboard, Flags: Flags{User: "other-user", Interval: 10}}},
-		{"lbh by-machine", Request{Display: LeaderboardHistory, Flags: Flags{ByMachine: true, Interval: 10}}},
+		{"lb", Request{Display: Leaderboard, Flags: Flags{Interval: 10}},
+			"Error: lb requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo"},
+		{"lbh", Request{Display: LeaderboardHistory, Flags: Flags{Interval: 10}},
+			"Error: lbh requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo"},
+		{"lb -u name (no notice precedes the gate)", Request{Display: Leaderboard, Flags: Flags{User: "other-user", Interval: 10}},
+			"Error: lb requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo"},
+		{"lbh by-machine", Request{Display: LeaderboardHistory, Flags: Flags{ByMachine: true, Interval: 10}},
+			"Error: lbh requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -264,8 +285,8 @@ func TestRunLeaderboardSingleModeGate(t *testing.T) {
 			if !errors.Is(err, ErrLeaderboardMode) {
 				t.Fatalf("err = %v, want ErrLeaderboardMode", err)
 			}
-			if err.Error() != "Error: lb requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo" {
-				t.Errorf("message = %q", err.Error())
+			if err.Error() != c.want {
+				t.Errorf("message = %q, want %q", err.Error(), c.want)
 			}
 			if len(res.Notices) != 0 || len(res.Lines) != 0 {
 				t.Errorf("Result = %+v, want empty (no notices, no lines)", res)
@@ -930,8 +951,8 @@ func TestRunMultiSnapshotLabel(t *testing.T) {
 	if !strings.Contains(joined, "\"Claude Code\": {\n    \"label\": \"2026-01-06\",") {
 		t.Errorf("multi-mode snapshot must carry the label on a populated tool:\n%s", joined)
 	}
-	if strings.Contains(joined, "\"Codex\": {\n    \"label\"") {
-		t.Errorf("zero tools carry no label:\n%s", joined)
+	if strings.Count(joined, `"label": "2026-01-06",`) != 6 {
+		t.Errorf("zero tools carry the current period's label too:\n%s", joined)
 	}
 }
 
@@ -1208,8 +1229,8 @@ func TestRunByMachineDimensionSwitch(t *testing.T) {
 }
 
 // R6/A-020: the single-source snapshot zero-fill — every historical machine
-// in first-seen order (own first) with 0 values on a zero-usage day, and no
-// "label" (no current-label group). A G0 candidate vs the DC-01 sentence.
+// in first-seen order (own first) with 0 values on a zero-usage day; the
+// label is the current period's like every other row.
 func TestRunByMachineSingleSourceZeroFill(t *testing.T) {
 	f := &fakeFetcher{byTool: liveCorpus()}
 	deps := multiDeps(f, seedRepo()) // Now = historyNow, outside the seed window
@@ -1222,6 +1243,7 @@ func TestRunByMachineSingleSourceZeroFill(t *testing.T) {
 	}
 	want := "{\n" +
 		"  \"Claude Code\": {\n" +
+		"    \"label\": \"2026-09-16\",\n" +
 		"    \"totalCost\": 0,\n" +
 		"    \"inputTokens\": 0,\n" +
 		"    \"outputTokens\": 0,\n" +

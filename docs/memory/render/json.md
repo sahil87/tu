@@ -1,6 +1,6 @@
 ---
 type: memory
-description: The JSON encoder's pinned wire shapes — the snapshot object keyed by display name, the history array and all-tools object, the ranked leaderboard array — key order, raw double costs, the conditional label and machines keys, and the hand-ordered writer
+description: The JSON encoder's pinned wire shapes — the snapshot object keyed by display name, the history array and all-tools object, the ranked leaderboard array — key order, raw double costs, the stable label and machines key set, and the hand-ordered writer
 ---
 
 # JSON Encoding
@@ -15,16 +15,16 @@ description: The JSON encoder's pinned wire shapes — the snapshot object keyed
 
 ### Requirement: Snapshot is an object keyed by display name
 
-`json.Snapshot(rows []view.ToolTotals, bd *view.Breakdown) []string` (`internal/render/json/snapshot.go`) MUST emit an object keyed by `view.ToolTotals.Name` (display name) in input order; per row `"label"` FIRST when `ToolTotals.Label != ""`, then the six pinned totals keys in order — `totalCost`, `inputTokens`, `outputTokens`, `cacheCreationTokens`, `cacheReadTokens`, `totalTokens` (the pinned names carried as the JSON tags on `fact.Totals`) — then, when `bd.Slices(name)` is non-empty, a `"machines"` object with the comma moved onto the `totalTokens` line: one `"name": cost` line per slice in FIRST-SEEN slice order (`bd.Slices`, never sorted), values raw doubles, always cost even under `-t`. Rows with no slices MUST be byte-identical to the no-breakdown output; a zero-usage single-source tool MAY carry `machines` with `0` values and no `label`. Two-space indent.
+`json.Snapshot(rows []view.ToolTotals, bd *view.Breakdown) []string` (`internal/render/json/snapshot.go`) MUST emit an object keyed by `view.ToolTotals.Name` (display name) in input order; per row `"label"` FIRST — always, the key set is stable: command hands every row the current period's label, data or not — then the six pinned totals keys in order — `totalCost`, `inputTokens`, `outputTokens`, `cacheCreationTokens`, `cacheReadTokens`, `totalTokens` (the pinned names carried as the JSON tags on `fact.Totals`) — then, when `bd != nil` (under `--by-machine`), a `"machines"` object with the comma moved onto the `totalTokens` line: one `"name": cost` line per slice in FIRST-SEEN slice order (`bd.Slices`, never sorted), values raw doubles, always cost even under `-t`, or `"machines": {}` inline when the row has no slices. (The history encoders attach `"machines"` only with slices.) A zero-usage single-source tool MAY carry `machines` with `0` values — one line per historical slice. Two-space indent.
 
 #### Scenario: breakdown attaches machines after totalTokens
-- **GIVEN** one snapshot row `"Claude Code"` whose breakdown carries two slices
+- **GIVEN** one snapshot row `"Claude Code"` whose breakdown carries two slices, and a sibling row with no slices
 - **WHEN** `json.Snapshot` runs
-- **THEN** the row object is `"label"` first, the six totals keys, then `"machines": { "Sahil's host": 0.3, "dev box": 0.2 }` in slice order, and a sibling row without slices carries no `machines` key
+- **THEN** the row object is `"label"` first, the six totals keys, then `"machines": { "Sahil's host": 0.3, "dev box": 0.2 }` in slice order, and the sibling row ends with `"machines": {}`
 
 ### Requirement: History is a bare entry array
 
-`json.History(s view.Series, bd *view.Breakdown) []string` (`internal/render/json/history.go`) MUST emit a bare array of entry objects — `[]` inline when `s.Entries` is empty. Entry keys in order: `label` (ALWAYS present — the snapshot's conditional-label rule does not apply), `totalCost`, `inputTokens`, `outputTokens`, `cacheCreationTokens`, `cacheReadTokens`, `totalTokens`, then — when `bd.Slices(label)` is non-empty — a `machines` object in first-seen slice order with cost values. Entries with no slices are byte-identical to the no-breakdown output.
+`json.History(s view.Series, bd *view.Breakdown) []string` (`internal/render/json/history.go`) MUST emit a bare array of entry objects — `[]` inline when `s.Entries` is empty. Entry keys in order: `label` (ALWAYS present — unlike the snapshot's `machines`, a `machines` key appears only with slices), `totalCost`, `inputTokens`, `outputTokens`, `cacheCreationTokens`, `cacheReadTokens`, `totalTokens`, then — when `bd.Slices(label)` is non-empty — a `machines` object in first-seen slice order with cost values. Entries with no slices are byte-identical to the no-breakdown output.
 
 ### Requirement: TotalHistory is an object of arrays
 
@@ -47,8 +47,8 @@ All float costs/shares/deltas MUST go through `encodeFloat` (`internal/render/js
 
 ### The writer is hand-ordered
 **Decision**: the encoder builds key order by hand and uses `encoding/json` only for scalars.
-**Why**: Go maps are unordered and struct marshalling cannot emit the conditional `label` key first — the key order is a byte surface, so parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes) demands a hand-ordered writer.
-**Rejected**: struct marshalling with `json` tags (wrong order for the conditional `label`); map marshalling (unordered).
+**Why**: Go maps are unordered and struct marshalling cannot emit the `label` key first — the key order is a byte surface, so parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes) demands a hand-ordered writer.
+**Rejected**: struct marshalling with `json` tags (wrong order for the leading `label`); map marshalling (unordered).
 *Introduced by*: 260916-3am6-query-view-render-snapshot
 
 ### Costs/shares/deltas are raw doubles
@@ -58,7 +58,13 @@ All float costs/shares/deltas MUST go through `encodeFloat` (`internal/render/js
 *Introduced by*: 260915-2y3l-spec-reconciliation
 
 ### machines attach in first-seen slice order
-**Decision**: the `machines` object's keys follow `Breakdown.Slices` first-seen order, never sorted; a zero-usage single-source tool may carry `machines` with `0` values and no `label`.
+**Decision**: the `machines` object's keys follow `Breakdown.Slices` first-seen order, never sorted; a zero-usage single-source tool may carry `machines` with `0` values, one line per historical slice.
 **Why**: parity with the frozen golden corpus (`/harness/golden-corpus.md`, the retired TypeScript implementation's bytes) — the insertion-order copy and the single-source zero-fill are byte surfaces the harness diffs.
 **Rejected**: sorted keys or dropping zero-value machines — both diverge from the pinned bytes.
 *Introduced by*: 260916-pmsd-machine-columns
+
+### The snapshot's key set is stable
+**Decision**: every snapshot tool object carries `label` (the current period's label, data or not) and, under `--by-machine`, `machines` (`{}` inline when the tool has no slices) — regardless of mode, period or source.
+**Why**: consumers parse one shape — no special-casing of missing keys — and the period label is known without data; the history encoders keep their own attach-only-with-slices `machines` rule.
+**Rejected**: omitting zero-usage tools from the object (breaks the every-registry-tool-present contract consumers rely on); presence-dependent `label`/`machines` keys (every consumer must special-case absence).
+*Introduced by*: 260928-lfj9-output-drop-at-cutover-fixes

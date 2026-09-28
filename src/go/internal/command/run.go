@@ -99,11 +99,27 @@ type Result struct {
 // toolkit-flag-family follow-up).
 var ErrUnported = errors.New("not implemented")
 
-// ErrLeaderboardMode is the TS exit-1 guard: the leaderboard is an all-users
-// view of the metrics repo; single mode has no repo to rank. The message
-// names lb even for lbh (DC-14). cmd/tu prints err.Error(), exit 1 — no
-// notices, no fetch, no lines (the TS exits before the later guards run).
-var ErrLeaderboardMode = errors.New("Error: lb requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo")
+// ErrLeaderboardMode is the sentinel every leaderboard-mode guard error
+// matches (errors.Is): the leaderboard is an all-users view of the metrics
+// repo; single mode has no repo to rank. cmd/tu prints err.Error(), exit 1 —
+// no notices, no fetch, no lines (the TS exits before the later guards run).
+var ErrLeaderboardMode = errors.New("leaderboard requires multi mode")
+
+// LeaderboardModeError is the exit-1 single-mode leaderboard guard; the
+// message names the invoked command (lb or lbh).
+type LeaderboardModeError struct{ Display Display }
+
+// Error renders the guard line, naming the command actually run.
+func (e LeaderboardModeError) Error() string {
+	token := "lb"
+	if e.Display == LeaderboardHistory {
+		token = "lbh"
+	}
+	return "Error: " + token + " requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo"
+}
+
+// Is makes errors.Is(err, ErrLeaderboardMode) match any invocation.
+func (e LeaderboardModeError) Is(target error) bool { return target == ErrLeaderboardMode }
 
 // inScope reports whether the (normalized) request is in the ported grammar
 // (intake §2): snapshot, history or one of the two leaderboard displays, any
@@ -139,7 +155,7 @@ func Run(ctx context.Context, req Request, cfg config.Config, deps Deps) (Result
 	// The single-mode leaderboard gate precedes Normalize (the TS main()
 	// order): it fires with no notice lines, on the post-guard config.
 	if leaderboard(req.Display) && cfg.Mode == config.Single {
-		return Result{}, ErrLeaderboardMode
+		return Result{}, LeaderboardModeError{Display: req.Display}
 	}
 	req, notices, capActive := Normalize(req, cfg.Mode, deps.Now())
 	if !inScope(req) {
@@ -200,13 +216,13 @@ func dimValue(key fact.Record, dim query.Dim) string {
 // association):
 //   - all tools: one slice per (tool, current label, dim) group, in group
 //     order (own machine first, then walk order); a tool with no
-//     current-label group has no entry (DC-01).
+//     current-label group has no entry (its JSON "machines" is {}).
 //   - single source: the key set is the first-seen order of dim values over
 //     ALL the tool's raw records (un-windowed); each slice's Totals are the
 //     current-label group's or the zero fact.Totals{} — the TS
 //     toolMachines.set(machine, match ? … : 0) zero-fill, so a zero-usage day
-//     still lists every historical machine (a G0 candidate vs the DC-01
-//     sentence; the harness byte-diff is the bar).
+//     still lists every historical machine (the harness byte-diff is the
+//     bar).
 func buildSnapshotBreakdown(req Request, cfg config.Config, raw []fact.Record, cur string) *view.Breakdown {
 	dim, noun := breakdownDim(req, cfg)
 	bd := &view.Breakdown{Noun: noun, Rows: make(map[string][]view.Slice)}
@@ -386,23 +402,14 @@ func runSnapshot(req Request, cfg config.Config, raw []fact.Record, errs []*sour
 	}
 	rows := make([]view.ToolTotals, 0, len(tools))
 	for _, t := range tools {
-		row := view.ToolTotals{Name: t.Name}
+		// The label is the current period's, data or not — the snapshot
+		// JSON's key set is stable (every tool object carries "label"; only
+		// render/json reads it).
+		row := view.ToolTotals{Name: t.Name, Label: cur}
 		if totals, ok := byTool[t.Key]; ok {
 			row.Totals = totals
-			row.Label = cur
 		}
 		rows = append(rows, row)
-	}
-	// The label clear is a SINGLE-MODE artifact of the TS fetchAllTotals (bare
-	// totals without a label): `tu --json` never carries "label" in single
-	// mode. In multi mode every snapshot builds from fetchToolMerged entries,
-	// so a tool with a record on the current label carries "label". Under
-	// --by-machine the TS goes through fetchToolMergedWithMachines (labelled
-	// entries) even in single mode — the clear does NOT apply (R12).
-	if cfg.Mode == config.Single && req.Source == "" && req.Period == query.Daily && !req.Flags.ByMachine {
-		for i := range rows {
-			rows[i].Label = ""
-		}
 	}
 
 	var bd *view.Breakdown
@@ -433,16 +440,16 @@ func runSnapshot(req Request, cfg config.Config, raw []fact.Record, errs []*sour
 	case CSV:
 		res.Lines = csv.Snapshot(rows, bd)
 	case Markdown:
-		res.Lines = markdown.Snapshot(rows, req.Period, bd)
+		res.Lines = markdown.Snapshot(rows, req.Period, bd, req.Source != "")
 	default:
 		live := deps.live()
 		if live.Compact {
 			// Watch on a narrow terminal (the TS renderTotal compact branch):
 			// name + metric value only; machine columns and the legend drop.
-			res.Lines = ansi.CompactTable(view.CompactSnapshot(rows, req.Period, metric, live.Prev), deps.Colors)
+			res.Lines = ansi.CompactTable(view.CompactSnapshot(rows, req.Period, view.SnapshotOptions{Metric: metric, Prev: live.Prev, Single: req.Source != ""}), deps.Colors)
 			break
 		}
-		res.Lines = ansi.Table(view.Snapshot(rows, req.Period, bd, view.SnapshotOptions{Metric: metric, Prev: live.Prev}), deps.Colors)
+		res.Lines = ansi.Table(view.Snapshot(rows, req.Period, bd, view.SnapshotOptions{Metric: metric, Prev: live.Prev, Single: req.Source != ""}), deps.Colors)
 	}
 	return res
 }
