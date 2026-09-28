@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "oracle": "bin/tu",
-  "oracle_version": "v0.12.2-3-gcd42986",
+  "oracle_version": "v0.12.4-1-gc436a31",
   "node_version": "",
-  "captured_at": "2026-09-25T05:52:36Z",
+  "captured_at": "2026-09-28T18:54:28Z",
   "now": "2026-09-25T12:00:00",
   "script": "util-linux",
   "platform": "linux/amd64",

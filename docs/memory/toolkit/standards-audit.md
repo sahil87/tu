@@ -38,9 +38,9 @@ Each surface audits clause by clause against `shll standards <name>` as installe
 - **THEN** the binary prints the whole bundle (arguments are ignored — `runCommand` in `cmd/tu/main.go` dispatches `skill` to `toolkit.WriteSkill(stdout)` regardless of args) — a frozen-surface matter the audit records as finding S1
 
 #### Scenario: finding V1 — the `-v` alias
-- **GIVEN** the `version` standard, which does not require a `-v` alias and whose `--help` does not list one
+- **GIVEN** the `version` standard, which does not require a `-v` alias
 - **WHEN** `tu -v` runs
-- **THEN** the binary prints the version line and exits 0 — a pre-existing extra alias the audit records as finding V1 (DC-09)
+- **THEN** the binary prints the version line and exits 0 — an extra alias beyond the standard the audit records as finding V1, documented in the full help's Flags block (`--version / -V / -v`)
 
 ## Design Decisions
 

@@ -81,11 +81,11 @@ type UsageError struct {
 // ShortUsage is the byte-exact TS SHORT_USAGE constant.
 const ShortUsage = "Usage: tu [source] [period] [display]\n\n  tu                Today's cost, all tools\n  tu cc             Today's cost, Claude Code\n  tu mh             Monthly cost history, all tools\n  tu -h             Show full help\n\nRun 'tu help' for all commands."
 
-// FullHelp is the byte-exact FULL_HELP constant of the retired TypeScript
-// implementation —
-// the full help text `tu help`/`tu -h`/`tu --help` print. `help-dump` is
-// hidden and appears nowhere in it. cmd/tu prints it with Fprintln (the TS
-// console.log appends exactly one newline).
+// FullHelp is the full help text `tu help`/`tu -h`/`tu --help` print — based
+// on the retired TypeScript implementation's FULL_HELP constant, extended
+// with the --version flag line (DC-09) and the after-a-command help note
+// (DC-04). `help-dump` is hidden and appears nowhere in it. cmd/tu prints it
+// with Fprintln (the TS console.log appends exactly one newline).
 const FullHelp = `Usage: tu [source] [period] [display]
 
 Sources: cc (Claude Code), codex/co (Codex), oc (OpenCode), gemini/gem (Gemini), copilot/cop (Copilot), kimi/ki (Kimi), all (default)
@@ -112,7 +112,7 @@ Setup:
   tu shell-init <sh>   Emit shell init script (bash/zsh/fish)
   tu skill             Print agent usage bundle (markdown)
 
-Help: tu help | tu -h | tu --help
+Help: tu help | tu -h | tu --help (also after a command: tu cc -h)
 
 Flags:
   --json / -j          Output data as JSON (data commands only)
@@ -134,4 +134,5 @@ Flags:
   --by-machine         Show per-machine cost breakdown (data commands only)
   --skip-brew-update   Skip 'brew update' tap refresh during 'tu update'
   --no-color           Disable ANSI color output
-  --no-rain            Disable matrix rain animation in watch mode`
+  --no-rain            Disable matrix rain animation in watch mode
+  --version / -V / -v  Print the version and exit`

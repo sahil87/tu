@@ -182,6 +182,22 @@ func TestE2EUsageError(t *testing.T) {
 	assertRun(t, []string{"bogus"}, 2, "", "Unknown argument: bogus\n"+command.ShortUsage+"\n")
 }
 
+// R1 (DC-04): the flag spellings -h/--help work after a command and run
+// nothing — `sync --help` on a staged multi home makes no git call; the bare
+// word `help` mid-command stays an unknown argument, exit 2.
+func TestE2EHelpAfterCommand(t *testing.T) {
+	stageVariant(t, "multi")
+	log := filepath.Join(t.TempDir(), "calls.jsonl")
+	t.Setenv("TUDIFF_CALL_LOG", log)
+	for _, args := range [][]string{{"cc", "--help"}, {"h", "-h"}, {"sync", "--help"}, {"update", "--help"}} {
+		assertRun(t, args, 0, command.FullHelp+"\n", "")
+	}
+	if calls := gitCalls(t, log); len(calls) != 0 {
+		t.Errorf("git calls = %v, want none (help runs nothing)", calls)
+	}
+	assertRun(t, []string{"cc", "help"}, 2, "", "Unknown argument: help\n"+command.ShortUsage+"\n")
+}
+
 // ── B1: config cascade and setup commands ──────────────────────────────────
 
 // e2eSeedDir is the committed metrics-repo seed StageHome copies into the

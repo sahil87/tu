@@ -59,23 +59,29 @@ type Layout struct {
 // zone {cols, available, startRow contentHeight+1, startCol 0} when wantRain
 // && available > 0; else the right-margin zone {cols − maxContentWidth − 2,
 // rows − 1, startRow 1, startCol maxContentWidth + 2} when that width is ≥
-// 10; else disabled. maxContentWidth is the max StripANSI rune width over the
-// content lines.
+// 10; else disabled. maxContentWidth is the max StripANSI column width over
+// the content lines (visibleWidth — wide runes count 2).
+//
+// Every stats and table line is clipped to cols on intake (DC-17): a line
+// wider than the terminal would wrap and desynchronize the one-row-per-line
+// accounting the flush relies on. Clipped widths feed the zone math, so the
+// rain zone and the clip agree and a full-width line disables the
+// right-margin rain.
 func Lay(statsLines, tableLines []string, cols, rows int, noRain bool) Layout {
 	compact := cols < CompactThreshold
-	l := Layout{Compact: compact, Rows: rows, Table: tableLines}
+	l := Layout{Compact: compact, Rows: rows, Table: clipLines(tableLines, cols)}
 	if !compact {
-		l.Stats = statsLines
+		l.Stats = clipLines(statsLines, cols)
 	}
 	contentHeight := len(l.Stats) + len(l.Table)
 	maxContentWidth := 0
 	for _, line := range l.Stats {
-		if n := utf8.RuneCountInString(ansi.StripANSI(line)); n > maxContentWidth {
+		if n := visibleWidth(line); n > maxContentWidth {
 			maxContentWidth = n
 		}
 	}
 	for _, line := range l.Table {
-		if n := utf8.RuneCountInString(ansi.StripANSI(line)); n > maxContentWidth {
+		if n := visibleWidth(line); n > maxContentWidth {
 			maxContentWidth = n
 		}
 	}
@@ -92,6 +98,97 @@ func Lay(statsLines, tableLines []string, cols, rows int, noRain bool) Layout {
 		}
 	}
 	return l
+}
+
+// clipLines returns the lines each clipped to cols visible columns (DC-17),
+// in a fresh slice — the caller's lines are never mutated.
+func clipLines(lines []string, cols int) []string {
+	out := make([]string, len(lines))
+	for i, line := range lines {
+		out[i] = clipLine(line, cols)
+	}
+	return out
+}
+
+// runeWidth is the terminal column width of one rune: 2 for the standard
+// wide ranges — emoji (U+1F300–U+1FAFF, so the 📊 heading counts 2), the
+// emoji-presentation symbols (U+2600–U+27BF), and the East-Asian
+// Wide/Fullwidth blocks — 1 for everything else the compositor draws: ASCII,
+// box drawing, block bars, and the half-width katakana (U+FF61–U+FF9F,
+// deliberately outside the fullwidth ranges below) the rain uses. No wcwidth
+// helper exists in-tree or in x/term/x/sys, and a new dependency for one
+// function is not warranted (constitution IV).
+func runeWidth(r rune) int {
+	switch {
+	case r >= 0x1100 && r <= 0x115F, // Hangul Jamo
+		r >= 0x2E80 && r <= 0xA4CF,   // CJK radicals … Yi
+		r >= 0xAC00 && r <= 0xD7A3,   // Hangul syllables
+		r >= 0xF900 && r <= 0xFAFF,   // CJK compatibility ideographs
+		r >= 0xFE30 && r <= 0xFE4F,   // CJK compatibility forms
+		r >= 0xFF00 && r <= 0xFF60,   // fullwidth forms
+		r >= 0xFFE0 && r <= 0xFFE6,   // fullwidth signs
+		r >= 0x2600 && r <= 0x27BF,   // emoji-presentation symbols
+		r >= 0x1F300 && r <= 0x1FAFF, // emoji
+		r >= 0x20000 && r <= 0x3FFFD: // CJK extension B and beyond
+		return 2
+	}
+	return 1
+}
+
+// visibleWidth measures a line in terminal columns: the StripANSI visible
+// text with wide runes counted as 2 (runeWidth).
+func visibleWidth(line string) int {
+	w := 0
+	for _, r := range ansi.StripANSI(line) {
+		w += runeWidth(r)
+	}
+	return w
+}
+
+// clipLine clips one frame line to cols visible columns, ANSI-aware: SGR
+// escape sequences (the StripANSI shape) pass through uncounted, visible
+// columns stop at cols, and a line clipped inside an SGR run is closed with
+// \x1b[0m so the clip does not leak styling into the clear-to-EOL that
+// follows. A line that fits is returned byte-identical. Width is measured in
+// terminal columns (runeWidth — wide runes such as the 📊 heading count 2); a
+// wide rune that would straddle the last column is dropped, not half-drawn.
+// cols is always ≥ 1 through the Terminal's 80×24 fallback.
+func clipLine(line string, cols int) string {
+	if visibleWidth(line) <= cols {
+		return line
+	}
+	var b strings.Builder
+	b.Grow(len(line))
+	visible := 0
+	open := false
+	for i := 0; i < len(line) && visible < cols; {
+		if line[i] == 0x1b && i+1 < len(line) && line[i+1] == '[' {
+			j := i + 2
+			for j < len(line) && (line[j] == ';' || (line[j] >= '0' && line[j] <= '9')) {
+				j++
+			}
+			if j < len(line) && line[j] == 'm' {
+				seq := line[i : j+1]
+				b.WriteString(seq)
+				open = seq != "\x1b[0m"
+				i = j + 1
+				continue
+			}
+		}
+		r, size := utf8.DecodeRuneInString(line[i:])
+		if w := runeWidth(r); visible+w > cols {
+			i += size // a wide rune straddling the last column is dropped
+			continue
+		} else {
+			visible += w
+		}
+		b.WriteString(line[i : i+size])
+		i += size
+	}
+	if open {
+		b.WriteString("\x1b[0m")
+	}
+	return b.String()
 }
 
 // LaySkeleton is the TS layoutForSkeleton: the skeleton's own lines are the

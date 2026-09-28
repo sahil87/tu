@@ -17,6 +17,7 @@ description: The version helpers (BareVersion/DisplayVersion/VersionLine) and th
 - `BareVersion(v)` in `internal/toolkit/version.go` MUST strip one leading `v` (`"v0.11.5"` → `"0.11.5"`; `"dev"` → `"dev"`).
 - `DisplayVersion(v)` MUST prefix `v` only when the bare form starts with an ASCII digit; otherwise it returns the input unchanged, so an unstamped `"dev"` stays `"dev"`. Both `-X main.version=0.11.5` and `-X main.version=v0.11.5` stamps MUST print identically.
 - `VersionLine(v)` MUST render `"tu version " + DisplayVersion(v)` — the toolkit version standard's canonical `<tool> version vX.Y.Z` shape. `cmd/tu` prints it for `--version`/`-V`/`-v` after grammar validation, exit 0 (dispatch in [entry-point](/command/entry-point.md)).
+- The full help documents the version flag: `command.FullHelp`'s Flags block ends with `--version / -V / -v  Print the version and exit`, and its `Help:` line notes that `-h`/`--help` also work after a command — `help-dump` republishes both automatically (dwg9).
 - The stamp is `var version = "dev"` in `src/go/cmd/tu/main.go`, set at build time via `-ldflags "-X main.version=…"` (stamping contract in [toolchain](/build/toolchain.md)).
 
 #### Scenario: unstamped dev build

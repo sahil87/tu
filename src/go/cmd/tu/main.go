@@ -510,17 +510,11 @@ func runShellInit(args []string, stdout, stderr io.Writer) int {
 // runUpdate implements `tu update` in the TS runUpdate order, sequencing the
 // pure/driver pieces of internal/toolkit and printing the wrapper lines itself
 // (cmd/tu is the only writer; the interactive `brew upgrade` streams pass
-// through the driver call).
+// through the driver call). The update standard's flag-discovery probe needs
+// no code here: Parse recognizes --help/-h anywhere among the positionals and
+// dispatches the full help (which carries the literal --skip-brew-update)
+// before runUpdate ever runs.
 func runUpdate(req command.Request, stdout, stderr io.Writer) int {
-	// The update standard's flag-discovery probe: --help/-h anywhere in the
-	// args prints the full help and runs nothing (the help carries the
-	// literal --skip-brew-update).
-	for _, a := range req.Args {
-		if a == "--help" || a == "-h" {
-			fmt.Fprintln(stdout, command.FullHelp)
-			return command.ExitOK
-		}
-	}
 	// The Homebrew gate tests the symlink-resolved executable (dev builds,
 	// the go test binary and the R2 dogfood install all land off-Homebrew).
 	resolved, err := os.Executable()

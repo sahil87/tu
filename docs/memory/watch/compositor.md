@@ -1,6 +1,6 @@
 ---
 type: memory
-description: The pure watch compositor — Lay/LaySkeleton rain-zone selection and Layout.Frame bytes, the CompactThreshold/minRainCols/rainGutter/MaxRows constants, the loading Skeleton and truncating Footer, and the golden-frame byte gate under an injected clock and seeded RNG
+description: The pure watch compositor — Lay/LaySkeleton rain-zone selection and Layout.Frame bytes, the CompactThreshold/minRainCols/rainGutter/MaxRows constants, the ANSI-aware clipLine/clipLines frame-line width clip with runeWidth/visibleWidth, the loading Skeleton and truncating Footer, and the golden-frame byte gate under an injected clock and seeded RNG
 ---
 
 # Watch Compositor
@@ -17,12 +17,20 @@ The compositor (`internal/watch/compositor.go`, `skeleton.go`, `status.go`) is p
 `internal/watch/compositor.go` MUST hold the layout constants: `CompactThreshold = 60`, `RainTick = 107ms`, `CountdownTick = 1s`, `minRainCols = 10`, `rainGutter = 2`, `footerRows = 1`, `MaxRows = 15`. The watch row budget MUST be the constant `MaxRows = 15`, not "rows that fit the terminal height" (the spec sentence is flagged for gate G0) (4pze). The budget reaches the table render through `Frame.MaxRows` ([history](/view/history.md)) via the `Poll` contract in [loop-and-terminal](/watch/loop-and-terminal.md).
 
 ### Requirement: Lay zone selection
-`Lay(statsLines, tableLines, cols, rows, noRain) Layout` (`internal/watch/compositor.go`) MUST: drop the stats lines when `cols < CompactThreshold`; compute `contentHeight = len(stats) + len(table)`; take `maxContentWidth` as the max `ansi.StripANSI` rune width over the content lines; and set `available = rows − contentHeight − footerRows`, `wantRain = !noRain && !compact`. It MUST choose a below-content zone `{Cols cols, Rows available, StartRow contentHeight + 1, StartCol 0}` when `wantRain && available > 0`; else a right-margin zone `{cols − maxContentWidth − rainGutter, rows − footerRows, StartRow 1, StartCol maxContentWidth + rainGutter}` when that width is ≥ `minRainCols`; else the zone is disabled. `RainZone` MUST carry `Enabled`, `Cols`, `Rows`, the 1-based `StartRow` and the 0-based `StartCol`. `LaySkeleton(lines, …)` MUST equal `Lay(nil, lines, …)` — the skeleton's own lines are the whole content.
+`Lay(statsLines, tableLines, cols, rows, noRain) Layout` (`internal/watch/compositor.go`) MUST: drop the stats lines when `cols < CompactThreshold`; clip every stats and table line to `cols` visible columns on intake (`clipLines` — see the frame-line clip requirement); compute `contentHeight = len(stats) + len(table)`; take `maxContentWidth` as the max visible column width over the clipped content lines (`visibleWidth` — the `ansi.StripANSI` text with wide runes counted as 2 via `runeWidth`), so the rain-zone math and the clip agree and a full-width line disables the right-margin rain; and set `available = rows − contentHeight − footerRows`, `wantRain = !noRain && !compact`. It MUST choose a below-content zone `{Cols cols, Rows available, StartRow contentHeight + 1, StartCol 0}` when `wantRain && available > 0`; else a right-margin zone `{cols − maxContentWidth − rainGutter, rows − footerRows, StartRow 1, StartCol maxContentWidth + rainGutter}` when that width is ≥ `minRainCols`; else the zone is disabled. `RainZone` MUST carry `Enabled`, `Cols`, `Rows`, the 1-based `StartRow` and the 0-based `StartCol`. `LaySkeleton(lines, …)` MUST equal `Lay(nil, lines, …)` — the skeleton's own lines are the whole content.
 
 #### Scenario: Zone selection
 - **GIVEN** 100×30 with 4 stats lines and 12 table lines, rain on
 - **WHEN** `Lay` runs
 - **THEN** the zone is `{Cols 100, Rows 13, StartRow 17, StartCol 0}`; at 100×12 with a widest line of 87 the zone is `{11, 11, StartRow 1, StartCol 89}`, and at a widest line of 89 the rain is disabled (`marginCols` 9 < `minRainCols`)
+
+### Requirement: Frame lines are clipped to the terminal width
+Every stats, table, and skeleton line MUST be clipped to the terminal's column count before the frame is emitted — `clipLines(lines, cols)` on intake in `Lay`/`LaySkeleton`, per-line `clipLine` (`internal/watch/compositor.go`); `watch.Run` writes the skeleton from the clipped layout lines — so no line ever wraps and the one-row-per-line accounting holds. The clip is ANSI-aware: SGR escape sequences (the `ansi.StripANSI` shape) pass through uncounted, visible columns stop at `cols`, and a line clipped inside an SGR run is closed with `\x1b[0m` so styling does not leak into the clear-to-EOL that follows. Width is measured in terminal columns: `visibleWidth` counts the `ansi.StripANSI` text with `runeWidth` per rune — 2 for the standard wide ranges (the emoji blocks, so the 📊 heading counts 2; the emoji-presentation symbols; the East-Asian Wide/Fullwidth blocks), 1 for everything else the compositor draws (ASCII, box drawing, block bars, the half-width katakana the rain uses). `runeWidth` is a small pure helper over the wide ranges — no width helper exists in-tree or in x/term/x/sys, and no new dependency is taken. A wide rune that would straddle the last column is dropped, not half-drawn. A line that fits is returned byte-identical, and the caller's slice is never mutated. (dwg9)
+
+#### Scenario: Wide lines clip, fitting lines pass through
+- **GIVEN** a 110-column single-tool history line in a 100-column terminal, and the heading `📊 Combined Cost History (daily, last 3 months)` (47 columns — the emoji is 2 wide) in a 45-column compact terminal
+- **WHEN** `Lay` runs
+- **THEN** each table line is at most the terminal's column count and never wraps onto a second row, a clip landing inside an SGR run ends with `\x1b[0m`, and a line that already fits is byte-identical
 
 ### Requirement: Frame byte shape
 `Layout.Frame(footer, rain) []byte` (`internal/watch/compositor.go`) MUST emit `\x1b[H`; each content line (stats then table) + `\x1b[K\n`; `\x1b[J`; the footer as `\x1b[{rows};1H\x1b[K{footer}`; then the current rain frame re-emitted — the flush's clears erase every drawn rain cell and `RainState.Render` rewrites every occupied cell, so the re-emit restores the rain in the same write and polls do not blink it. `FooterLine(footer, rows)` MUST be the footer-only write `\x1b[{rows};1H\x1b[K{footer}` — push-driven on countdown changes, never on a periodic compositor tick.
@@ -42,6 +50,12 @@ The compositor (`internal/watch/compositor.go`, `skeleton.go`, `status.go`) is p
 Golden frames under an injected clock and seeded RNG MUST pin the byte stream (4pze): `internal/watch/testdata/` holds `skeleton_100x30`, `skeleton_50x20`, `frame_first_poll_100x30`, `frame_second_poll_100x30` (clock advanced 11 s, cost +0.07 — populated Rate/Proj. day), `frame_compact_59x20`, `frame_rightmargin_100x12`, `frame_norain_100x30`, and `rain_seeded` (one tick, one render, one clear pass), regenerated with `go test ./internal/watch/ -update` (4pze). The loop test against `fakeTerminal` (`internal/watch/faketerm_test.go`, `watch_test.go`) MUST cover skeleton → first poll → `q` (returning the poll's lines), `\r` cancelling the countdown, a mid-poll `\r` dropped by the re-entrancy guard, SIGWINCH before the first poll (writes nothing) and after (re-flush), a `Poll` error (stderr warning, frame unchanged), and the `\x03`/SIGINT exits ending `\x1b[?25h\x1b[?1049l` — no wall-clock sleeps. The deterministic watch-family matrix cases in the [differential-harness matrix](/harness/matrix-and-staging.md) exercise the same parse and dispatch path.
 
 ## Design Decisions
+
+### Clip, don't wrap
+**Decision**: the compositor clips each frame line to the terminal width, ANSI-aware (`clipLine`/`clipLines`), and the same column measure (`visibleWidth`/`runeWidth`) feeds `maxContentWidth` in `Lay`, so the rain-zone math and the clip agree.
+**Why**: the compositor's row accounting assumes one row per line; a wrapped line desynchronizes it and corrupts the frame — clipping preserves the invariant with a local change and no layout redesign.
+**Rejected**: letting lines wrap and counting wrapped rows (couples the compositor to terminal wrap semantics); shrinking tables to fit (a layout redesign — DC-12 territory, out of scope).
+*Introduced by*: 260928-dwg9-cli-watch-drop-at-cutover-fixes
 
 ### Pure compositor under an injected clock and RNG
 **Decision**: `Lay`/`Frame`, `StatsGrid`, the footer, the skeleton and `RainState` are pure functions of (state, size, `now`, `*rand.Rand`); only `watch.Run` touches timers and the `Terminal`.

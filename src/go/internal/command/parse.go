@@ -45,9 +45,10 @@ var nonDataCommands = map[string]bool{
 	"update": true, "shell-init": true, "help-dump": true, "skill": true,
 }
 
-// helpCommands are the help tokens; the TS checks them before the --dry-run
-// guard, so they are dispatched first.
-var helpCommands = map[string]bool{"help": true, "-h": true, "--help": true}
+// helpFlags are the flag-spelled help tokens, recognized anywhere among the
+// positionals (DC-04); the bare word `help` stays first-position-only. The
+// help check precedes the --dry-run guard, so help wins over every guard.
+var helpFlags = map[string]bool{"-h": true, "--help": true}
 
 // flagScan is the raw result of the flag pass: booleans by raw-argv
 // membership, value flags by presence + raw value, everything else positional.
@@ -124,11 +125,18 @@ func Parse(args []string) (Request, *UsageError) {
 		}
 	}
 
-	// Help first (the TS help check precedes the --dry-run guard):
-	// `tu help --dry-run` prints help.
-	if len(scan.positionals) > 0 && helpCommands[scan.positionals[0]] {
-		req.Command = scan.positionals[0]
-		return req, nil
+	// Help first (the help check precedes the --dry-run guard):
+	// `tu help --dry-run` prints help. The flag spellings -h/--help are
+	// recognized anywhere among the positionals — asking for help after
+	// typing part of a command is the common CLI convention — while the
+	// bare word `help` stays first-position-only (a bare word mid-command
+	// could be a positional). Scan positionals, not raw argv, so a token
+	// consumed as a value-taking flag's value is not treated as help.
+	for i, p := range scan.positionals {
+		if helpFlags[p] || (i == 0 && p == "help") {
+			req.Command = p
+			return req, nil
+		}
 	}
 
 	// The --dry-run misuse guard (TS main(), after help): honored only by
