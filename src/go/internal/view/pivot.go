@@ -45,7 +45,8 @@ const pivotDateWidth = 10
 //     reordered by descending window total in the metric, stable on ties,
 //     AFTER pivotData computes toolSums over the input order; widths, header,
 //     cells, bar segments, legend swatches and the Total row follow the
-//     reorder.
+//     reorder. With FoldedLast the last column (the lbh "others" fold) sits
+//     out of the sort and stays last.
 //   - With HighlightLeader each Data row's max cell (strict >, first wins;
 //     index 0 when all equal) gets Cell.Leader.
 //   - Widths: Date 10; per tool max(len(Name), 9, its cells, its Total);
@@ -88,7 +89,7 @@ func TotalHistory(series []Series, o HistoryOptions) Table {
 	}
 	rows, toolSums, grandTotal := pivotData(series, valueMap, visible, labels)
 	if o.RankColumns {
-		visible, toolSums = rankColumns(visible, toolSums, rows)
+		visible, toolSums = rankColumns(visible, toolSums, rows, o.FoldedLast)
 	}
 	toolWidths, rowValues, costWidth := pivotWidths(series, visible, rows, toolSums, grandTotal, m)
 
@@ -112,13 +113,19 @@ func TotalHistory(series []Series, o HistoryOptions) Table {
 // rankColumns reorders the visible columns by descending window total (ties
 // keep first-seen order — the TS columnOrder "total-desc" sort with the
 // first-seen index as tie-break) and permutes each row's values to match.
-func rankColumns(visible []int, toolSums []float64, rows []pivotRow) ([]int, []float64) {
+// With foldedLast the last column — the lbh --top "others" fold — is excluded
+// from the sort and stays last.
+func rankColumns(visible []int, toolSums []float64, rows []pivotRow, foldedLast bool) ([]int, []float64) {
 	order := make([]int, len(visible)) // positions into the current visible set
 	for i := range order {
 		order[i] = i
 	}
-	sort.SliceStable(order, func(a, b int) bool {
-		return toolSums[order[a]] > toolSums[order[b]]
+	sortable := order
+	if foldedLast && len(order) > 0 {
+		sortable = order[:len(order)-1]
+	}
+	sort.SliceStable(sortable, func(a, b int) bool {
+		return toolSums[sortable[a]] > toolSums[sortable[b]]
 	})
 	newVisible := make([]int, len(visible))
 	newSums := make([]float64, len(toolSums))

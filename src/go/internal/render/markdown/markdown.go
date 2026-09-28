@@ -41,17 +41,23 @@ func alignRowOf(marks []string) string {
 
 // Snapshot renders the cross-tool snapshot table: rows with TotalTokens > 0
 // (cache = write + read combined); a bold Total — summing EVERY input row,
-// hidden ones counted — only when more than one row is visible. A breakdown
+// hidden ones counted — only when more than one row is visible. The heading
+// is "## Combined Usage ({period})", or "## {Tool} Usage ({period})" on a
+// single-source snapshot (Markdown headings carry no emoji). A breakdown
 // with at least one name appends name-headed columns (the TS
 // emitMarkdownSnapshot: each sorted name VERBATIM — no letters, no legend —
 // right-aligned, FormatCost cells, bold per-name sums over visible rows on
 // the Total row).
-func Snapshot(rows []view.ToolTotals, period query.Period, bd *view.Breakdown) []string {
+func Snapshot(rows []view.ToolTotals, period query.Period, bd *view.Breakdown, single bool) []string {
 	names := bd.Names()
 	header := []string{"Tool", "Tokens", "Input", "Output", "Cache", "Cost"}
 	header = append(header, names...)
+	title := "Combined Usage"
+	if single && len(rows) > 0 {
+		title = rows[0].Name + " Usage"
+	}
 	lines := []string{
-		"## Combined Usage (" + period.String() + ")",
+		"## " + title + " (" + period.String() + ")",
 		"",
 		row(header),
 		alignRow(len(header)),

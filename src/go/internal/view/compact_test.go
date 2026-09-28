@@ -16,7 +16,7 @@ func TestCompactSnapshot(t *testing.T) {
 		{Name: "Kimi"}, // zero tokens: hidden, counted in Total
 	}
 	t.Run("rows and total", func(t *testing.T) {
-		ct := CompactSnapshot(rows, query.Daily, Cost, nil)
+		ct := CompactSnapshot(rows, query.Daily, SnapshotOptions{Metric: Cost})
 		if ct.Title != "📊 Combined Usage (daily)" {
 			t.Errorf("Title = %q", ct.Title)
 		}
@@ -28,19 +28,25 @@ func TestCompactSnapshot(t *testing.T) {
 		}
 	})
 	t.Run("empty check precedes compact", func(t *testing.T) {
-		ct := CompactSnapshot([]ToolTotals{{Name: "Kimi"}}, query.Daily, Cost, nil)
+		ct := CompactSnapshot([]ToolTotals{{Name: "Kimi"}}, query.Daily, SnapshotOptions{Metric: Cost})
 		if ct.Empty != "  No usage" || ct.Rows != nil || ct.Total != nil {
 			t.Errorf("empty = %+v", ct)
 		}
 	})
 	t.Run("single row no total", func(t *testing.T) {
-		ct := CompactSnapshot(rows[:1], query.Daily, Cost, nil)
+		ct := CompactSnapshot(rows[:1], query.Daily, SnapshotOptions{Metric: Cost})
 		if ct.Total != nil || len(ct.Rows) != 1 {
 			t.Errorf("Total = %+v, Rows = %+v", ct.Total, ct.Rows)
 		}
 	})
+	t.Run("single-source title names the tool", func(t *testing.T) {
+		ct := CompactSnapshot(rows[:1], query.Daily, SnapshotOptions{Metric: Cost, Single: true})
+		if ct.Title != "📊 Claude Code Usage (daily)" {
+			t.Errorf("Title = %q", ct.Title)
+		}
+	})
 	t.Run("token mode and delta", func(t *testing.T) {
-		ct := CompactSnapshot(rows, query.Daily, Tokens, map[string]float64{"Claude Code": 20000, "Codex": 30000})
+		ct := CompactSnapshot(rows, query.Daily, SnapshotOptions{Metric: Tokens, Prev: map[string]float64{"Claude Code": 20000, "Codex": 30000}})
 		if ct.Rows[0].Value != "24,400" || ct.Rows[0].Delta != DeltaUp {
 			t.Errorf("row 0 = %+v", ct.Rows[0])
 		}
@@ -54,7 +60,7 @@ func TestCompactSnapshot(t *testing.T) {
 	t.Run("hidden row counted in total", func(t *testing.T) {
 		withHidden := append([]ToolTotals{}, rows...)
 		withHidden[2].TotalCost = 0.05 // zero tokens, nonzero cost: hidden yet summed
-		ct := CompactSnapshot(withHidden, query.Daily, Cost, nil)
+		ct := CompactSnapshot(withHidden, query.Daily, SnapshotOptions{Metric: Cost})
 		if ct.Total.Value != "$1.30" {
 			t.Errorf("Total = %q, want $1.30", ct.Total.Value)
 		}

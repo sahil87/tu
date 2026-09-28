@@ -30,7 +30,7 @@ func lbOpts() LeaderboardOptions {
 	}
 }
 
-// R6: the title has no 📊 and names the metric; the footer is the staleness
+// R6: the title carries 📊 and names the metric; the footer is the staleness
 // line; a nil delta renders "new".
 func TestLeaderboardBasics(t *testing.T) {
 	sahil := lbRow(1, "sahil", 12945.64, 15962442751)
@@ -40,7 +40,7 @@ func TestLeaderboardBasics(t *testing.T) {
 		lbRow(2, "beatriz", 3333.40, 5562910079),
 	}
 	tab := Leaderboard(rows, lbOpts())
-	if tab.Title != "Leaderboard (monthly) · 2026-09 · by cost" {
+	if tab.Title != "📊 Leaderboard (monthly) · 2026-09 · by cost" {
 		t.Errorf("Title = %q", tab.Title)
 	}
 	if tab.Footer != "never synced · tu sync to refresh" {

@@ -1,0 +1,59 @@
+id: lfj9
+name: 260928-lfj9-output-drop-at-cutover-fixes
+created: 2026-09-28T18:05:52Z
+created_by: sahil-noon
+change_type: fix
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
+plan:
+    generated: true
+    task_count: 8
+    acceptance_count: 15
+    acceptance_completed: 15
+confidence:
+    certain: 8
+    confident: 2
+    tentative: 0
+    unresolved: 0
+    score: 4.9
+    fuzzy: true
+    dimensions:
+        signal: 84.0
+        reversibility: 86.5
+        competence: 85.0
+        disambiguation: 82.5
+stage_metrics:
+    intake: {started_at: "2026-09-28T18:05:52Z", driver: fab-new, iterations: 1, completed_at: "2026-09-28T18:07:23Z"}
+    apply: {started_at: "2026-09-28T18:28:44Z", driver: fab-fff, iterations: 2, completed_at: "2026-09-28T18:31:32Z"}
+    review: {started_at: "2026-09-28T18:31:32Z", driver: fab-fff, iterations: 2, completed_at: "2026-09-28T18:34:09Z"}
+    hydrate: {started_at: "2026-09-28T18:34:09Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-28T18:39:58Z"}
+    ship: {started_at: "2026-09-28T18:39:58Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-28T18:41:40Z"}
+    review-pr: {started_at: "2026-09-28T18:41:40Z", driver: git-pr, iterations: 1, completed_at: "2026-09-28T18:47:54Z"}
+prs:
+    - https://github.com/sahil87/tu/pull/104
+change_type_source: explicit
+base_branch: main
+true_impact:
+    added: 1146
+    deleted: 493
+    net: 653
+    excluding:
+        added: 713
+        deleted: 416
+        net: 297
+    tests:
+        added: 298
+        deleted: 145
+        net: 153
+    computed_at: "2026-09-28T18:41:40Z"
+    computed_at_stage: ship
+summary: "Dropped seven output quirks at cutover (DC-01/07/08/13/14/15/24): stable snapshot JSON keys, \U0001F4CA leaderboard heading, one-sided window labels, others-last lbh fold, command-named mode guard, tool-titled single-source snapshots, data-sized snapshot columns"
+# base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-09-28T18:47:54Z

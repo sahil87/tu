@@ -48,13 +48,13 @@ func TestCompactGoldens(t *testing.T) {
 		golden string
 		lines  []string
 	}{
-		{"snapshot color", "compact_snapshot_color.golden", CompactTable(view.CompactSnapshot(compactRows(), query.Daily, view.Cost, nil), color)},
-		{"snapshot no-color", "compact_snapshot_nocolor.golden", CompactTable(view.CompactSnapshot(compactRows(), query.Daily, view.Cost, nil), Colors{})},
-		{"snapshot delta color", "compact_snapshot_delta_color.golden", CompactTable(view.CompactSnapshot(compactRows(), query.Daily, view.Cost, map[string]float64{"Claude Code": 5.00, "Kimi": 28.00}), color)},
-		{"snapshot delta no-color", "compact_snapshot_delta_nocolor.golden", CompactTable(view.CompactSnapshot(compactRows(), query.Daily, view.Cost, map[string]float64{"Claude Code": 5.00, "Kimi": 28.00}), Colors{})},
-		{"snapshot single row", "compact_snapshot_single.golden", CompactTable(view.CompactSnapshot(compactRows()[:1], query.Daily, view.Cost, nil), color)},
-		{"snapshot tokens", "compact_snapshot_tokens.golden", CompactTable(view.CompactSnapshot(compactRows(), query.Daily, view.Tokens, map[string]float64{"Claude Code": 20000}), color)},
-		{"snapshot empty", "compact_snapshot_empty.golden", CompactTable(view.CompactSnapshot(compactRows()[2:], query.Daily, view.Cost, nil), color)},
+		{"snapshot color", "compact_snapshot_color.golden", CompactTable(view.CompactSnapshot(compactRows(), query.Daily, view.SnapshotOptions{Metric: view.Cost}), color)},
+		{"snapshot no-color", "compact_snapshot_nocolor.golden", CompactTable(view.CompactSnapshot(compactRows(), query.Daily, view.SnapshotOptions{Metric: view.Cost}), Colors{})},
+		{"snapshot delta color", "compact_snapshot_delta_color.golden", CompactTable(view.CompactSnapshot(compactRows(), query.Daily, view.SnapshotOptions{Metric: view.Cost, Prev: map[string]float64{"Claude Code": 5.00, "Kimi": 28.00}}), color)},
+		{"snapshot delta no-color", "compact_snapshot_delta_nocolor.golden", CompactTable(view.CompactSnapshot(compactRows(), query.Daily, view.SnapshotOptions{Metric: view.Cost, Prev: map[string]float64{"Claude Code": 5.00, "Kimi": 28.00}}), Colors{})},
+		{"snapshot single row", "compact_snapshot_single.golden", CompactTable(view.CompactSnapshot(compactRows()[:1], query.Daily, view.SnapshotOptions{Metric: view.Cost}), color)},
+		{"snapshot tokens", "compact_snapshot_tokens.golden", CompactTable(view.CompactSnapshot(compactRows(), query.Daily, view.SnapshotOptions{Metric: view.Tokens, Prev: map[string]float64{"Claude Code": 20000}}), color)},
+		{"snapshot empty", "compact_snapshot_empty.golden", CompactTable(view.CompactSnapshot(compactRows()[2:], query.Daily, view.SnapshotOptions{Metric: view.Cost}), color)},
 		{"history color", "compact_history_color.golden", CompactTable(view.CompactHistory(compactSeries(), view.HistoryOptions{Period: query.Daily, Now: compactNow}), color)},
 		{"history delta no-color", "compact_history_delta_nocolor.golden", CompactTable(view.CompactHistory(compactSeries(), view.HistoryOptions{Period: query.Daily, Now: compactNow, Prev: map[string]float64{"Kimi:2026-09-15": 2.00}}), Colors{})},
 		{"history single entry", "compact_history_single.golden", CompactTable(view.CompactHistory(view.Series{Name: "Kimi", Entries: compactSeries().Entries[:1]}, view.HistoryOptions{Period: query.Daily, Now: compactNow}), color)},

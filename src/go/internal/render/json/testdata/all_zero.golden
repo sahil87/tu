@@ -1,5 +1,6 @@
 {
   "Claude Code": {
+    "label": "2026-09-16",
     "totalCost": 0,
     "inputTokens": 0,
     "outputTokens": 0,
@@ -8,6 +9,7 @@
     "totalTokens": 0
   },
   "Codex": {
+    "label": "2026-09-16",
     "totalCost": 0,
     "inputTokens": 0,
     "outputTokens": 0,
@@ -16,6 +18,7 @@
     "totalTokens": 0
   },
   "OpenCode": {
+    "label": "2026-09-16",
     "totalCost": 0,
     "inputTokens": 0,
     "outputTokens": 0,
@@ -24,6 +27,7 @@
     "totalTokens": 0
   },
   "Gemini": {
+    "label": "2026-09-16",
     "totalCost": 0,
     "inputTokens": 0,
     "outputTokens": 0,
@@ -32,6 +36,7 @@
     "totalTokens": 0
   },
   "Copilot": {
+    "label": "2026-09-16",
     "totalCost": 0,
     "inputTokens": 0,
     "outputTokens": 0,
@@ -40,6 +45,7 @@
     "totalTokens": 0
   },
   "Kimi": {
+    "label": "2026-09-16",
     "totalCost": 0,
     "inputTokens": 0,
     "outputTokens": 0,

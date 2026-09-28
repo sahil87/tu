@@ -55,6 +55,10 @@ type HistoryOptions struct {
 	// the metric (ties keep first-seen order — a leaderboard is ranked, not
 	// registry-pinned).
 	RankColumns bool
+	// FoldedLast marks the last series as the lbh --top fold ("others"): with
+	// RankColumns it is excluded from the descending-total sort and stays the
+	// last column (an aggregate bucket is not a ranked user).
+	FoldedLast bool
 	// HighlightLeader marks each Data row's max cell (strict >, first wins;
 	// index 0 when all equal) with Cell.Leader.
 	HighlightLeader bool

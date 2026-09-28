@@ -49,21 +49,21 @@ func diffDays(a, b string) int {
 
 // leaderboardWindows computes the current and previous ranking windows (the
 // TS currentWindow/previousWindow, intake §3). An explicit --since/--until
-// REPLACES the period window (heading label "S → U" / "S →" / "→ U"); its
-// previous window is the equal-length range ending the day before S (label
-// "prev", nil when only --until is given or the length is < 1). Period
-// windows anchor on now in LOCAL time; the previous window is the previous
-// calendar day / Sunday-anchored week / calendar month (labelled with the
-// English 3-letter month of its last day).
+// REPLACES the period window (heading label "S → U" two-sided, "since S" /
+// "until U" one-sided); its previous window is the equal-length range ending
+// the day before S (label "prev", nil when only --until is given or the
+// length is < 1). Period windows anchor on now in LOCAL time; the previous
+// window is the previous calendar day / Sunday-anchored week / calendar
+// month (labelled with the English 3-letter month of its last day).
 func leaderboardWindows(period query.Period, since, until string, now time.Time) (cur leaderboardWindow, prev *leaderboardWindow) {
 	if since != "" || until != "" {
 		switch {
 		case since != "" && until != "":
 			cur = leaderboardWindow{since, until, since + " → " + until}
 		case since != "":
-			cur = leaderboardWindow{since, "", since + " →"}
+			cur = leaderboardWindow{since, "", "since " + since}
 		default:
-			cur = leaderboardWindow{"", until, "→ " + until}
+			cur = leaderboardWindow{"", until, "until " + until}
 		}
 		if since == "" {
 			return cur, nil
@@ -289,9 +289,13 @@ func runLeaderboardHistory(req Request, cfg config.Config, raw []fact.Record, no
 		sort.SliceStable(entries, func(a, b int) bool { return entries[a].Label < entries[b].Label })
 		series = append(series, view.Series{Name: u, Entries: entries})
 	}
+	foldedLast := false
 	if req.Flags.Top > 0 {
-		series = foldColumns(series, req.Flags.Top, metric)
+		series, foldedLast = foldColumns(series, req.Flags.Top, metric)
 	}
+	// The folded "others" series is the last column and stays there — it is
+	// excluded from RankColumns' descending-total sort (an aggregate bucket
+	// is not a ranked user).
 
 	// Result stats as runHistory computes them (the TS buildCostMap over the
 	// folded map): {user}:{label} and total:{label} in the display metric.
@@ -329,6 +333,7 @@ func runLeaderboardHistory(req Request, cfg config.Config, raw []fact.Record, no
 			Prev:            deps.live().Prev,
 			Title:           "📊 " + base + " (" + view.PeriodLabel(req.Period, capActive) + ")",
 			RankColumns:     true,
+			FoldedLast:      foldedLast,
 			HighlightLeader: true,
 			KeepAllColumns:  true,
 		}), deps.Colors)
@@ -342,10 +347,12 @@ func runLeaderboardHistory(req Request, cfg config.Config, raw []fact.Record, no
 // kept series stay in their ORIGINAL order; the folded series' entries
 // concatenate in original order and re-group per label (left fold in that
 // order, sorted by label) into one "others" series appended LAST. n ≥ len
-// folds nothing; an "others" with no entries is not appended.
-func foldColumns(series []view.Series, top int, metric view.Metric) []view.Series {
+// folds nothing; an "others" with no entries is not appended. The bool
+// reports whether an "others" series was appended (the caller pins it out of
+// the rank sort via HistoryOptions.FoldedLast).
+func foldColumns(series []view.Series, top int, metric view.Metric) ([]view.Series, bool) {
 	if top >= len(series) {
-		return series
+		return series, false
 	}
 	totals := make([]float64, len(series))
 	for i, s := range series {
@@ -374,7 +381,7 @@ func foldColumns(series []view.Series, top int, metric view.Metric) []view.Serie
 		}
 	}
 	if len(folded) == 0 {
-		return out
+		return out, false
 	}
 	groups := query.GroupBy(folded, query.Date)
 	entries := make([]view.Entry, len(groups))
@@ -382,5 +389,5 @@ func foldColumns(series []view.Series, top int, metric view.Metric) []view.Serie
 		entries[i] = view.Entry{Label: g.Key.Date, Totals: g.Totals}
 	}
 	sort.SliceStable(entries, func(a, b int) bool { return entries[a].Label < entries[b].Label })
-	return append(out, view.Series{Name: "others", Entries: entries})
+	return append(out, view.Series{Name: "others", Entries: entries}), true
 }

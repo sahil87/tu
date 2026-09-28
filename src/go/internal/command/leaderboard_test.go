@@ -38,10 +38,10 @@ func TestLeaderboardWindows(t *testing.T) {
 			leaderboardWindow{"2026-01-01", "2026-01-31", "2026-01-01 → 2026-01-31"},
 			&leaderboardWindow{"2025-12-01", "2025-12-31", "prev"}},
 		{"since only", query.Daily, "2026-01-01", "",
-			leaderboardWindow{"2026-01-01", "", "2026-01-01 →"},
+			leaderboardWindow{"2026-01-01", "", "since 2026-01-01"},
 			&leaderboardWindow{"2025-04-16", "2025-12-31", "prev"}},
-		{"until only: nil previous, every row new (DC-13)", query.Daily, "", "2026-01-31",
-			leaderboardWindow{"", "2026-01-31", "→ 2026-01-31"},
+		{"until only: nil previous, every row new", query.Daily, "", "2026-01-31",
+			leaderboardWindow{"", "2026-01-31", "until 2026-01-31"},
 			nil},
 	}
 	for _, c := range cases {
@@ -67,7 +67,7 @@ func TestLeaderboardWindows(t *testing.T) {
 // length < 1 → a nil previous window.
 func TestLeaderboardWindowsSinceAfterToday(t *testing.T) {
 	cur, prev := leaderboardWindows(query.Daily, "2026-12-01", "", lbNow)
-	if cur.label != "2026-12-01 →" {
+	if cur.label != "since 2026-12-01" {
 		t.Errorf("cur label = %q", cur.label)
 	}
 	if prev != nil {
@@ -234,7 +234,7 @@ func TestRunLeaderboardAssociation(t *testing.T) {
 
 // R5: the delta rule — nil when the key is absent from the previous window or
 // the previous value is exactly 0; (value − prev)/prev otherwise. --until
-// alone yields a nil previous window and every row "new" (DC-13).
+// alone yields a nil previous window and every row "new".
 func TestRunLeaderboardDelta(t *testing.T) {
 	repo := &fakeRepo{
 		users: []string{"harness-user", "other-user", "zero-prev"},
@@ -271,7 +271,7 @@ func TestRunLeaderboardDelta(t *testing.T) {
 		t.Errorf("zero-prev must carry delta null:\n%s", joined[zi:])
 	}
 
-	// --until only: every row new, heading "→ {until}".
+	// --until only: every row new, heading "until {until}".
 	res, err = Run(context.Background(), Request{
 		Display: Leaderboard,
 		Flags:   Flags{Until: "2026-01-31", Interval: 10},
@@ -280,7 +280,7 @@ func TestRunLeaderboardDelta(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined = strings.Join(res.Lines, "\n")
-	if !strings.Contains(joined, "· → 2026-01-31 ·") {
+	if !strings.Contains(joined, "· until 2026-01-31 ·") {
 		t.Errorf("missing the until-only heading:\n%s", joined)
 	}
 	if strings.Contains(joined, "%") && !strings.Contains(joined, "new") {
@@ -463,7 +463,8 @@ func TestRunLeaderboardHistorySeed(t *testing.T) {
 }
 
 // R13: m lbh --top 1 folds other-user into others — JSON keys in
-// Repo.Users() order with others LAST; the ANSI columns rank by total.
+// Repo.Users() order with others LAST; the ANSI columns rank by total with
+// others pinned last (excluded from the rank sort).
 func TestRunLeaderboardHistoryTopFold(t *testing.T) {
 	res, err := Run(context.Background(), Request{
 		Display: LeaderboardHistory, Period: query.Monthly, Format: JSON,
@@ -483,6 +484,23 @@ func TestRunLeaderboardHistoryTopFold(t *testing.T) {
 	}
 	if !strings.Contains(joined, `"totalCost": 1.3,`) {
 		t.Errorf("others folds the dropped user's entries:\n%s", joined)
+	}
+
+	// The ANSI table: harness-user, then others, then the row-total Cost
+	// column.
+	res, err = Run(context.Background(), Request{
+		Display: LeaderboardHistory, Period: query.Monthly,
+		Flags: Flags{Top: 1, Interval: 10},
+	}, multiCfg, multiDeps(&fakeFetcher{}, seedRepo()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined = strings.Join(res.Lines, "\n")
+	hi = strings.Index(joined, "harness-user")
+	oi = strings.Index(joined, "others")
+	ci := strings.Index(joined, "Cost")
+	if hi < 0 || oi < 0 || ci < 0 || !(hi < oi && oi < ci) {
+		t.Errorf("ANSI columns must be harness-user, others, Cost:\n%s", joined)
 	}
 
 	// Top ≥ the user count folds nothing.
@@ -510,13 +528,43 @@ func TestFoldColumnsKeepsOriginalOrder(t *testing.T) {
 		{Name: "b", Entries: []view.Entry{entry("2026-01", 1)}},
 		{Name: "c", Entries: []view.Entry{entry("2026-01", 3)}},
 	}
-	out := foldColumns(series, 2, view.Cost)
+	out, folded := foldColumns(series, 2, view.Cost)
+	if !folded {
+		t.Error("foldColumns must report the appended others series")
+	}
 	names := []string{out[0].Name, out[1].Name, out[2].Name}
 	if !reflect.DeepEqual(names, []string{"a", "c", "others"}) {
 		t.Errorf("fold order = %v, want [a c others]", names)
 	}
 	if out[2].Entries[0].TotalCost != 1 {
 		t.Errorf("others = %+v", out[2])
+	}
+}
+
+// R3/A-003: the folded others column stays last even when its total exceeds
+// every kept user's — exercised through the command wiring (FoldedLast).
+func TestRunLeaderboardHistoryOthersLast(t *testing.T) {
+	repo := &fakeRepo{
+		users: []string{"alpha", "beta", "gamma"},
+		recs: map[string]map[string][]fact.Record{
+			"alpha": {"cc": {storedRec("alpha", "m", "2026-01-05", "cc", 100)}},
+			"beta":  {"cc": {storedRec("beta", "m", "2026-01-05", "cc", 60)}},
+			"gamma": {"cc": {storedRec("gamma", "m", "2026-01-05", "cc", 50)}},
+		},
+	}
+	res, err := Run(context.Background(), Request{
+		Display: LeaderboardHistory, Period: query.Monthly,
+		Flags: Flags{Top: 1, Interval: 10},
+	}, multiCfg, multiDeps(&fakeFetcher{}, repo))
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(res.Lines, "\n")
+	ai := strings.Index(joined, "alpha")
+	oi := strings.Index(joined, "others")
+	ci := strings.Index(joined, "Cost")
+	if ai < 0 || oi < 0 || ci < 0 || !(ai < oi && oi < ci) {
+		t.Errorf("columns must be alpha, others, Cost — others ($110) must not outrank alpha ($100):\n%s", joined)
 	}
 }
 

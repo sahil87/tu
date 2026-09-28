@@ -13,9 +13,9 @@ description: command.Run and its result contract — the Deps seams (Fetcher/Rep
 ## Requirements
 
 ### Requirement: Run gates, normalizes, then composes
-`Run(ctx, req, cfg config.Config, deps Deps) (Result, error)` (`internal/command/run.go`) takes the post-guard config: it needs `Mode` (the record path, the leaderboard gate, the snapshot label rule) plus `User` and `Machine` (the own/other split, the leaderboard's default pinned user). In order:
+`Run(ctx, req, cfg config.Config, deps Deps) (Result, error)` (`internal/command/run.go`) takes the post-guard config: it needs `Mode` (the record path, the leaderboard gate) plus `User` and `Machine` (the own/other split, the leaderboard's default pinned user). In order:
 
-1. **Leaderboard gate** — `leaderboard(req.Display) && cfg.Mode == config.Single` → `Result{}, ErrLeaderboardMode`, evaluated BEFORE `Normalize` and with no notices ([guards](/command/guards.md)).
+1. **Leaderboard gate** — `leaderboard(req.Display) && cfg.Mode == config.Single` → `Result{}, LeaderboardModeError{Display: req.Display}` (matching the `ErrLeaderboardMode` sentinel, the message naming the invoked command), evaluated BEFORE `Normalize` and with no notices ([guards](/command/guards.md)).
 2. **Normalize** — `Normalize(req, cfg.Mode, deps.Now())` returns the request the pipeline runs, the notice lines, and `capActive` ([guards](/command/guards.md)).
 3. **Scope check** (`inScope`) on the normalized request: displays {Snapshot, History, Leaderboard, LeaderboardHistory}, any of the four formats, any period, single or multi mode, `-u` in any mode (Normalize already cleared the out-of-scope cases), no non-data `Command`, not `Version`. `DryRun` or `SkipBrewUpdate` on a data request → `ErrUnported` without fetching and without the notices; `Sync` is admitted because the edge consumes `--sync` before `Run`.
 4. **Leaderboards are repo-only**: both lb and lbh read `gatherAllUsers(deps.Repo, tools)` directly — no live fetch, no source warnings, no writes ([multi-mode](/command/multi-mode.md)).

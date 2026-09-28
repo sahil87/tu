@@ -175,7 +175,7 @@ Per-subcommand exit codes:
 
 | Command | `0` | `1` | `2` |
 |---------|-----|-----|-----|
-| `tu [source] [period] [display]` (data commands, incl. `--watch`) | success, incl. empty results and warn-and-ignore guards | unexpected runtime error; `$HOME` unset; `lb`/`lbh` in single mode (`Error: lb requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo`) (DC-14) | unknown argument/tool/second positional, `--help`/`-h` after a positional, bad flag value (incl. bad `--top`, `--metric`, `--interval`), incompatible format flags (`--json`/`-j`/`--csv`/`--md`/`--watch`), `-t` with `--metric cost`, bad/inverted `--since`/`--until`, missing `-u` value, config `user = all` (reserved), `--dry-run` without `tu sync` |
+| `tu [source] [period] [display]` (data commands, incl. `--watch`) | success, incl. empty results and warn-and-ignore guards | unexpected runtime error; `$HOME` unset; `lb`/`lbh` in single mode (`Error: {lb|lbh} requires multi mode — run tu init-metrics <repo-url> to set up a metrics repo`, naming the invoked command) | unknown argument/tool/second positional, `--help`/`-h` after a positional, bad flag value (incl. bad `--top`, `--metric`, `--interval`), incompatible format flags (`--json`/`-j`/`--csv`/`--md`/`--watch`), `-t` with `--metric cost`, bad/inverted `--since`/`--until`, missing `-u` value, config `user = all` (reserved), `--dry-run` without `tu sync` |
 | `tu sync` | success (incl. `--dry-run`) | `metrics_repo` unset, clone/dir-missing fallback, commit/pull/push failure | config `user = all` |
 | `tu init-metrics [repo-url]` | success, `Already initialized` | `metrics_repo` unset, metrics dir exists but is not a git repo, clone failure, `$HOME` unset | more than one positional argument |
 | `tu update` | success (incl. non-Homebrew install message, "already up to date", `--help`) | `brew update`/`brew info`/`brew upgrade` failure | — |
@@ -233,7 +233,7 @@ Tool configs define the six supported tools (`cc`, `codex`, `oc`, `gemini`, `cop
 
 - **Snapshot**: fetches all entries, then filters to the one matching the current label (today's date, the current week's Sunday, or the current month), resolved in **local time**. Shows a cross-tool table with one row per tool that has data; tools without data are omitted from tables and CSV but present in JSON.
 - **History**: fetches all entries, shows a table with one row per date/week/month. Daily and weekly history default to the last 3 calendar months (an implicit `--since` floor at the first day of the month two months back, e.g. `2026-07-01` on 2026-09-16; disabled by `--full` or any explicit `--since`/`--until`); monthly history is never capped. When the cap is active the table and Markdown headings carry a `last 3 months` hint; CSV and JSON carry no heading but the same data window. Single-tool history shows the token breakdown; all-tools history shows a cost pivot table (date rows × tool columns). The window filter applies to daily entries before weekly/monthly roll-up, so a partial month sums only in-window days, and a weekly window may begin with a partial week labeled by its Sunday.
-- **Leaderboard** (`lb`, multi mode only): reads every user's entries from the metrics repo (repo-only, so today lags until `--sync`), windows them to the current period — or to an explicit `--since`/`--until` range, which replaces the period window — sums across the source's tools, and ranks users descending by the display metric (ties by user name ascending). The Δ column compares against the immediately preceding same-length window (previous day / Sunday-anchored week / calendar month, or the equal-length range ending the day before `--since`; an `--until`-only window has no previous window and every row is `new`, DC-13), derived by a second client-side filter pass over the same fetched entries — no second fetch. Rows with zero cost and zero tokens in the window are omitted. Δ is `(current − previous) / previous`, `new` when the previous value is absent or exactly zero.
+- **Leaderboard** (`lb`, multi mode only): reads every user's entries from the metrics repo (repo-only, so today lags until `--sync`), windows them to the current period — or to an explicit `--since`/`--until` range, which replaces the period window — sums across the source's tools, and ranks users descending by the display metric (ties by user name ascending). The Δ column compares against the immediately preceding same-length window (previous day / Sunday-anchored week / calendar month, or the equal-length range ending the day before `--since`; an `--until`-only window has no previous window and every row is `new`), derived by a second client-side filter pass over the same fetched entries — no second fetch. Rows with zero cost and zero tokens in the window are omitted. Δ is `(current − previous) / previous`, `new` when the previous value is absent or exactly zero.
 - **Leaderboard history** (`lbh`, multi mode only): the same repo read shaped as a pivot — period rows × user columns through the same renderer as the all-tools pivot, with columns ordered by descending window total, each row's leading cell highlighted, and the negligible-column omission disabled (no user is silently hidden from a ranking). `--by-machine` warns and is ignored, exactly as on the all-tools pivot.
 
 ### Empty results
@@ -250,11 +250,11 @@ Four output formats are selected by mutually exclusive flags: the ANSI table (de
 - One-shot tables never narrow themselves: a table wider than the budget simply wraps in the terminal. Compact layouts exist only in watch mode (DC-12).
 - Inline bars render only when at least 10 columns remain after the last column plus a 3-column gutter, and never exceed 30 columns.
 - ANSI color is emitted whether or not stdout is a TTY; `--no-color` and a non-empty `NO_COLOR` disable it identically (color-only styling — dim zero cells, the current-period marker, the leader highlight, weekend dimming — disappears without changing widths).
-- Every one-shot table is preceded and followed by one blank line; the heading line starts with `📊 ` except the leaderboard's (DC-07).
+- Every one-shot table is preceded and followed by one blank line; the heading line starts with `📊 `.
 
 ### Snapshot Table (all tools)
 
-Columns: Tool, Tokens, Input, Output, Cache, Cost (Cache = cache write + cache read combined, so Input + Output + Cache = Tokens). Fixed widths — Tool 12, each numeric column 12 — for an 87-char row; a value wider than 12 chars overflows its cell and misaligns that row (DC-24). One row per tool with non-zero tokens (registry order), plus a divider and a Total row only when more than one tool has data. Heading: `📊 Combined Usage (daily|weekly|monthly)` — also for a single-source snapshot such as `tu cc` (DC-15). The table is unchanged under `--metric tokens`/`-t` (its columns are already token-denominated; the Cost column stays) — only the watch delta indicator moves to the Tokens cell.
+Columns: Tool, Tokens, Input, Output, Cache, Cost (Cache = cache write + cache read combined, so Input + Output + Cache = Tokens). Tool is fixed at 12; each numeric column is `max(12, widest rendered cell in that column across the header, data and Total rows)` — an 87-char row when every value fits in 12 chars, with a wider value widening only its own column while the header and dividers stay aligned. One row per tool with non-zero tokens (registry order), plus a divider and a Total row only when more than one tool has data. Heading: `📊 Combined Usage (daily|weekly|monthly)`, or `📊 {Tool} Usage (…)` for a single-source snapshot such as `tu cc`. The table is unchanged under `--metric tokens`/`-t` (its columns are already token-denominated; the Cost column stays) — only the watch delta indicator moves to the Tokens cell.
 
 ### Single-Tool History Table
 
@@ -275,17 +275,17 @@ Columns: Date (10), one per **visible** tool (data-sized: `max(name length, 9, l
 - **p95 two-zone bar scale**: when `max > 1.5 × p95` (95th percentile by linear interpolation over the nonzero visible row values), bars split into a main zone (linear 0→p95), a dim `┊` (U+250A) rule at the same column in every row, and a yellow overflow zone (linear p95→max, `max(4, round(barWidth / 4))` chars) used only by rows above p95; rows at exactly p95 end at the rule. Otherwise a single linear scale.
 - **Stacked pivot bars**: the pivot's main zone is split into contiguous per-tool segments in column order, apportioned by largest-remainder rounding over the bar's visible characters (ties to the earlier column), the fractional final character belonging to the rightmost segment; colors `green, magenta, blue, cyan` by visible column position (a 5th+ tool uncolored); the overflow zone stays solid yellow. Stripping ANSI yields exactly the unstacked bar.
 - **Exact-zero dimming**: a metric data cell whose value is exactly 0 renders dim (Total row, headers, dividers never; a sub-cent nonzero value formatting as `$0.00` is not dimmed). Applies to pivot cells, the pivot row-total cell, the single-tool history's last column, and every machine column.
-- **Data-sized columns**: right-aligned metric columns (pivot tool and row-total columns, the single-tool history's last column, all machine columns) are sized to the longest formatted value they will hold including the Total row, with a floor of 9; all machine columns share one width. The snapshot's columns are fixed at 12.
+- **Data-sized columns**: right-aligned metric columns (pivot tool and row-total columns, the single-tool history's last column, all machine columns) are sized to the longest formatted value they will hold including the Total row, with a floor of 9; all machine columns share one width. The snapshot's numeric columns follow the same data-sized rule with a floor of 12; its Tool column is fixed at 12.
 - **Row budget in watch mode**: history tables show only the most recent rows that fit the terminal height; separators, the p95 scale, and the footer are computed on that visible window.
 - **Number formatting**: costs `$1,234.56` (en-US thousands separators, two decimals); token counts `1,234,567` (rounded integers).
 
 ### Leaderboard Table (`lb`)
 
-Columns: `#`, User, Cost, bar, Tokens, Share, Δ vs {previous window label}. One row per user (or `user/machine` pair under `--by-machine`), ranked descending by the display metric; the pinned user (`-u <name>`, else the config user) carries a ` ◂` marker on each of its rows. Both the Cost and Tokens columns render in every metric mode — `--metric` selects only the sort key, bar scale, share denominator and the heading's `by …` suffix. Share is a percentage with one decimal (`69.0%`, `100.0%`); Δ is a signed whole percentage (`-55%`, `+4757%`) or `new`. The rank column is 1 char wide up to 9 rows and 2 from 10. A bolded Total row (rank, Share, Δ blank) follows when the full ranked set has ≥2 users, also under `--top`; a dim staleness footer (`synced {relative} ago ({ISO}) · tu sync to refresh`, or `never synced · tu sync to refresh`) closes the table. Heading: `Leaderboard (daily|weekly|monthly) · {window} · by {cost|tokens}` with no `📊` (DC-07); `{window}` is the period's current label, `{since} → {until}` under an explicit window, or `→ {until}` for an `--until`-only window (DC-13). Under `--top <n>` the rows past N collapse into one dim `… +k others` line (still counted in the Total and every share denominator).
+Columns: `#`, User, Cost, bar, Tokens, Share, Δ vs {previous window label}. One row per user (or `user/machine` pair under `--by-machine`), ranked descending by the display metric; the pinned user (`-u <name>`, else the config user) carries a ` ◂` marker on each of its rows. Both the Cost and Tokens columns render in every metric mode — `--metric` selects only the sort key, bar scale, share denominator and the heading's `by …` suffix. Share is a percentage with one decimal (`69.0%`, `100.0%`); Δ is a signed whole percentage (`-55%`, `+4757%`) or `new`. The rank column is 1 char wide up to 9 rows and 2 from 10. A bolded Total row (rank, Share, Δ blank) follows when the full ranked set has ≥2 users, also under `--top`; a dim staleness footer (`synced {relative} ago ({ISO}) · tu sync to refresh`, or `never synced · tu sync to refresh`) closes the table. Heading: `📊 Leaderboard (daily|weekly|monthly) · {window} · by {cost|tokens}`; `{window}` is the period's current label, `{since} → {until}` under a two-sided explicit window, or `since {since}` / `until {until}` for a one-sided window. Under `--top <n>` the rows past N collapse into one dim `… +k others` line (still counted in the Total and every share denominator).
 
 ### Leaderboard History Table (`lbh`)
 
-Same shape as the all-tools pivot with users in place of tools: period rows × user columns, ordered by descending window total in the display metric (ties keep first-seen order), each row's leading user cell highlighted. Heading: `📊 Leaderboard History (daily|weekly|monthly[, last 3 months])` (`Leaderboard Token History` under tokens). No negligible-column omission. `--top <n>` keeps the N highest-total user columns (in the display metric) and folds the rest into one `others` column so row totals are preserved — no `others` column when nothing was folded; `others` is sorted with the user columns by its own total (DC-08). Month separators, current-period marker, weekend dimming, stacked bars + legend, p95 scale, footer, and zero dimming are inherited from the pivot.
+Same shape as the all-tools pivot with users in place of tools: period rows × user columns, ordered by descending window total in the display metric (ties keep first-seen order), each row's leading user cell highlighted. Heading: `📊 Leaderboard History (daily|weekly|monthly[, last 3 months])` (`Leaderboard Token History` under tokens). No negligible-column omission. `--top <n>` keeps the N highest-total user columns (in the display metric) and folds the rest into one `others` column so row totals are preserved — no `others` column when nothing was folded; `others` is excluded from the descending-total column sort and always renders last, before the row-total column. Month separators, current-period marker, weekend dimming, stacked bars + legend, p95 scale, footer, and zero dimming are inherited from the pivot.
 
 ### JSON Output (`--json`)
 
@@ -293,8 +293,8 @@ Pretty-printed with two-space indentation and a trailing newline; keys in the or
 
 | Display | Shape |
 |---------|-------|
-| Snapshot (`tu --json`) | object `{ "{Tool}": totals }` with **every registry tool** present (or only the selected tool for a single-source command). A tool with data: `label, totalCost, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, totalTokens`. A tool with no data: the six totals only, all `0`, **no `label`** (DC-01) |
-| Snapshot `--by-machine` | as above; a tool with data gains a trailing `machines` object `{ "{machine}": cost }` (`{user}` keys under `-u all`); zero-usage tools gain nothing (DC-01) |
+| Snapshot (`tu --json`) | object `{ "{Tool}": totals }` with **every registry tool** present (or only the selected tool for a single-source command). Every tool object carries `label` first — the current period's label, data or not — then `totalCost, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, totalTokens` |
+| Snapshot `--by-machine` | as above; every tool object also carries a trailing `machines` object `{ "{machine}": cost }` (`{user}` keys under `-u all`), `{}` when the tool has no slices |
 | Single-tool history (`tu cc h --json`) | bare array of entries `{ label, totalCost, …, totalTokens }` ascending by label; `--by-machine` adds `machines` to each entry |
 | All-tools history (`tu h --json`, `tu mh --json`) | object `{ "{Tool}": [entries] }` with every registry tool present, an empty array for a tool with no data |
 | Leaderboard (`tu m lb --json`) | array of `{ rank, user, [machine,] cost, totalTokens, share, delta }` — `machine` only under `--by-machine`; `share` a fraction; `delta` a fraction or `null` for a `new` row; `--top` truncates the array |
@@ -481,10 +481,11 @@ Half-width katakana + digits + latin characters falling at variable speeds (0.3�
 
 Every entry below is a **proposal**: a behavior the shipped binary exhibits that looks accidental by at least one of the criteria in `fab/changes/260915-2y3l-spec-reconciliation/intake.md` §4 (numbered as in that intake: 1 inconsistency with a sibling behavior, 2 undocumented in memory, 3 hedged by memory, 4 an implementation detail leaking into a surface, 5 a toolkit-standard or constitution tension, 6 a cross-format asymmetry). The bracket is left unfilled; gate G0 resolves each one. `keep` means the Go port reproduces the behavior byte-for-byte; `drop` means it is an expected diff in the differential harness (R3) and the spec line carrying the same `(DC-NN)` is rewritten at cutover. Nothing here is removed from the spec now. IDs are stable.
 
-- **DC-01** `[DECIDE: keep|drop]` Snapshot `--json` objects for zero-usage tools omit the `label` key (and, under `--by-machine`, the `machines` key) while tools with data carry them.
+- **DC-01** `[DECIDED: drop]` Snapshot `--json` objects for zero-usage tools omit the `label` key (and, under `--by-machine`, the `machines` key) while tools with data carry them.
   Where: `tu --json`, `tu --by-machine --json` (any mode) — `"Codex": {"totalCost": 0, …}` vs `"Claude Code": {"label": "2026-09-16", …, "machines": {…}}`.
   Why it looks accidental: the key set depends on data presence, not on the display; consumers must special-case it; no memory requirement states it (criteria 4, 2).
   Spec: Output Formats › JSON Output; layouts §12.
+  Now: every tool object carries `label` first (the current period's label, data or not) and, under `--by-machine`, a trailing `machines` object — `{}` when the tool has no slices (dropped in 260928-lfj9-output-drop-at-cutover-fixes).
 
 - **DC-02** `[DECIDE: keep|drop]` Non-data commands silently accept the data flags: `tu sync --json` performs a real sync and prints the plain-text result; `tu status --json`, `tu init-conf --json`, `tu help --json`, `tu status --fresh`, `tu status --watch` all ignore the flag without a warning.
   Where: `tu sync --json` (multi mode), `tu status --json`.
@@ -501,25 +502,29 @@ Every entry below is a **proposal**: a behavior the shipped binary exhibits that
   Why it looks accidental: toolkit principle №3 (self-describing) and the `update --help` special case both suggest help should work anywhere; memory records the behavior as "unchanged", not as a decision (criteria 5, 1).
   Spec: Global Flags; layouts §14.
 
-- **DC-05** `[DECIDE: keep|drop]` CSV snapshot output omits zero-usage tool rows, while CSV all-tools history keeps every registry column as a positional contract.
+- **DC-05** `[DECIDED: keep]` CSV snapshot output omits zero-usage tool rows, while CSV all-tools history keeps every registry column as a positional contract.
   Where: `tu --csv` (rows for tools with data only) vs `tu h --csv` (`date,Claude Code,Codex,OpenCode,Gemini,Copilot,Kimi,total`).
   Why it looks accidental: the "positional machine contract" rationale that keeps all pivot columns applies equally to snapshot rows; the two CSV kinds disagree (criteria 6).
   Spec: Output Formats › CSV Output; layouts §15.
+  Now: kept — CSV snapshot rows are keyed by tool name, so omitting zero rows is safe, while the history CSV is positional and must keep every column.
 
-- **DC-06** `[DECIDE: keep|drop]` The all-tools history applies three different column-omission rules by format: significance threshold ($1.00 / 0.1%) in the ANSI table, exact-zero in Markdown, none in CSV.
+- **DC-06** `[DECIDED: keep]` The all-tools history applies three different column-omission rules by format: significance threshold ($1.00 / 0.1%) in the ANSI table, exact-zero in Markdown, none in CSV.
   Where: `tu h`, `tu h --md`, `tu h --csv` on the same window (Gemini at `$0.04` total is omitted in the table, kept in Markdown, kept in CSV).
   Why it looks accidental: a deliberate decision per memory, listed because it is a three-way cross-format asymmetry the port must reproduce exactly or consciously unify (criteria 6).
   Spec: Output Formats › All-Tools History Pivot Table, Markdown Output, CSV Output; layouts §4, §16.
+  Now: kept — each format serves a different reader: ANSI hides noise, Markdown drops only exact zeros, CSV is complete data.
 
-- **DC-07** `[DECIDE: keep|drop]` The `lb` heading is the only table heading without the `📊 ` prefix (`lbh`, snapshots, and histories all carry it).
+- **DC-07** `[DECIDED: drop]` The `lb` heading is the only table heading without the `📊 ` prefix (`lbh`, snapshots, and histories all carry it).
   Where: `tu m lb` → `Leaderboard (monthly) · 2026-09 · by cost`.
   Why it looks accidental: every sibling heading, including the leaderboard history, uses the prefix; no memory decision mentions omitting it (criteria 1).
   Spec: Output Formats › Leaderboard Table; layouts §5.
+  Now: the heading is `📊 Leaderboard ({period}) · {window} · by {cost|tokens}`, matching every other table heading (dropped in 260928-lfj9-output-drop-at-cutover-fixes).
 
-- **DC-08** `[DECIDE: keep|drop]` Under `lbh --top n`, the folded `others` column is sorted with the user columns by its own total, so it can render first or in the middle instead of last.
+- **DC-08** `[DECIDED: drop]` Under `lbh --top n`, the folded `others` column is sorted with the user columns by its own total, so it can render first or in the middle instead of last.
   Where: `tu m lbh --top 2` → `Date | others | sahil | eunice | Cost`.
   Why it looks accidental: memory says `--top` "folds the rest into one `others` column" with no placement rule; a fold column that outranks real users reads as a bug (criteria 2).
   Spec: Output Formats › Leaderboard History Table; layouts §6, §19.
+  Now: `others` is excluded from the descending-total column sort and always renders as the last user column, before the row total (dropped in 260928-lfj9-output-drop-at-cutover-fixes).
 
 - **DC-09** `[DECIDE: keep|drop]` `--version`/`-V`/`-v` are absent from the `--help` text, and the lowercase `-v` alias exists only in memory and the completion scripts.
   Where: `tu --help` (no version line); `tu -v` → `tu version v0.11.5`.
@@ -531,35 +536,40 @@ Every entry below is a **proposal**: a behavior the shipped binary exhibits that
   Why it looks accidental: floating-point artifacts leaking into a machine contract; a port that sums in a different order produces different bytes for identical data, which is exactly what the harness will flag (criteria 4).
   Spec: Output Formats › JSON Output; layouts §12.
 
-- **DC-11** `[DECIDE: keep|drop]` Leaderboard CSV renders `share` and `delta` with up to 3 decimals and trailing zeros dropped (`0.69`, `-0.3`, `17.309`) while `cost` is fixed at 2 decimals.
+- **DC-11** `[DECIDED: keep]` Leaderboard CSV renders `share` and `delta` with up to 3 decimals and trailing zeros dropped (`0.69`, `-0.3`, `17.309`) while `cost` is fixed at 2 decimals.
   Where: `tu m lb --csv`.
   Why it looks accidental: JavaScript number-to-string formatting leaking into a machine format; columns in one row use two different precision rules (criteria 4, 6).
   Spec: Output Formats › CSV Output; layouts §15.
+  Now: kept — share/delta are fractions, not money — trimmed 3-decimal precision is right.
 
 - **DC-12** `[DECIDE: keep|drop]` One-shot output ignores terminal width beyond the bar budget: there is no compact layout outside watch mode (a 50-column TTY gets the full 87-char snapshot, wrapped), the footer/legend line is never wrapped or shortened, and when stdout is not a TTY the width is assumed to be 80 with the `COLUMNS` variable ignored.
   Where: `tu` in a 50-column terminal; `tu h | cat` (bars sized for 80); `COLUMNS=120 tu h | cat` (unchanged).
   Why it looks accidental: memory states "Compact mode MUST activate when terminal width < 60" without the watch-only qualifier; the pipe default and the `COLUMNS` behavior are undocumented (criteria 2, 3).
   Spec: Output Formats › Terminal width and color; layouts §7, §21.
 
-- **DC-13** `[DECIDE: keep|drop]` An `--until`-only leaderboard window renders the heading as `· → 2026-09-10 ·` with an empty left side and marks every Δ `new`.
+- **DC-13** `[DECIDED: drop]` An `--until`-only leaderboard window renders the heading as `· → 2026-09-10 ·` with an empty left side and marks every Δ `new`.
   Where: `tu lb --until 2026-09-10`.
   Why it looks accidental: memory documents the `new` outcome but not the heading form; an open-ended range could name its start (criteria 2).
   Spec: Output Formats › Leaderboard Table; layouts §5.
+  Now: a one-sided window reads `since {S}` / `until {U}` (two-sided stays `{S} → {U}`); Δ semantics are unchanged — an `--until`-only window still has no previous window, so every row is `new` (dropped in 260928-lfj9-output-drop-at-cutover-fixes).
 
-- **DC-14** `[DECIDE: keep|drop]` The single-mode leaderboard guard message names `lb` even when the command was `lbh`.
+- **DC-14** `[DECIDED: drop]` The single-mode leaderboard guard message names `lb` even when the command was `lbh`.
   Where: `tu lbh` in single mode → `Error: lb requires multi mode — …`.
   Why it looks accidental: the message is a constant string; nothing in memory says it is intentional for both displays (criteria 2).
   Spec: Exit Codes; layouts §5.
+  Now: the guard names the invoked command — `Error: lbh requires multi mode — …` for `lbh`, exit 1 unchanged (dropped in 260928-lfj9-output-drop-at-cutover-fixes).
 
-- **DC-15** `[DECIDE: keep|drop]` A single-source snapshot keeps the heading `📊 Combined Usage ({period})` instead of naming the tool, while a single-source history is titled by the tool.
+- **DC-15** `[DECIDED: drop]` A single-source snapshot keeps the heading `📊 Combined Usage ({period})` instead of naming the tool, while a single-source history is titled by the tool.
   Where: `tu cc` → `📊 Combined Usage (daily)`; `tu cc h` → `📊 Claude Code (daily, …)`.
   Why it looks accidental: the previous layouts.md §2 claimed the heading used the tool name — the spec author expected it; the snapshot and history disagree (criteria 1, 2).
   Spec: Output Formats › Snapshot Table; layouts §2.
+  Now: a single-source snapshot is titled `📊 {Tool} Usage ({period})` (ANSI, watch compact, and Markdown alike); the all-tools snapshot keeps `📊 Combined Usage ({period})` (dropped in 260928-lfj9-output-drop-at-cutover-fixes).
 
-- **DC-16** `[DECIDE: keep|drop]` `lbh` orders user columns by descending total in the table but alphabetically in CSV and Markdown.
+- **DC-16** `[DECIDED: keep]` `lbh` orders user columns by descending total in the table but alphabetically in CSV and Markdown.
   Where: `tu m lbh` vs `tu m lbh --csv` / `tu m lbh --md`.
   Why it looks accidental: the ranking is the point of a leaderboard display; the machine formats fall back to key order and lose it (criteria 6).
   Spec: Output Formats › CSV Output, Markdown Output; layouts §6, §15, §16.
+  Now: kept — CSV/Markdown column order must be stable across runs — alphabetical — while the ANSI table is a ranking.
 
 - **DC-17** `[DECIDE: keep|drop]` Watch mode does not guard tables wider than the terminal: the single-tool history (110 chars) at 100 columns and `lbh` with many users wrap inside the frame and break the compositor's line accounting; only the all-tools pivot has a width contract (96/97).
   Where: `tu cc h -w` in a 100×30 terminal; `tu m lbh -w`.
@@ -596,7 +606,8 @@ Every entry below is a **proposal**: a behavior the shipped binary exhibits that
   Why it looks accidental: memory itself labels the over-prediction a "sanctioned heuristic" (criteria 3).
   Spec: Multi-Machine Mode › Dry Run; layouts §20.
 
-- **DC-24** `[DECIDE: keep|drop]` The snapshot's numeric columns are fixed at 12 characters and a wider value (`16,809,796,832`) overflows its cell, shifting that row while the header and dividers keep their width.
+- **DC-24** `[DECIDED: drop]` The snapshot's numeric columns are fixed at 12 characters and a wider value (`16,809,796,832`) overflows its cell, shifting that row while the header and dividers keep their width.
   Where: `tu m -u all` on a repo with 10-figure monthly token counts.
   Why it looks accidental: every other numeric column is data-sized precisely to avoid this; memory claims the 12-wide cell "still holds 999,999,999,999", which is 15 characters (criteria 1, 2).
   Spec: Output Formats › Snapshot Table; layouts §1.
+  Now: each numeric column is `max(12, widest rendered cell in that column across the header, data and Total rows)` — with ordinary values the layout is byte-identical (87 chars); a wider value widens only its own column (dropped in 260928-lfj9-output-drop-at-cutover-fixes).
