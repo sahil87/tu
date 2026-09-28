@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 6
@@ -33,25 +33,27 @@ stage_metrics:
     apply: {started_at: "2026-09-28T18:49:40Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-28T19:02:15Z"}
     review: {started_at: "2026-09-28T19:02:15Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-28T19:04:48Z"}
     hydrate: {started_at: "2026-09-28T19:04:48Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-28T19:07:26Z"}
-    ship: {started_at: "2026-09-28T19:07:26Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-09-28T19:07:26Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-28T19:10:10Z"}
+    review-pr: {started_at: "2026-09-28T19:10:10Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/tu/pull/105
 change_type_source: explicit
 base_branch: main
 true_impact:
-    added: 0
-    deleted: 0
-    net: 0
+    added: 635
+    deleted: 90
+    net: 545
     excluding:
-        added: 0
-        deleted: 0
-        net: 0
+        added: 323
+        deleted: 62
+        net: 261
     tests:
-        added: 0
-        deleted: 0
-        net: 0
-    computed_at: "2026-09-28T19:07:26Z"
-    computed_at_stage: hydrate
+        added: 125
+        deleted: 11
+        net: 114
+    computed_at: "2026-09-28T19:10:10Z"
+    computed_at_stage: ship
 summary: help flags recognized anywhere among positionals (bare help first-only), help lists the version flag with aliases, watch frame lines clipped ANSI-aware to terminal columns
 # base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-09-28T19:07:26Z
+last_updated: 2026-09-28T19:10:10Z
